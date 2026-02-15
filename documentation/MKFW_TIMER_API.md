@@ -411,7 +411,6 @@ Define `MKFW_TIMER_DEBUG` before including to enable debug output:
 ### Realtime Scheduling
 
 - Timers use realtime priority for accuracy
-- On Linux: May require `CAP_SYS_NICE` capability for realtime scheduling
 - Spin phase is intentionally kept short to avoid system impact
 
 ### System Timer Resolution
