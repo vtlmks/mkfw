@@ -45,7 +45,7 @@ The audio subsystem uses a fixed format optimized for low latency:
 - **Channels:** 2 (stereo)
 - **Bit Depth:** 16-bit signed integer
 - **Frame Size:** 4 bytes (2 channels × 2 bytes)
-- **Buffer Size:** Platform-dependent (512-1024 frames typical)
+- **Buffer Size:** Platform-dependent (256 frames on ALSA, 480 frames on WASAPI typical)
 
 **Sample format:**
 ```c
@@ -151,7 +151,7 @@ Function pointer to your audio generation callback.
 - Buffer is pre-zeroed before your callback is called
 - If callback is NULL, audio plays silence
 - Runs on high-priority audio thread - keep processing minimal
-- Typical frame counts: 128-512 frames (2.7-10.7ms at 48kHz)
+- Typical frame counts: 256 frames on ALSA (5.3ms), 480 frames on WASAPI (10ms) at 48kHz
 
 **Example:**
 ```c
@@ -381,7 +381,7 @@ int main(int argc, char **argv) {
 - Links: `-lole32 -lavrt -lwinmm`
 
 **Buffer size:**
-- Determined by device period (typically 10ms)
+- Determined by device default period in shared mode (typically 10ms = 480 frames at 48kHz)
 - System manages buffering automatically
 
 ---

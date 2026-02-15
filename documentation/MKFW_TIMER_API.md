@@ -337,8 +337,8 @@ Define `MKFW_TIMER_DEBUG` before including to enable debug output:
 
 **Example output:**
 ```
-[DEBUG] Woke up with 450123 ns left. Overshoot:   234 ns
-[DEBUG] Woke up with 498765 ns left. Overshoot:   189 ns
+[DEBUG] Woke up with 450123 ns left. Overshoot:    24 ns
+[DEBUG] Woke up with 498765 ns left. Overshoot:    19 ns
 ```
 
 ---
@@ -391,7 +391,7 @@ Define `MKFW_TIMER_DEBUG` before including to enable debug output:
 
 - **Sleep phase:** Near-zero CPU usage
 - **Spin phase:** 100% on one core for the spin threshold duration
-- **Overall:** Minimal impact (< 0.5% on multi-core systems for 60 FPS)
+- **Overall:** Up to ~3% of one core on Linux, ~6% on Windows at 60 FPS (spin only runs during idle time — if your frame uses most of the budget, spin cost approaches zero)
 
 ### Priority
 
