@@ -75,6 +75,12 @@ static inline void mkfw_set_gl_version(int major, int minor) {
 	mkfw_gl_minor = minor;
 }
 
+/* Suppress unused-function warnings for API functions the user may not call */
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+
 /* Platform-specific implementation includes */
 #ifdef _WIN32
 #include "mkfw_win32.c"
@@ -272,4 +278,8 @@ static inline void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback)
 #define mkui_rgba(r, g, b, a) ((struct mkui_color){0,0,0,0})
 #define mkui_get_style() ((struct mkui_style*)0)
 #define mkui_style_set_color(color_id, r, g, b, a) ((void)0)
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
 #endif

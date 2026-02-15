@@ -38,6 +38,7 @@ mkfw is what I use in my own projects. It covers similar ground to GLFW — wind
 mkfw is a set of headers and source files you include directly into your project — no build system or external dependencies required.
 
 ```c
+#include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
 int main() {
@@ -45,7 +46,7 @@ int main() {
     mkfw_set_window_title(mkfw, "Hello mkfw");
     mkfw_show_window(mkfw);
 
-    // load your OpenGL functions here
+    mkfw_gl_loader();
 
     while (!mkfw_should_close(mkfw)) {
         mkfw_pump_messages(mkfw);
@@ -125,12 +126,13 @@ Detailed API documentation for each subsystem is in the [documentation/](documen
 
 ## OpenGL function loader
 
-`mkfw_gl_loader.c` is an optional, freestanding OpenGL function loader included in the repository. It has no dependency on mkfw — you can use it in any project, or swap it for your own loader (or the full `GL/gl.h`).
+`mkfw_gl_loader.h` is an optional, freestanding OpenGL function loader included in the repository. It has no dependency on mkfw — you can use it in any project, or swap it for your own loader (or the full `GL/gl.h`).
 
-It declares only the GL types, constants, and functions it needs, keeping compile times minimal. To add more GL functions, just append entries to the `GL_FUNCTIONS` macro.
+It provides all GL types, constants, and function declarations up to OpenGL 4.6, version-gated at compile time. By default it includes everything up to GL 3.1. To select a different version, define `MKFW_GL_VERSION` before including:
 
 ```c
-#include "mkfw_gl_loader.c"
+#define MKFW_GL_VERSION 46   // GL 4.6 (major*10 + minor)
+#include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
 // after mkfw_init + mkfw_show_window:

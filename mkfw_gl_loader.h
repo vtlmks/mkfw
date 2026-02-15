@@ -9,12 +9,12 @@
 // enums and functions are available:
 //
 //   #define MKFW_GL_VERSION 46   // GL 4.6 (major*10 + minor)
-//   #include "mkfw_gl_loader.c"
+//   #include "mkfw_gl_loader.h"
 //
 // Default is 31 (OpenGL 3.1) if not specified.
 
-#ifndef MKFW_GL_LOADER_C
-#define MKFW_GL_LOADER_C
+#ifndef MKFW_GL_LOADER_H
+#define MKFW_GL_LOADER_H
 
 #ifndef MKFW_GL_VERSION
 #define MKFW_GL_VERSION 31
@@ -2306,7 +2306,7 @@ void glPushClientAttrib(GLbitfield mask);
 #define MKFW_GL_DECLARE_TYPE(Name, ReturnType, ...) \
 	typedef ReturnType (*mkfw_type_##Name)(__VA_ARGS__);
 #define MKFW_GL_DECLARE_GLOBAL(Name, ...) \
-	mkfw_type_##Name Name;
+	static mkfw_type_##Name Name;
 
 #define MKFW_GL_FUNCTIONS(X) \
 	/* OpenGL 1.2 */ \
@@ -3191,4 +3191,4 @@ static void mkfw_gl_loader(void) {
 	MKFW_GL_FUNCTIONS(MKFW_GL_LOAD);
 }
 
-#endif /* MKFW_GL_LOADER_C */
+#endif /* MKFW_GL_LOADER_H */

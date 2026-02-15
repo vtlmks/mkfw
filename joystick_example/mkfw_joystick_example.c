@@ -12,7 +12,7 @@
 #define MKFW_UI
 #define MKFW_JOYSTICK
 #define MKFW_JOYSTICK_GAMEDB
-#include "../mkfw_gl_loader.c"
+#include "../mkfw_gl_loader.h"
 #include "../mkfw.h"
 
 static void on_gamepad_connect(int pad, int connected) {

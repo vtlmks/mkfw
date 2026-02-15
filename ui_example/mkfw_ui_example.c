@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 #define MKFW_UI
-#include "../mkfw_gl_loader.c"
+#include "../mkfw_gl_loader.h"
 #include "../mkfw.h"
 
 int main() {

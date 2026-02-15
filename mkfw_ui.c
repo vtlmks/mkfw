@@ -767,7 +767,7 @@ static int32_t mkui_button(const char *label) {
 }
 
 static int32_t mkui_checkbox(const char *label, int32_t *checked) {
-	uint32_t id = mkui_gen_id(label);
+	mkui_gen_id(label);
 
 	float x = mkui_ctx->cursor_x;
 	float y = mkui_ctx->cursor_y;
@@ -1011,7 +1011,7 @@ static int32_t mkui_slider_int64(const char *label, int64_t *value, int64_t min_
 }
 
 static int32_t mkui_radio_button(const char *label, int32_t *selected, int32_t value) {
-	uint32_t id = mkui_gen_id(label);
+	mkui_gen_id(label);
 
 	float x = mkui_ctx->cursor_x;
 	float y = mkui_ctx->cursor_y;
@@ -1044,7 +1044,7 @@ static int32_t mkui_radio_button(const char *label, int32_t *selected, int32_t v
 }
 
 static int32_t mkui_collapsing_header(const char *label, int32_t *open) {
-	uint32_t id = mkui_gen_id(label);
+	mkui_gen_id(label);
 
 	float x = mkui_ctx->cursor_x;
 	float y = mkui_ctx->cursor_y;
