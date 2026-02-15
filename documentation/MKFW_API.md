@@ -931,6 +931,7 @@ while (!mkfw_should_close(window)) {
 ### Single Window Application
 
 ```c
+#include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
 void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
@@ -955,6 +956,7 @@ int main(void) {
     }
 
     mkfw_set_window_title(window, "My Application");
+    mkfw_show_window(window);
     mkfw_set_swapinterval(window, 1);
 
     // Set callbacks
@@ -965,7 +967,7 @@ int main(void) {
     mkfw_set_window_min_size_and_aspect(window, 640, 480, 16.0f, 9.0f);
 
     // Load OpenGL functions
-    // gl_loader(); // Your OpenGL loader
+    mkfw_gl_loader();
 
     // Main loop
     while (!mkfw_should_close(window)) {
@@ -996,6 +998,7 @@ int main(void) {
 ### Multiple Window Application
 
 ```c
+#include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
 void on_key_main(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
@@ -1014,6 +1017,7 @@ int main(void) {
     if (!main_window) return -1;
 
     mkfw_set_window_title(main_window, "Main Window");
+    mkfw_show_window(main_window);
     mkfw_set_key_callback(main_window, on_key_main);
 
     // Create options window
@@ -1024,7 +1028,11 @@ int main(void) {
     }
 
     mkfw_set_window_title(options_window, "Options");
+    mkfw_show_window(options_window);
     mkfw_set_key_callback(options_window, on_key_options);
+
+    // Load OpenGL functions
+    mkfw_gl_loader();
 
     // Main loop - handle both windows
     while (!mkfw_should_close(main_window) && !mkfw_should_close(options_window)) {
@@ -1074,6 +1082,7 @@ MKFW supports multi-threaded rendering with context management:
 **Example:**
 ```c
 struct mkfw_state *window = mkfw_init(1280, 720);
+mkfw_show_window(window);
 
 mkfw_detach_context(window);
 
@@ -1150,7 +1159,6 @@ MKFW is simpler than GLFW:
 - Monitor enumeration and video mode queries
 - Window hints system
 - Clipboard access
-- Joystick/gamepad input
 - File drop events
 - Window positioning API
 - Iconification/restoration

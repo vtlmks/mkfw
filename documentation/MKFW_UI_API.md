@@ -53,7 +53,7 @@ Initialize the UI system and set up OpenGL resources.
 - `mkfw` - MKFW window state pointer
 
 **Notes:**
-- Must be called after `mkfw_init()` and `gl_loader()`
+- Must be called after `mkfw_init()` and `mkfw_gl_loader()`
 - Creates OpenGL shader program, vertex buffer, and font texture
 - Registers input callbacks with MKFW
 - Returns early if already initialized (no-op on subsequent calls)
@@ -62,7 +62,7 @@ Initialize the UI system and set up OpenGL resources.
 ```c
 struct mkfw_state *mkfw = mkfw_init(1280, 720);
 mkfw_show_window(mkfw);
-gl_loader();
+mkfw_gl_loader();
 
 mkui_init(mkfw);
 ```
@@ -1095,7 +1095,7 @@ ui_example.exe
 
 ### UI doesn't appear
 
-- Ensure `mkui_init()` is called after `gl_loader()`
+- Ensure `mkui_init()` is called after `mkfw_gl_loader()`
 - Verify `mkui_new_frame()` is called before widgets
 - Check that `mkui_render()` is called after widgets
 - Make sure `MKFW_UI` is defined before including `mkfw.h`
