@@ -17,7 +17,9 @@ static void mkfw_audio_callback_thread(int16_t *audio_buffer, size_t frames) {
 	if(mkfw_audio_callback) {
 		mkfw_audio_callback(audio_buffer, frames);
 	}
-
+#ifdef MKFW_AUDIO_POST_PROCESS
+	MKFW_AUDIO_POST_PROCESS(audio_buffer, frames);
+#endif
 }
 
 #include <alsa/asoundlib.h>
