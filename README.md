@@ -105,13 +105,36 @@ Working examples are included in the repository:
 
 - [ui_example/](ui_example/) — demonstrates all UI widgets (buttons, sliders, text input, combo boxes, etc.)
 - [joystick_example/](joystick_example/) — gamepad input with real-time visualization
+- [threaded_example/](threaded_example/) — render loop on a separate thread, decoupled from the OS message pump
 
 Build an example:
 
 ```sh
 cd ui_example && sh build_ui.sh
 cd joystick_example && sh build_joystick.sh
+cd threaded_example && sh build_threaded.sh
 ```
+
+### Threaded rendering
+
+On Windows, dragging or resizing a window causes `DispatchMessage()` to enter a modal loop inside the OS. It doesn't return until the user releases the mouse. If your rendering happens on the same thread, frames freeze for the entire duration of the drag or resize.
+
+The fix is to run rendering on a separate thread:
+
+```
+Main thread:     create window → detach GL context → pump messages in a loop
+Render thread:   attach GL context → render loop (runs independently)
+```
+
+The key steps:
+
+1. Create the window and set up callbacks on the main thread as usual
+2. Call `mkfw_detach_context()` to release the GL context (a context can only be current on one thread at a time)
+3. Spawn a render thread that calls `mkfw_attach_context()`, then runs your normal render loop
+4. The main thread loops on `mkfw_pump_messages()` + `mkfw_sleep()` — nothing else
+5. On shutdown, set a shared flag, join the render thread, then clean up
+
+This pattern is not specific to mkfw — the same approach works with GLFW, SDL, or raw Win32. The [threaded_example/](threaded_example/) shows a complete, minimal implementation.
 
 ## Documentation
 
