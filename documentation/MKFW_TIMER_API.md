@@ -184,6 +184,40 @@ while (running) {
 
 ---
 
+### `mkfw_timer_set_interval`
+
+```c
+void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns)
+```
+
+Change the interval of a running timer without destroying and recreating it.
+
+**Parameters:**
+- `t` - Timer handle
+- `interval_ns` - New timer interval in nanoseconds
+
+**Notes:**
+- Takes effect on the very next tick after the current one completes
+- Does not reset or disturb the current deadline
+- Safe to call from any thread
+- Useful for dynamic frame pacing (e.g., adjusting to audio buffer fill level)
+
+**Example:**
+```c
+// NES emulator: nudge frame time to keep audio buffer healthy
+#define NES_NTSC_FRAME_NS 16639267  // ~60.0988 Hz
+
+struct mkfw_timer_handle *timer = mkfw_timer_new(NES_NTSC_FRAME_NS);
+
+// Audio callback notices buffer is getting thin — speed up slightly
+mkfw_timer_set_interval(timer, NES_NTSC_FRAME_NS - 50000);
+
+// Audio buffer is getting full — slow down slightly
+mkfw_timer_set_interval(timer, NES_NTSC_FRAME_NS + 50000);
+```
+
+---
+
 ### `mkfw_timer_destroy`
 
 ```c
@@ -433,13 +467,10 @@ Define `MKFW_TIMER_DEBUG` before including to enable debug output:
 
 ```c
 // Start with 60 FPS
-uint64_t interval = 16666666;
-struct mkfw_timer_handle *timer = mkfw_timer_new(interval);
+struct mkfw_timer_handle *timer = mkfw_timer_new(16666666);
 
 // Later, switch to 120 FPS
-mkfw_timer_destroy(timer);
-interval = 8333333;
-timer = mkfw_timer_new(interval);
+mkfw_timer_set_interval(timer, 8333333);
 ```
 
 ### Frame Time Measurement

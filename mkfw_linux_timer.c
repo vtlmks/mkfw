@@ -126,6 +126,11 @@ static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 	return 1;
 }
 
+// [=]===^=[ mkfw_timer_set_interval ]=====================================[=]
+static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
+	t->interval_ns = interval_ns;
+}
+
 static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
 	t->running = 0;
 	t->futex_word = 1;
