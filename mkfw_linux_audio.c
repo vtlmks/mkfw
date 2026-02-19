@@ -12,6 +12,10 @@
 
 void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
 
+static void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t)) {
+	__atomic_store(&mkfw_audio_callback, &cb, __ATOMIC_RELEASE);
+}
+
 static void mkfw_audio_callback_thread(int16_t *audio_buffer, size_t frames) {
 	memset(audio_buffer, 0, frames * MKFW_NUM_CHANNELS * 2);
 	void (*cb)(int16_t *, size_t);
