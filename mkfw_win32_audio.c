@@ -16,10 +16,16 @@
 
 void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
 
+static void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t)) {
+	__atomic_store(&mkfw_audio_callback, &cb, __ATOMIC_RELEASE);
+}
+
 static void mkfw_audio_callback_thread(int16_t *audio_buffer, size_t frames) {
 	memset(audio_buffer, 0, frames * MKFW_NUM_CHANNELS * 2);
-	if(mkfw_audio_callback) {
-		mkfw_audio_callback(audio_buffer, frames);
+	void (*cb)(int16_t *, size_t);
+	__atomic_load(&mkfw_audio_callback, &cb, __ATOMIC_ACQUIRE);
+	if(cb) {
+		cb(audio_buffer, frames);
 	}
 #ifdef MKFW_AUDIO_POST_PROCESS
 	MKFW_AUDIO_POST_PROCESS(audio_buffer, frames);
@@ -47,7 +53,7 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 
 	for(;;) {
 		DWORD r = WaitForSingleObject(mkfw_audio_event, INFINITE);
-		if(!mkfw_audio_running) {
+		if(!__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
 			break;
 		}
 
@@ -59,7 +65,7 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 				mkfw_audio_callback_thread((int16_t*)data, available);
 				IAudioRenderClient_ReleaseBuffer(mkfw_render_client, available, 0);
 			} else {
-				mkfw_audio_running = 0;
+				__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
 				break;
 			}
 
@@ -100,7 +106,7 @@ static void mkfw_audio_initialize(void) {
 							if(SUCCEEDED(IAudioClient_SetEventHandle(mkfw_audio_client_out, mkfw_audio_event))) {
 								if(SUCCEEDED(IAudioClient_GetService(mkfw_audio_client_out, &IID_IAudioRenderClient, (void**)&mkfw_render_client))) {
 									if(SUCCEEDED(IAudioClient_Start(mkfw_audio_client_out))) {
-										mkfw_audio_running = 1;
+										__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
 										mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_proc, 0);
 										if(mkfw_audio_thread) {
 											return;
@@ -146,7 +152,7 @@ static void mkfw_audio_shutdown(void) {
 	uint32_t frames;
 	uint32_t padding;
 
-	mkfw_audio_running = 0;
+	__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
 
 	if(mkfw_audio_thread) {
 		SetEvent(mkfw_audio_event);
