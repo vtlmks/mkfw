@@ -78,7 +78,7 @@ static DWORD WINAPI mkfw_timer_thread_func(LPVOID arg) {
 	SetThreadAffinityMask(GetCurrentThread(), 1);
 	mkfw_set_realtime_priority(&t->mmcss_handle);
 
-	while(t->running) {
+	while(__atomic_load_n(&t->running, __ATOMIC_ACQUIRE)) {
 #ifdef MKFW_TIMER_DEBUG
 		int64_t remaining_after_sleep_ns = -1;
 #endif
@@ -153,7 +153,7 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 	t->interval_qpc = (interval_ns * t->qpc_frequency + 500000000ULL) / 1000000000ULL;
 	t->spin_threshold_100ns = MKFW_SPIN_THRESHOLD_NS / 100;
 	t->next_deadline_qpc = mkfw_qpc_now() + t->interval_qpc;
-	t->running = 1;
+	__atomic_store_n(&t->running, 1, __ATOMIC_RELEASE);
 	t->mmcss_handle = 0;
 
 #ifdef MKFW_TIMER_DEBUG
@@ -178,7 +178,7 @@ static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interv
 }
 
 static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
-	t->running = 0;
+	__atomic_store_n(&t->running, 0, __ATOMIC_RELEASE);
 
 	SetEvent(t->event);
 	mkfw_thread_join(t->timer_thread);
