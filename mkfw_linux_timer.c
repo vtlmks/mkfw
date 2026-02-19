@@ -5,7 +5,14 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
+#if defined(__x86_64__) || defined(__i386__)
 #include <immintrin.h>
+#define mkfw_cpu_yield() _mm_pause()
+#elif defined(__aarch64__) || defined(__arm__)
+#define mkfw_cpu_yield() __asm__ volatile("yield")
+#else
+#define mkfw_cpu_yield() ((void)0)
+#endif
 
 #define MKFW_SPIN_THRESHOLD_NS 500000	// NOTE(peter): 500us spin threshold for Linux
 
@@ -15,7 +22,7 @@ struct mkfw_timer_handle {
 	uint32_t running;
 	mkfw_thread timer_thread;
 
-	volatile int futex_word;
+	int futex_word;
 
 #ifdef MKFW_TIMER_DEBUG
 	struct timespec last_wait_start;
@@ -42,18 +49,18 @@ static int64_t mkfw_timespec_diff_ns(struct timespec *a, struct timespec *b) {
 	return sec * 1000000000LL + nsec;
 }
 
-static int mkfw_futex_wait(volatile int *addr, int val) {
+static int mkfw_futex_wait(int *addr, int val) {
 	return syscall(SYS_futex, addr, FUTEX_WAIT_PRIVATE, val, 0, 0, 0);
 }
 
-static int mkfw_futex_wake(volatile int *addr) {
+static int mkfw_futex_wake(int *addr) {
 	return syscall(SYS_futex, addr, FUTEX_WAKE_PRIVATE, 1, 0, 0, 0);
 }
 
 static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 	struct mkfw_timer_handle *t = (struct mkfw_timer_handle *)arg;
 
-	while(t->running) {
+	while(__atomic_load_n(&t->running, __ATOMIC_ACQUIRE)) {
 		struct timespec now;
 		clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 
@@ -75,10 +82,10 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 		}
 
 		while(clock_gettime(CLOCK_MONOTONIC_RAW, &now), mkfw_timespec_diff_ns(&t->next_deadline, &now) > 0) {
-			_mm_pause();
+			mkfw_cpu_yield();
 		}
 
-		t->futex_word = 1;
+		__atomic_store_n(&t->futex_word, 1, __ATOMIC_RELEASE);
 		mkfw_futex_wake(&t->futex_word);
 
 #ifdef MKFW_TIMER_DEBUG
@@ -122,7 +129,7 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 
 static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 	mkfw_futex_wait(&t->futex_word, 0);
-	t->futex_word = 0;
+	__atomic_store_n(&t->futex_word, 0, __ATOMIC_RELEASE);
 	return 1;
 }
 
@@ -132,8 +139,8 @@ static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interv
 }
 
 static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
-	t->running = 0;
-	t->futex_word = 1;
+	__atomic_store_n(&t->running, 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&t->futex_word, 1, __ATOMIC_RELEASE);
 	mkfw_futex_wake(&t->futex_word);
 	mkfw_thread_join(t->timer_thread);
 	free(t);

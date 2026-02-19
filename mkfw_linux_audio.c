@@ -14,8 +14,10 @@ void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
 
 static void mkfw_audio_callback_thread(int16_t *audio_buffer, size_t frames) {
 	memset(audio_buffer, 0, frames * MKFW_NUM_CHANNELS * 2);
-	if(mkfw_audio_callback) {
-		mkfw_audio_callback(audio_buffer, frames);
+	void (*cb)(int16_t *, size_t);
+	__atomic_load(&mkfw_audio_callback, &cb, __ATOMIC_ACQUIRE);
+	if(cb) {
+		cb(audio_buffer, frames);
 	}
 #ifdef MKFW_AUDIO_POST_PROCESS
 	MKFW_AUDIO_POST_PROCESS(audio_buffer, frames);
@@ -28,13 +30,13 @@ static snd_pcm_t *mkfw_pcm;
 static mkfw_thread mkfw_audio_thread;
 static int16_t *mkfw_audio_buffer;
 static snd_pcm_uframes_t mkfw_frames_per_period;
-static volatile int mkfw_audio_running;
+static int mkfw_audio_running;
 
 static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
-	while(mkfw_audio_running) {
+	while(__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
 		int32_t err = snd_pcm_wait(mkfw_pcm, 100);
 		if(err < 0) {
-			if(!mkfw_audio_running) break;
+			if(!__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) break;
 			snd_pcm_recover(mkfw_pcm, err, 0);
 			continue;
 		}
@@ -103,12 +105,12 @@ static void mkfw_audio_initialize(void) {
 	if(snd_pcm_start(mkfw_pcm) < 0) {
 		return;
 	}
-	mkfw_audio_running = 1;
+	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
 	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_func, 0);
 }
 
 static void mkfw_audio_shutdown(void) {
-	mkfw_audio_running = 0;
+	__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
 	mkfw_thread_join(mkfw_audio_thread);
 	snd_pcm_drop(mkfw_pcm);
 	snd_pcm_close(mkfw_pcm);
