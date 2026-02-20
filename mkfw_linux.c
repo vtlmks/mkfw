@@ -857,7 +857,7 @@ static void mkfw_set_swapinterval(struct mkfw_state *state, uint32_t interval) {
 	}
 }
 
-static uint64_t mkfw_gettime(struct mkfw_state *state) {
+static uint64_t mkfw_gettime(struct mkfw_state *state __attribute__((unused))) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;

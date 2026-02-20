@@ -56,7 +56,7 @@ static PFNGLXDESTROYCONTEXTPROC glXDestroyContext;
 static PFNGLXGETCLIENTSTRINGPROC glXGetClientString;
 static PFNGLXGETFBCONFIGATTRIBPROC glXGetFBConfigAttrib;
 
-static void load_glx_functions(Display *display) {
+static void load_glx_functions(Display *display __attribute__((unused))) {
 	glXChooseFBConfig = (PFNGLXCHOOSEFBCONFIGPROC)glXGetProcAddress((const GLubyte *)"glXChooseFBConfig");
 	glXGetVisualFromFBConfig = (PFNGLXGETVISUALFROMFBCONFIGPROC)glXGetProcAddress((const GLubyte *)"glXGetVisualFromFBConfig");
 	glXCreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glXGetProcAddress((const GLubyte *)"glXCreateContextAttribsARB");

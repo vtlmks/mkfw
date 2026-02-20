@@ -721,7 +721,7 @@ static void mkui_draw_list_render(struct mkui_draw_list *dl) {
 // MKUI INITIALIZATION
 // ============================================================================
 
-static void mkui_char_callback(struct mkfw_state *state, uint32_t codepoint) {
+static void mkui_char_callback(struct mkfw_state *state __attribute__((unused)), uint32_t codepoint) {
 	if(!mkui_ctx) {
 		return;
 	}
@@ -739,7 +739,7 @@ static void mkui_char_callback(struct mkfw_state *state, uint32_t codepoint) {
 	}
 }
 
-static void mkui_scroll_callback(struct mkfw_state *state, double xoffset, double yoffset) {
+static void mkui_scroll_callback(struct mkfw_state *state __attribute__((unused)), double xoffset __attribute__((unused)), double yoffset) {
 	if(!mkui_ctx) {
 		return;
 	}
@@ -1273,7 +1273,7 @@ static int32_t mkui_text_input(const char *label, char *buffer, int32_t buffer_s
 	// Handle text input when active
 	if(is_active) {
 		// Copy internal buffer back to user buffer
-		strncpy(buffer, mkui_ctx->text_input, buffer_size - 1);
+		memcpy(buffer, mkui_ctx->text_input, buffer_size - 1);
 		buffer[buffer_size - 1] = '\0';
 		changed = 1;
 	}
@@ -1300,7 +1300,7 @@ static int32_t mkui_text_input(const char *label, char *buffer, int32_t buffer_s
 	return changed;
 }
 
-static void mkui_image(GLuint texture_id, float width, float height) {
+static void mkui_image(GLuint texture_id __attribute__((unused)), float width, float height) {
 	float x = mkui_ctx->cursor_x;
 	float y = mkui_ctx->cursor_y;
 
@@ -1312,7 +1312,7 @@ static void mkui_image(GLuint texture_id, float width, float height) {
 	mkui_ctx->cursor_y += height + mkui_ctx->item_spacing;
 }
 
-static void mkui_image_rgba(uint32_t *rgba_buffer, int32_t width, int32_t height) {
+static void mkui_image_rgba(uint32_t *rgba_buffer __attribute__((unused)), int32_t width, int32_t height) {
 	// This would require creating a temporary texture from the RGBA buffer
 	// For now, placeholder implementation
 	float x = mkui_ctx->cursor_x;
