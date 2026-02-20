@@ -215,6 +215,7 @@ struct mkui_rect {
 };
 
 #define MKUI_MAX_VERTICES 65536
+#define MKUI_MAX_DRAW_CMDS 256
 
 struct mkui_vertex {
 	float x, y;
@@ -222,9 +223,18 @@ struct mkui_vertex {
 	struct mkui_color color;
 };
 
+struct mkui_draw_cmd {
+	uint32_t vertex_offset;
+	uint32_t vertex_count;
+	int32_t scissor_x, scissor_y, scissor_w, scissor_h;
+};
+
 struct mkui_draw_list {
 	struct mkui_vertex vertices[MKUI_MAX_VERTICES];
 	uint32_t vertex_count;
+
+	struct mkui_draw_cmd commands[MKUI_MAX_DRAW_CMDS];
+	uint32_t cmd_count;
 
 	GLuint vao;
 	GLuint vbo;
@@ -240,6 +250,22 @@ struct mkui_draw_list {
 // ============================================================================
 // UI STATE
 // ============================================================================
+
+struct mkui_combo_popup {
+	uint32_t active;
+	uint32_t id;
+	float x, y, w, item_h;
+	char **items;
+	int32_t items_count;
+	int32_t *current_item;
+	int32_t scroll_offset;
+	int32_t changed;
+};
+
+struct mkui_scroll_region_state {
+	float start_x, start_y;
+	float w, h;
+};
 
 struct mkui_context {
 	struct mkfw_state *mkfw;
@@ -266,6 +292,17 @@ struct mkui_context {
 	// Text input state
 	char text_input[256];
 	int32_t text_input_len;
+
+	// Scissor stack
+	struct mkui_rect scissor_stack[8];
+	uint32_t scissor_depth;
+
+	// Combo popup overlay
+	struct mkui_combo_popup combo_popup;
+
+	// Scroll region stack
+	struct mkui_scroll_region_state scroll_region_stack[8];
+	uint32_t scroll_region_depth;
 
 };
 
@@ -430,6 +467,13 @@ static void mkui_draw_list_init(struct mkui_draw_list *dl) {
 
 static void mkui_draw_list_clear(struct mkui_draw_list *dl) {
 	dl->vertex_count = 0;
+	dl->cmd_count = 1;
+	dl->commands[0].vertex_offset = 0;
+	dl->commands[0].vertex_count = 0;
+	dl->commands[0].scissor_x = 0;
+	dl->commands[0].scissor_y = 0;
+	dl->commands[0].scissor_w = 0;
+	dl->commands[0].scissor_h = 0;
 }
 
 static void mkui_draw_list_add_vertex(struct mkui_draw_list *dl, float x, float y, float u, float v, struct mkui_color col) {
@@ -443,6 +487,8 @@ static void mkui_draw_list_add_vertex(struct mkui_draw_list *dl, float x, float 
 	vtx->u = u;
 	vtx->v = v;
 	vtx->color = col;
+
+	dl->commands[dl->cmd_count - 1].vertex_count++;
 }
 
 static void mkui_draw_rect_filled(struct mkui_draw_list *dl, float x, float y, float w, float h, struct mkui_color col) {
@@ -493,6 +539,83 @@ static void mkui_draw_text(struct mkui_draw_list *dl, float x, float y, const ch
 			cx += 8;
 		}
 		text++;
+	}
+}
+
+static void mkui_push_scissor(float x, float y, float w, float h) {
+	struct mkui_draw_list *dl = &mkui_ctx->draw_list;
+
+	if(mkui_ctx->scissor_depth > 0) {
+		struct mkui_rect *parent = &mkui_ctx->scissor_stack[mkui_ctx->scissor_depth - 1];
+		float x2 = x + w;
+		float y2 = y + h;
+		float px2 = parent->x + parent->w;
+		float py2 = parent->y + parent->h;
+		if(x < parent->x) {
+			x = parent->x;
+		}
+		if(y < parent->y) {
+			y = parent->y;
+		}
+		if(x2 > px2) {
+			x2 = px2;
+		}
+		if(y2 > py2) {
+			y2 = py2;
+		}
+		w = x2 - x;
+		h = y2 - y;
+		if(w < 0) {
+			w = 0;
+		}
+		if(h < 0) {
+			h = 0;
+		}
+	}
+
+	if(mkui_ctx->scissor_depth < 8) {
+		struct mkui_rect *r = &mkui_ctx->scissor_stack[mkui_ctx->scissor_depth++];
+		r->x = x;
+		r->y = y;
+		r->w = w;
+		r->h = h;
+	}
+
+	if(dl->cmd_count < MKUI_MAX_DRAW_CMDS) {
+		struct mkui_draw_cmd *cmd = &dl->commands[dl->cmd_count++];
+		cmd->vertex_offset = dl->vertex_count;
+		cmd->vertex_count = 0;
+		cmd->scissor_x = (int32_t)x;
+		cmd->scissor_y = (int32_t)y;
+		cmd->scissor_w = (int32_t)w;
+		cmd->scissor_h = (int32_t)h;
+	}
+}
+
+static void mkui_pop_scissor() {
+	struct mkui_draw_list *dl = &mkui_ctx->draw_list;
+
+	if(mkui_ctx->scissor_depth > 0) {
+		mkui_ctx->scissor_depth--;
+	}
+
+	if(dl->cmd_count < MKUI_MAX_DRAW_CMDS) {
+		struct mkui_draw_cmd *cmd = &dl->commands[dl->cmd_count++];
+		cmd->vertex_offset = dl->vertex_count;
+		cmd->vertex_count = 0;
+
+		if(mkui_ctx->scissor_depth > 0) {
+			struct mkui_rect *r = &mkui_ctx->scissor_stack[mkui_ctx->scissor_depth - 1];
+			cmd->scissor_x = (int32_t)r->x;
+			cmd->scissor_y = (int32_t)r->y;
+			cmd->scissor_w = (int32_t)r->w;
+			cmd->scissor_h = (int32_t)r->h;
+		} else {
+			cmd->scissor_x = 0;
+			cmd->scissor_y = 0;
+			cmd->scissor_w = 0;
+			cmd->scissor_h = 0;
+		}
 	}
 }
 
@@ -550,7 +673,20 @@ static void mkui_draw_list_render(struct mkui_draw_list *dl) {
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, dl->font_texture);
 
-	glDrawArrays(GL_TRIANGLES, 0, dl->vertex_count);
+	for(uint32_t i = 0; i < dl->cmd_count; ++i) {
+		struct mkui_draw_cmd *cmd = &dl->commands[i];
+		if(cmd->vertex_count == 0) {
+			continue;
+		}
+		if(cmd->scissor_w > 0 && cmd->scissor_h > 0) {
+			glEnable(GL_SCISSOR_TEST);
+			glScissor(cmd->scissor_x, dl->display_height - cmd->scissor_y - cmd->scissor_h, cmd->scissor_w, cmd->scissor_h);
+		} else {
+			glDisable(GL_SCISSOR_TEST);
+		}
+		glDrawArrays(GL_TRIANGLES, cmd->vertex_offset, cmd->vertex_count);
+	}
+	glDisable(GL_SCISSOR_TEST);
 
 	// Restore GL state
 	glUseProgram(last_program);
@@ -671,16 +807,6 @@ static void mkui_new_frame(int32_t display_w, int32_t display_h) {
 	}
 }
 
-static void mkui_render() {
-	if(!mkui_ctx) {
-		return;
-	}
-	mkui_draw_list_render(&mkui_ctx->draw_list);
-
-	// Reset scroll wheel delta after all widgets have been processed
-	mkui_ctx->scroll_y = 0.0;
-}
-
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -709,6 +835,53 @@ static void mkui_same_line() {
 	// Move cursor back up by typical item height
 	mkui_ctx->cursor_y -= (16 + mkui_ctx->item_spacing);
 	mkui_ctx->cursor_x += 100; // Arbitrary offset for same line items
+}
+
+// [=]===^=[ mkui_draw_combo_popup ]========================================[=]
+static void mkui_draw_combo_popup() {
+	struct mkui_combo_popup *p = &mkui_ctx->combo_popup;
+	if(!p->active) {
+		return;
+	}
+
+	struct mkui_draw_list *dl = &mkui_ctx->draw_list;
+	int32_t max_visible = 8;
+	int32_t visible = p->items_count < max_visible ? p->items_count : max_visible;
+	float popup_h = visible * p->item_h;
+
+	mkui_draw_rect_filled(dl, p->x, p->y, p->w, popup_h, mkui_ctx->style.window_bg);
+	mkui_draw_rect_outline(dl, p->x, p->y, p->w, popup_h, 1, mkui_ctx->style.border);
+
+	mkui_push_scissor(p->x, p->y, p->w, popup_h);
+
+	for(int32_t i = 0; i < visible; ++i) {
+		int32_t idx = i + p->scroll_offset;
+		if(idx >= p->items_count) {
+			break;
+		}
+		float iy = p->y + i * p->item_h;
+		int32_t is_selected = (idx == *p->current_item);
+		int32_t item_hovered = mkui_is_mouse_over(p->x, iy, p->w, p->item_h);
+		struct mkui_color item_bg = is_selected ? mkui_ctx->style.frame_bg_active : (item_hovered ? mkui_ctx->style.frame_bg_hovered : mkui_ctx->style.frame_bg);
+		mkui_draw_rect_filled(dl, p->x, iy, p->w, p->item_h, item_bg);
+		mkui_draw_text(dl, p->x + 4, iy + 6, p->items[idx], mkui_ctx->style.text);
+	}
+
+	mkui_pop_scissor();
+
+	p->active = 0;
+}
+
+// [=]===^=[ mkui_render ]==================================================[=]
+static void mkui_render() {
+	if(!mkui_ctx) {
+		return;
+	}
+
+	mkui_draw_combo_popup();
+	mkui_draw_list_render(&mkui_ctx->draw_list);
+
+	mkui_ctx->scroll_y = 0.0;
 }
 
 // ============================================================================
@@ -1158,20 +1331,75 @@ static int32_t mkui_combo(const char *label, int32_t *current_item, char **items
 	float y = mkui_ctx->cursor_y;
 	float w = 200;
 	float h = 20;
+	float item_h = 20;
+	int32_t max_visible = 8;
 
 	int32_t hovered = mkui_is_mouse_over(x, y, w, h);
 	int32_t changed = 0;
 
-	// Toggle dropdown on click
 	static uint32_t open_combo_id = 0;
 	int32_t is_open = (open_combo_id == id);
 
-	if(hovered && mkui_ctx->mouse_clicked[0]) {
-		if(is_open) {
-			open_combo_id = 0;  // Close
-		} else {
-			open_combo_id = id;  // Open
+	if(is_open) {
+		int32_t visible = items_count < max_visible ? items_count : max_visible;
+		float popup_y = y + h;
+		float popup_h = visible * item_h;
+		int32_t popup_hovered = mkui_is_mouse_over(x, popup_y, w, popup_h);
+
+		if(popup_hovered && mkui_ctx->scroll_y != 0.0) {
+			mkui_ctx->combo_popup.scroll_offset -= (int32_t)mkui_ctx->scroll_y;
+			int32_t max_scroll = items_count - visible;
+			if(max_scroll < 0) {
+				max_scroll = 0;
+			}
+			if(mkui_ctx->combo_popup.scroll_offset < 0) {
+				mkui_ctx->combo_popup.scroll_offset = 0;
+			}
+			if(mkui_ctx->combo_popup.scroll_offset > max_scroll) {
+				mkui_ctx->combo_popup.scroll_offset = max_scroll;
+			}
+			mkui_ctx->scroll_y = 0.0;
 		}
+
+		for(int32_t i = 0; i < visible; ++i) {
+			int32_t idx = i + mkui_ctx->combo_popup.scroll_offset;
+			if(idx >= items_count) {
+				break;
+			}
+			float iy = popup_y + i * item_h;
+			if(mkui_is_mouse_over(x, iy, w, item_h) && mkui_ctx->mouse_clicked[0]) {
+				*current_item = idx;
+				open_combo_id = 0;
+				changed = 1;
+			}
+		}
+
+		if(!changed && mkui_ctx->mouse_clicked[0]) {
+			if(!hovered && !popup_hovered) {
+				open_combo_id = 0;
+			}
+		}
+
+		if(open_combo_id == id) {
+			mkui_ctx->combo_popup.active = 1;
+			mkui_ctx->combo_popup.id = id;
+			mkui_ctx->combo_popup.x = x;
+			mkui_ctx->combo_popup.y = popup_y;
+			mkui_ctx->combo_popup.w = w;
+			mkui_ctx->combo_popup.item_h = item_h;
+			mkui_ctx->combo_popup.items = items;
+			mkui_ctx->combo_popup.items_count = items_count;
+			mkui_ctx->combo_popup.current_item = current_item;
+			mkui_ctx->combo_popup.changed = changed;
+		} else {
+			mkui_ctx->combo_popup.active = 0;
+		}
+
+		mkui_ctx->mouse_clicked[0] = 0;
+
+	} else if(hovered && mkui_ctx->mouse_clicked[0]) {
+		open_combo_id = id;
+		mkui_ctx->combo_popup.scroll_offset = 0;
 	}
 
 	// Draw combo box
@@ -1179,40 +1407,12 @@ static int32_t mkui_combo(const char *label, int32_t *current_item, char **items
 	mkui_draw_rect_filled(&mkui_ctx->draw_list, x, y, w, h, bg);
 	mkui_draw_rect_outline(&mkui_ctx->draw_list, x, y, w, h, 1, mkui_ctx->style.border);
 
-	// Draw current selection
 	const char *current_text = (*current_item >= 0 && *current_item < items_count) ? items[*current_item] : "";
 	mkui_draw_text(&mkui_ctx->draw_list, x + 4, y + 6, current_text, mkui_ctx->style.text);
-
-	// Draw dropdown arrow
-	mkui_draw_text(&mkui_ctx->draw_list, x + w - 16, y + 6, "v", mkui_ctx->style.text);
-
-	// Draw label
+	mkui_draw_text(&mkui_ctx->draw_list, x + w - 16, y + 6, is_open ? "^" : "v", mkui_ctx->style.text);
 	mkui_draw_text(&mkui_ctx->draw_list, x + w + 8, y + 6, label, mkui_ctx->style.text);
 
 	mkui_ctx->cursor_y += h + mkui_ctx->item_spacing;
-
-	// Draw dropdown list if open
-	if(is_open) {
-		for(int32_t i = 0; i < items_count; i++) {
-			float item_y = mkui_ctx->cursor_y;
-			int32_t item_hovered = mkui_is_mouse_over(x, item_y, w, h);
-
-			if(item_hovered && mkui_ctx->mouse_clicked[0]) {
-				*current_item = i;
-				open_combo_id = 0;  // Close dropdown
-				changed = 1;
-			}
-
-			// Draw item
-			struct mkui_color item_bg = (i == *current_item) ? mkui_ctx->style.frame_bg_active : (item_hovered ? mkui_ctx->style.frame_bg_hovered : mkui_ctx->style.frame_bg);
-			mkui_draw_rect_filled(&mkui_ctx->draw_list, x, item_y, w, h, item_bg);
-			mkui_draw_rect_outline(&mkui_ctx->draw_list, x, item_y, w, h, 1, mkui_ctx->style.border);
-			mkui_draw_text(&mkui_ctx->draw_list, x + 4, item_y + 6, items[i], mkui_ctx->style.text);
-
-			mkui_ctx->cursor_y += h;
-		}
-		mkui_ctx->cursor_y += mkui_ctx->item_spacing;
-	}
 
 	return changed;
 }
@@ -1291,6 +1491,179 @@ static int32_t mkui_listbox(const char *label, int32_t *current_item, char **ite
 	return changed;
 }
 
+// [=]===^=[ mkui_begin_scroll_region ]=====================================[=]
+static void mkui_begin_scroll_region(const char *label, float w, float h) {
+	uint32_t id = mkui_gen_id(label);
+
+	float x = mkui_ctx->cursor_x;
+	float y = mkui_ctx->cursor_y;
+
+	static uint32_t scroll_ids[16] = {0};
+	static float scroll_offsets[16] = {0};
+	int32_t scroll_index = -1;
+
+	for(uint32_t i = 0; i < 16; ++i) {
+		if(scroll_ids[i] == id || scroll_ids[i] == 0) {
+			scroll_ids[i] = id;
+			scroll_index = i;
+			break;
+		}
+	}
+
+	float *scroll_offset = (scroll_index >= 0) ? &scroll_offsets[scroll_index] : &scroll_offsets[0];
+
+	int32_t region_hovered = mkui_is_mouse_over(x, y, w, h);
+	if(region_hovered && mkui_ctx->scroll_y != 0.0) {
+		*scroll_offset -= (float)(mkui_ctx->scroll_y * 20.0);
+		if(*scroll_offset < 0) {
+			*scroll_offset = 0;
+		}
+		mkui_ctx->scroll_y = 0.0;
+	}
+
+	mkui_draw_rect_filled(&mkui_ctx->draw_list, x, y, w, h, mkui_ctx->style.child_bg);
+	mkui_draw_rect_outline(&mkui_ctx->draw_list, x, y, w, h, 1, mkui_ctx->style.border);
+
+	if(mkui_ctx->scroll_region_depth < 8) {
+		struct mkui_scroll_region_state *state = &mkui_ctx->scroll_region_stack[mkui_ctx->scroll_region_depth++];
+		state->start_x = x;
+		state->start_y = y;
+		state->w = w;
+		state->h = h;
+	}
+
+	mkui_push_scissor(x, y, w, h);
+	mkui_ctx->cursor_y = y - *scroll_offset;
+}
+
+// [=]===^=[ mkui_end_scroll_region ]=======================================[=]
+static void mkui_end_scroll_region() {
+	mkui_pop_scissor();
+
+	if(mkui_ctx->scroll_region_depth > 0) {
+		struct mkui_scroll_region_state *state = &mkui_ctx->scroll_region_stack[--mkui_ctx->scroll_region_depth];
+		mkui_ctx->cursor_x = state->start_x;
+		mkui_ctx->cursor_y = state->start_y + state->h + mkui_ctx->item_spacing;
+	}
+}
+
+// [=]===^=[ mkui_table ]===================================================[=]
+static int32_t mkui_table(const char *label, int32_t col_count, float *col_widths, char **headers, char **cell_text, int32_t row_count, int32_t visible_rows, int32_t *selected_row) {
+	uint32_t id = mkui_gen_id(label);
+
+	float x = mkui_ctx->cursor_x;
+	float y = mkui_ctx->cursor_y;
+	float row_h = 20;
+	float header_h = 22;
+
+	float total_w = 0;
+	for(int32_t c = 0; c < col_count; ++c) {
+		total_w += col_widths[c];
+	}
+
+	float body_h = row_h * visible_rows;
+	float total_h = header_h + body_h;
+	int32_t changed = 0;
+
+	static uint32_t table_ids[16] = {0};
+	static int32_t table_scrolls[16] = {0};
+	int32_t scroll_index = -1;
+
+	for(uint32_t i = 0; i < 16; ++i) {
+		if(table_ids[i] == id || table_ids[i] == 0) {
+			table_ids[i] = id;
+			scroll_index = i;
+			break;
+		}
+	}
+
+	int32_t *scroll_offset = (scroll_index >= 0) ? &table_scrolls[scroll_index] : &table_scrolls[0];
+
+	float body_y = y + header_h;
+	int32_t body_hovered = mkui_is_mouse_over(x, body_y, total_w, body_h);
+	if(body_hovered && mkui_ctx->scroll_y != 0.0) {
+		*scroll_offset -= (int32_t)mkui_ctx->scroll_y;
+		int32_t max_scroll = row_count - visible_rows;
+		if(max_scroll < 0) {
+			max_scroll = 0;
+		}
+		if(*scroll_offset < 0) {
+			*scroll_offset = 0;
+		}
+		if(*scroll_offset > max_scroll) {
+			*scroll_offset = max_scroll;
+		}
+	}
+
+	struct mkui_draw_list *dl = &mkui_ctx->draw_list;
+
+	mkui_draw_rect_filled(dl, x, y, total_w, total_h, mkui_ctx->style.frame_bg);
+	mkui_draw_rect_outline(dl, x, y, total_w, total_h, 1, mkui_ctx->style.border);
+
+	float cx = x;
+	for(int32_t c = 0; c < col_count; ++c) {
+		mkui_draw_rect_filled(dl, cx, y, col_widths[c], header_h, mkui_ctx->style.title_bg);
+		if(headers) {
+			mkui_draw_text(dl, cx + 4, y + 7, headers[c], mkui_ctx->style.text);
+		}
+		if(c > 0) {
+			mkui_draw_rect_filled(dl, cx, y, 1, total_h, mkui_ctx->style.border);
+		}
+		cx += col_widths[c];
+	}
+	mkui_draw_rect_filled(dl, x, y + header_h - 1, total_w, 1, mkui_ctx->style.border);
+
+	mkui_push_scissor(x, body_y, total_w, body_h);
+
+	int32_t end_row = *scroll_offset + visible_rows;
+	if(end_row > row_count) {
+		end_row = row_count;
+	}
+
+	for(int32_t r = *scroll_offset; r < end_row; ++r) {
+		float ry = body_y + (r - *scroll_offset) * row_h;
+		int32_t row_hovered = mkui_is_mouse_over(x, ry, total_w, row_h);
+
+		if(row_hovered && mkui_ctx->mouse_clicked[0]) {
+			*selected_row = r;
+			changed = 1;
+		}
+
+		struct mkui_color row_bg;
+		if(r == *selected_row) {
+			row_bg = mkui_ctx->style.frame_bg_active;
+		} else if(row_hovered) {
+			row_bg = mkui_ctx->style.frame_bg_hovered;
+		} else if(r % 2 == 1) {
+			row_bg = mkui_rgba(0.0f, 0.0f, 0.0f, 0.1f);
+		} else {
+			row_bg = mkui_rgba(0.0f, 0.0f, 0.0f, 0.0f);
+		}
+
+		if(row_bg.a > 0.0f) {
+			mkui_draw_rect_filled(dl, x, ry, total_w, row_h, row_bg);
+		}
+
+		cx = x;
+		for(int32_t c = 0; c < col_count; ++c) {
+			const char *text = cell_text[r * col_count + c];
+			if(text) {
+				mkui_draw_text(dl, cx + 4, ry + 6, text, mkui_ctx->style.text);
+			}
+			cx += col_widths[c];
+		}
+	}
+
+	mkui_pop_scissor();
+
+	mkui_draw_text(dl, x + total_w + 8, y + 4, label, mkui_ctx->style.text);
+
+	mkui_ctx->cursor_y += total_h + mkui_ctx->item_spacing;
+
+	return changed;
+}
+
+// [=]===^=[ mkui_separator ]===============================================[=]
 static void mkui_separator() {
 	float x = mkui_ctx->cursor_x;
 	float y = mkui_ctx->cursor_y + 4;

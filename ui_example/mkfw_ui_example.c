@@ -55,6 +55,36 @@ int main() {
 		"Item 11", "Item 12", "Item 13", "Item 14", "Item 15"
 	};
 
+	// New widget state
+	float window3_x = 50.f;
+	float window3_y = 500.f;
+
+	int32_t big_combo_selection = 0;
+	char *big_combo_items[] = {
+		"NROM", "SxROM/MMC1", "UxROM", "CNROM", "TxROM/MMC3",
+		"ExROM/MMC5", "AxROM", "BxROM", "GxROM", "ColorDreams",
+		"CPROM", "BNROM", "NINA-001", "RAMBO-1", "Jaleco SS8806",
+		"Namco 129/163", "VRC4a", "VRC2a", "VRC6a", "VRC4c"
+	};
+
+	int32_t table_selection = 0;
+	float col_widths[] = {80, 120, 60, 80};
+	char *col_headers[] = {"CRC32", "Mapper", "Region", "Mirror"};
+	char *table_data[] = {
+		"A1B2C3D4", "NROM",       "US",  "Horz",
+		"E5F60718", "MMC1",       "JP",  "Vert",
+		"92A3B4C5", "MMC3",       "EU",  "Horz",
+		"D6E7F809", "UxROM",      "US",  "Vert",
+		"1A2B3C4D", "CNROM",      "JP",  "Horz",
+		"5E6F7081", "MMC5",       "US",  "4-Scr",
+		"92031415", "AxROM",      "EU",  "1-Scr",
+		"26374859", "MMC3",       "JP",  "Vert",
+		"6A7B8C9D", "MMC1",       "US",  "Horz",
+		"AE0F1021", "ColorDrmz",  "JP",  "Vert",
+		"32435465", "VRC6",       "JP",  "Vert",
+		"76879809", "Namco163",   "JP",  "Horz",
+	};
+
 	// Main loop
 	while(!mkfw_should_close(mkfw)) {
 		mkfw_pump_messages(mkfw);
@@ -185,6 +215,37 @@ int main() {
 		mkui_text("Mouse position:");
 		snprintf(buf, sizeof(buf), "%d, %d", mkfw->mouse_x, mkfw->mouse_y);
 		mkui_text(buf);
+
+		mkui_end_window();
+
+		// New widgets window
+		mkui_begin_window("New Widgets", &window3_x, &window3_y, 500, 450);
+
+		mkui_text("Combo with 20 entries (scrollable popup):");
+		if(mkui_combo("Mapper", &big_combo_selection, big_combo_items, 20)) {
+			printf("Mapper: %s\n", big_combo_items[big_combo_selection]);
+		}
+		snprintf(buf, sizeof(buf), "Selected mapper: %s", big_combo_items[big_combo_selection]);
+		mkui_text(buf);
+
+		mkui_separator();
+
+		mkui_text("Table/grid widget:");
+		if(mkui_table("##db", 4, col_widths, col_headers, table_data, 12, 6, &table_selection)) {
+			printf("Table row: %d\n", table_selection);
+		}
+		snprintf(buf, sizeof(buf), "Selected row: %d  CRC: %s", table_selection, table_data[table_selection * 4]);
+		mkui_text(buf);
+
+		mkui_separator();
+
+		mkui_text("Scroll region:");
+		mkui_begin_scroll_region("##scroll", 300, 80);
+		for(int32_t i = 0; i < 20; ++i) {
+			snprintf(buf, sizeof(buf), "Scrollable item %d", i);
+			mkui_text(buf);
+		}
+		mkui_end_scroll_region();
 
 		mkui_end_window();
 
