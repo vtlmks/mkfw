@@ -191,6 +191,104 @@ mkui_end_window();
 
 ---
 
+### Combo Box (Dropdown)
+```
+Closed:
+┌──────────────────────────────────┐
+│ Option A                       v │ Choice
+└──────────────────────────────────┘
+
+Open (popup overlay, max 8 visible):
+┌──────────────────────────────────┐
+│ Option A                       ^ │ Choice
+└──────────────────────────────────┘
+┌──────────────────────────────────┐
+│ Option A                         │ (selected - blue)
+│ Option B                         │ (hovered - lighter)
+│ Option C                         │
+│ Option D                         │
+└──────────────────────────────────┘
+```
+
+- Click button to open/close popup
+- Popup renders as overlay (does not push layout)
+- Scrollable with mousewheel when more than 8 items
+- Click outside popup to close
+- Only one combo popup open at a time
+
+**Usage:**
+```c
+static int selection = 0;
+char *items[] = {"Option A", "Option B", "Option C"};
+if(mkui_combo("Choice", &selection, items, 3)) {
+    printf("Selected: %s\n", items[selection]);
+}
+```
+
+---
+
+### Table / Grid
+```
+┌──────────┬────────────┬────────┬──────────┐
+│ CRC32    │ Mapper     │ Region │ Mirror   │  (header row)
+├──────────┼────────────┼────────┼──────────┤
+│ A1B2C3D4 │ NROM       │ US     │ Horz     │  (row 0)
+│ E5F60718 │ MMC1       │ JP     │ Vert     │  (row 1 - selected)
+│ 92A3B4C5 │ MMC3       │ EU     │ Horz     │  (row 2 - alt bg)
+│ D6E7F809 │ UxROM      │ US     │ Vert     │  (row 3)
+└──────────┴────────────┴────────┴──────────┘
+```
+
+- Column headers with distinct background
+- Alternating row backgrounds
+- Click row to select (highlighted blue)
+- Scrollable with mousewheel
+- Scissor-clipped body area
+- Cell data is row-major: `cell_text[row * col_count + col]`
+
+**Usage:**
+```c
+static int selected = 0;
+float widths[] = {80, 120, 60, 80};
+char *headers[] = {"CRC32", "Mapper", "Region", "Mirror"};
+char *data[] = {
+    "A1B2C3D4", "NROM",  "US", "Horz",
+    "E5F60718", "MMC1",  "JP", "Vert",
+};
+mkui_table("##db", 4, widths, headers, data, 2, 2, &selected);
+```
+
+---
+
+### Scrollable Region
+```
+┌──────────────────────────────┐
+│ Item 0                       │  ↑ scroll offset
+│ Item 1                       │
+│ Item 2                       │
+│ Item 3                       │  (content clipped here)
+└──────────────────────────────┘
+   (Items 4..N scrolled below)
+```
+
+- Wraps arbitrary widgets in a scrollable, scissor-clipped area
+- Mousewheel scrolls content
+- Content starts at the top edge (no internal padding)
+- Pair `mkui_begin_scroll_region` / `mkui_end_scroll_region`
+
+**Usage:**
+```c
+mkui_begin_scroll_region("##scroll", 300, 100);
+for(int i = 0; i < 50; i++) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Item %d", i);
+    mkui_text(buf);
+}
+mkui_end_scroll_region();
+```
+
+---
+
 ## Layout
 
 ### Vertical Stacking (Default)

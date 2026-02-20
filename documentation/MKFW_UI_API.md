@@ -10,7 +10,7 @@ The MKFW UI API provides a lightweight immediate-mode graphical user interface s
 
 - Immediate-mode (stateless) design
 - Embedded 8x8 bitmap font (no external assets)
-- Single draw call rendering
+- Draw command buffer with scissor clipping support
 - Dark theme by default (ImGui-inspired colors)
 - Mouse and keyboard input support
 - Mousewheel scrolling for sliders and lists
@@ -133,8 +133,8 @@ Render all UI elements to the screen.
 
 **Notes:**
 - Must be called once per frame, after all widgets
-- Submits vertex data to OpenGL
-- Renders in a single draw call
+- Draws deferred combo popups, then submits vertex data to OpenGL
+- Renders via draw command buffer (multiple draw calls with scissor clipping)
 - Resets scroll wheel delta after rendering
 - Call before `mkfw_swap_buffers()`
 
@@ -514,11 +514,12 @@ Display a dropdown selection menu.
 - `0` otherwise
 
 **Notes:**
-- Displays currently selected item
-- Click to expand dropdown list
-- Click item to select
-- Click outside to close without changing
-- Shows arrow indicator when closed
+- Displays currently selected item with arrow indicator
+- Click to open popup overlay; popup renders on top of all other widgets
+- Maximum 8 items visible at once; scrollable via mousewheel when items exceed 8
+- Click item to select, click outside popup to close
+- Only one combo popup can be open at a time
+- The popup does not affect layout — cursor advances only by the combo button height
 
 **Example:**
 ```c
@@ -577,6 +578,96 @@ static char *files[] = {
 if (mkui_listbox("Files", &selected_file, files, 10, 5)) {
     printf("Selected: %s\n", files[selected_file]);
 }
+```
+
+---
+
+## Table Widget
+
+### `mkui_table`
+
+```c
+int mkui_table(const char *label, int col_count, float *col_widths,
+               char **headers, char **cell_text, int row_count,
+               int visible_rows, int *selected_row)
+```
+
+Display a scrollable multi-column table with row selection.
+
+**Parameters:**
+- `label` - Table label (use `##` prefix for hidden labels)
+- `col_count` - Number of columns
+- `col_widths` - Array of column widths in pixels
+- `headers` - Array of column header strings
+- `cell_text` - Row-major array of cell strings (`cell_text[row * col_count + col]`)
+- `row_count` - Total number of rows
+- `visible_rows` - Number of rows visible at once
+- `selected_row` - Pointer to selected row index
+
+**Returns:**
+- `1` if selection changed this frame
+- `0` otherwise
+
+**Notes:**
+- Column headers are rendered with a distinct background
+- Alternating row backgrounds for readability
+- Selected row is highlighted
+- Scrollable with mousewheel when rows exceed visible count
+- Scissor-clipped to the table body area
+- Up to 16 independent tables supported (static scroll state)
+
+**Example:**
+```c
+static int selected = 0;
+float widths[] = {80, 120, 60, 80};
+char *headers[] = {"CRC32", "Mapper", "Region", "Mirror"};
+char *data[] = {
+    "A1B2C3D4", "NROM",  "US", "Horz",
+    "E5F60718", "MMC1",  "JP", "Vert",
+    "92A3B4C5", "MMC3",  "EU", "Horz",
+};
+
+if (mkui_table("##db", 4, widths, headers, data, 3, 3, &selected)) {
+    printf("Selected row: %d\n", selected);
+}
+```
+
+---
+
+## Scrollable Region
+
+### `mkui_begin_scroll_region` / `mkui_end_scroll_region`
+
+```c
+void mkui_begin_scroll_region(const char *label, float w, float h)
+void mkui_end_scroll_region(void)
+```
+
+Create a scrollable container for arbitrary widget content.
+
+**Parameters:**
+- `label` - Region label (use `##` prefix for hidden labels)
+- `w` - Region width in pixels
+- `h` - Region height in pixels
+
+**Notes:**
+- Must be paired: `mkui_begin_scroll_region` / `mkui_end_scroll_region`
+- All widgets between begin/end are scissor-clipped to the region
+- Scrollable with mousewheel when content exceeds visible area
+- Content starts at the top edge of the region (no internal padding)
+- Up to 16 independent scroll regions supported (static scroll state)
+
+**Example:**
+```c
+mkui_begin_scroll_region("##settings", 300, 100);
+
+for (int i = 0; i < 50; i++) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Item %d", i);
+    mkui_text(buf);
+}
+
+mkui_end_scroll_region();
 ```
 
 ---
@@ -923,7 +1014,7 @@ while (!mkfw_should_close(mkfw)) {
 
 ## Performance Characteristics
 
-- **Single draw call** per frame (all widgets batched)
+- **Batched draw commands** per frame (scissor clipping via command buffer)
 - **Maximum capacity**: 65,536 vertices (~2,700 buttons or ~10,000 characters)
 - **Memory footprint**: ~256 KB (vertex buffer + font texture + context)
 - **OpenGL state changes**: Minimal (shader, blend mode, one texture)
@@ -1049,7 +1140,7 @@ These limitations keep the implementation simple and lightweight. For complex UI
 
 | Feature | MKFW UI | Dear ImGui | Nuklear |
 |---------|---------|------------|---------|
-| Lines of code | ~1,400 | ~31,000 | ~8,000 |
+| Lines of code | ~1,750 | ~31,000 | ~8,000 |
 | Language | Pure C | C++ | Pure C |
 | External deps | None | None | None |
 | Font | Embedded | External or embedded | External or embedded |
