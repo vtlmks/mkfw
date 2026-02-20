@@ -316,7 +316,7 @@ static void mkfw_joystick_update(void) {
 						break;
 					}
 				}
-				/* D-pad buttons → hat values.  Handles both BTN_DPAD_*
+				/* D-pad buttons -> hat values.  Handles both BTN_DPAD_*
 				   (hid-generic) and BTN_TRIGGER_HAPPY* (xpad dpad_to_buttons). */
 				if(!lpad->has_hat) {
 					if(ev.code == BTN_DPAD_UP || ev.code == BTN_TRIGGER_HAPPY3) {

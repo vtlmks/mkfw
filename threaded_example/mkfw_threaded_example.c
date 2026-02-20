@@ -113,7 +113,7 @@ int main(void) {
 	// render thread keeps drawing independently.
 	while(app.running && !mkfw_should_close(app.window)) {
 		mkfw_pump_messages(app.window);
-		mkfw_sleep(5000000); // 5ms — don't burn CPU on message polling
+		mkfw_sleep(5000000); // 5ms -- don't burn CPU on message polling
 	}
 
 	// Signal the render thread to stop and wait for it

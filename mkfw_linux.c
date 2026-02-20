@@ -328,7 +328,7 @@ static int mkfw_query_max_gl_version(int *major, int *minor) {
 	swa.colormap = cmap;
 	Window win = XCreateWindow(dpy, root, 0, 0, 1, 1, 0, vi->depth, InputOutput, vi->visual, CWColormap, &swa);
 
-	// Request 3.1 compat — drivers return the max supported version
+	// Request 3.1 compat -- drivers return the max supported version
 	int ctx_attribs[] = {
 		GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
 		GLX_CONTEXT_MINOR_VERSION_ARB, 1,
