@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Peter Fors
 // SPDX-License-Identifier: MIT
 //
-// Minimal OpenGL function loader. Freestanding — no dependency on mkfw.
+// Minimal OpenGL function loader. Freestanding -- no dependency on mkfw.
 // Include before mkfw.h if using MKFW_UI, or use independently.
 //
 // Set MKFW_GL_VERSION before including to select which GL version's
@@ -1956,7 +1956,7 @@ typedef void (APIENTRY *GLDEBUGPROC)(GLenum source, GLenum type, GLuint id, GLen
 #endif /* GL 4.6 */
 
 // ============================================================
-// Legacy function declarations (GL 1.0/1.1 — linked, not loaded)
+// Legacy function declarations (GL 1.0/1.1 -- linked, not loaded)
 // ============================================================
 
 // --- OpenGL 1.0 ---
@@ -2300,7 +2300,7 @@ void glPopClientAttrib(void);
 void glPushClientAttrib(GLbitfield mask);
 
 // ============================================================
-// Function pointer types and globals (GL 1.2+ — loaded at runtime)
+// Function pointer types and globals (GL 1.2+ -- loaded at runtime)
 // ============================================================
 
 #define MKFW_GL_DECLARE_TYPE(Name, ReturnType, ...) \
