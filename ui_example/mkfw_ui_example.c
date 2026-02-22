@@ -12,6 +12,12 @@
 #include "../mkfw_gl_loader.h"
 #include "../mkfw.h"
 
+static void on_drop(uint32_t count, const char **paths) {
+	for(uint32_t i = 0; i < count; ++i) {
+		printf("Dropped: %s\n", paths[i]);
+	}
+}
+
 int main() {
 	// Initialize MKFW window
 	struct mkfw_state *mkfw = mkfw_init(1280, 720);
@@ -21,6 +27,7 @@ int main() {
 	}
 
 	mkfw_set_window_title(mkfw, "MKFW UI Example");
+	mkfw_set_drop_callback(mkfw, on_drop);
 	mkfw_show_window(mkfw);
 
 	// Load OpenGL functions
