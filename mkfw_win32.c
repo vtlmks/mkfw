@@ -55,6 +55,11 @@ struct win32_mkfw_state {
 	uint8_t cursor_hidden;
 	uint8_t aspect_ratio_enabled;
 	WINDOWPLACEMENT window_placement;
+
+	HCURSOR cursors[MKFW_CURSOR_LAST];
+	uint32_t current_cursor;
+	uint16_t high_surrogate;
+	uint8_t mouse_tracked;
 };
 
 // Map Win32 VK_ codes to MKS_KEY_
@@ -93,6 +98,12 @@ static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPAR
 			break;
 		case VK_RMENU:
 			state->keyboard_state[MKS_KEY_RALT] = key_down;
+			break;
+		case VK_LWIN:
+			state->keyboard_state[MKS_KEY_LSUPER] = key_down;
+			break;
+		case VK_RWIN:
+			state->keyboard_state[MKS_KEY_RSUPER] = key_down;
 			break;
 	}
 
@@ -187,8 +198,10 @@ static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPAR
 	if(keycode && state->key_callback) {
 		state->key_callback(state, keycode, key_down ? MKS_PRESSED : MKS_RELEASED,
 			(state->keyboard_state[MKS_KEY_SHIFT] ? MKS_MOD_SHIFT : 0) |
-			(state->keyboard_state[MKS_KEY_CTRL]  ? MKS_MOD_CTRL  : 0) |
-			(state->keyboard_state[MKS_KEY_ALT]   ? MKS_MOD_ALT   : 0));
+			(state->keyboard_state[MKS_KEY_CTRL] ? MKS_MOD_CTRL : 0) |
+			(state->keyboard_state[MKS_KEY_ALT] ? MKS_MOD_ALT : 0) |
+			(state->keyboard_state[MKS_KEY_LSUPER] ? MKS_MOD_LSUPER : 0) |
+			(state->keyboard_state[MKS_KEY_RSUPER] ? MKS_MOD_RSUPER : 0));
 	}
 
 	return keycode;
@@ -319,13 +332,39 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 		} break;
 
 		case WM_CHAR: {
-			// Character input for text editing
-			// Allow backspace (8) and printable characters (32-126)
-			// Block other control characters (tab, delete, etc.)
-			if((wParam == 8) || (wParam >= 32 && wParam <= 126)) {
-				if(state->char_callback) {
-					state->char_callback(state, (uint32_t)wParam);
+			uint32_t ch = (uint32_t)wParam;
+			if(ch >= 0xD800 && ch <= 0xDBFF) {
+				PLATFORM(state)->high_surrogate = (uint16_t)ch;
+				break;
+			}
+			if(ch >= 0xDC00 && ch <= 0xDFFF) {
+				if(PLATFORM(state)->high_surrogate) {
+					ch = 0x10000 + ((uint32_t)(PLATFORM(state)->high_surrogate - 0xD800) << 10) + (ch - 0xDC00);
+					PLATFORM(state)->high_surrogate = 0;
+				} else {
+					break;
 				}
+			} else {
+				PLATFORM(state)->high_surrogate = 0;
+			}
+			if(ch == 8 || ch >= 32) {
+				if(state->char_callback) {
+					state->char_callback(state, ch);
+				}
+			}
+		} break;
+
+		case WM_SETFOCUS: {
+			state->has_focus = 1;
+			if(state->focus_callback) {
+				state->focus_callback(state, 1);
+			}
+		} break;
+
+		case WM_KILLFOCUS: {
+			state->has_focus = 0;
+			if(state->focus_callback) {
+				state->focus_callback(state, 0);
 			}
 		} break;
 
@@ -346,9 +385,25 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 		case WM_MOUSEMOVE: {
 			state->mouse_x = GET_X_LPARAM(lParam);
 			state->mouse_y = GET_Y_LPARAM(lParam);
+			if(!PLATFORM(state)->mouse_tracked) {
+				TRACKMOUSEEVENT tme;
+				tme.cbSize = sizeof(tme);
+				tme.dwFlags = TME_LEAVE;
+				tme.hwndTrack = hwnd;
+				tme.dwHoverTime = 0;
+				TrackMouseEvent(&tme);
+				PLATFORM(state)->mouse_tracked = 1;
+				state->mouse_in_window = 1;
+			}
+		} break;
+
+		case WM_MOUSELEAVE: {
+			PLATFORM(state)->mouse_tracked = 0;
+			state->mouse_in_window = 0;
 		} break;
 
 		case WM_LBUTTONDOWN: {
+			SetCapture(hwnd);
 			state->mouse_buttons[MOUSE_BUTTON_LEFT] = 1;
 			if(state->mouse_button_callback) {
 				state->mouse_button_callback(state, MOUSE_BUTTON_LEFT, MKS_PRESSED);
@@ -357,12 +412,16 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 
 		case WM_LBUTTONUP: {
 			state->mouse_buttons[MOUSE_BUTTON_LEFT] = 0;
+			if(!state->mouse_buttons[MOUSE_BUTTON_RIGHT] && !state->mouse_buttons[MOUSE_BUTTON_MIDDLE]) {
+				ReleaseCapture();
+			}
 			if(state->mouse_button_callback) {
 				state->mouse_button_callback(state, MOUSE_BUTTON_LEFT, MKS_RELEASED);
 			}
 		} break;
 
 		case WM_MBUTTONDOWN: {
+			SetCapture(hwnd);
 			state->mouse_buttons[MOUSE_BUTTON_MIDDLE] = 1;
 			if(state->mouse_button_callback) {
 				state->mouse_button_callback(state, MOUSE_BUTTON_MIDDLE, MKS_PRESSED);
@@ -371,12 +430,16 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 
 		case WM_MBUTTONUP: {
 			state->mouse_buttons[MOUSE_BUTTON_MIDDLE] = 0;
+			if(!state->mouse_buttons[MOUSE_BUTTON_LEFT] && !state->mouse_buttons[MOUSE_BUTTON_RIGHT]) {
+				ReleaseCapture();
+			}
 			if(state->mouse_button_callback) {
 				state->mouse_button_callback(state, MOUSE_BUTTON_MIDDLE, MKS_RELEASED);
 			}
 		} break;
 
 		case WM_RBUTTONDOWN: {
+			SetCapture(hwnd);
 			state->mouse_buttons[MOUSE_BUTTON_RIGHT] = 1;
 			if(state->mouse_button_callback) {
 				state->mouse_button_callback(state, MOUSE_BUTTON_RIGHT, MKS_PRESSED);
@@ -385,10 +448,35 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 
 		case WM_RBUTTONUP: {
 			state->mouse_buttons[MOUSE_BUTTON_RIGHT] = 0;
+			if(!state->mouse_buttons[MOUSE_BUTTON_LEFT] && !state->mouse_buttons[MOUSE_BUTTON_MIDDLE]) {
+				ReleaseCapture();
+			}
 			if(state->mouse_button_callback) {
 				state->mouse_button_callback(state, MOUSE_BUTTON_RIGHT, MKS_RELEASED);
 			}
 		} break;
+
+		case WM_XBUTTONDOWN: {
+			SetCapture(hwnd);
+			uint8_t mapped = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? MOUSE_BUTTON_EXTRA1 : MOUSE_BUTTON_EXTRA2;
+			state->mouse_buttons[mapped] = 1;
+			if(state->mouse_button_callback) {
+				state->mouse_button_callback(state, mapped, MKS_PRESSED);
+			}
+			return TRUE;
+		}
+
+		case WM_XBUTTONUP: {
+			uint8_t mapped = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? MOUSE_BUTTON_EXTRA1 : MOUSE_BUTTON_EXTRA2;
+			state->mouse_buttons[mapped] = 0;
+			if(!state->mouse_buttons[MOUSE_BUTTON_LEFT] && !state->mouse_buttons[MOUSE_BUTTON_RIGHT] && !state->mouse_buttons[MOUSE_BUTTON_MIDDLE]) {
+				ReleaseCapture();
+			}
+			if(state->mouse_button_callback) {
+				state->mouse_button_callback(state, mapped, MKS_RELEASED);
+			}
+			return TRUE;
+		}
 
 		case WM_INPUT: {
 			RAWINPUT raw;
@@ -422,8 +510,12 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 		} break;
 
 		case WM_SETCURSOR: {
-			if(PLATFORM(state)->is_fullscreen || PLATFORM(state)->cursor_hidden) {
-				SetCursor(0);
+			if(LOWORD(lParam) == HTCLIENT) {
+				if(PLATFORM(state)->cursor_hidden) {
+					SetCursor(0);
+					return TRUE;
+				}
+				SetCursor(PLATFORM(state)->cursors[PLATFORM(state)->current_cursor]);
 				return TRUE;
 			}
 			break;
@@ -607,6 +699,19 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	PLATFORM(state)->saved_style = style;
 	GetWindowRect(PLATFORM(state)->hwnd, &PLATFORM(state)->saved_rect);
 	mkfw_enable_raw_mouse(state, 1);
+
+	// Cursor shapes
+	PLATFORM(state)->cursors[MKFW_CURSOR_ARROW]        = LoadCursor(0, IDC_ARROW);
+	PLATFORM(state)->cursors[MKFW_CURSOR_TEXT_INPUT]    = LoadCursor(0, IDC_IBEAM);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_ALL]    = LoadCursor(0, IDC_SIZEALL);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NS]     = LoadCursor(0, IDC_SIZENS);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_EW]     = LoadCursor(0, IDC_SIZEWE);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NESW]   = LoadCursor(0, IDC_SIZENESW);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NWSE]   = LoadCursor(0, IDC_SIZENWSE);
+	PLATFORM(state)->cursors[MKFW_CURSOR_HAND]          = LoadCursor(0, IDC_HAND);
+	PLATFORM(state)->cursors[MKFW_CURSOR_NOT_ALLOWED]   = LoadCursor(0, IDC_NO);
+
+	state->has_focus = 1;
 
 	return state;
 }
@@ -843,4 +948,57 @@ static void mkfw_get_and_clear_mouse_delta(struct mkfw_state *state, int32_t *dx
 	// Keep fractional remainder for next frame
 	PLATFORM(state)->accumulated_dx -= (double)*dx;
 	PLATFORM(state)->accumulated_dy -= (double)*dy;
+}
+
+// [=]===^=[ mkfw_set_cursor_shape ]========================================[=]
+static void mkfw_set_cursor_shape(struct mkfw_state *state, uint32_t cursor) {
+	if(cursor >= MKFW_CURSOR_LAST) {
+		cursor = MKFW_CURSOR_ARROW;
+	}
+	PLATFORM(state)->current_cursor = cursor;
+	SetCursor(PLATFORM(state)->cursors[cursor]);
+}
+
+// [=]===^=[ mkfw_set_clipboard_text ]======================================[=]
+static void mkfw_set_clipboard_text(struct mkfw_state *state, const char *text) {
+	if(!OpenClipboard(PLATFORM(state)->hwnd)) {
+		return;
+	}
+	EmptyClipboard();
+	if(text) {
+		int wlen = MultiByteToWideChar(CP_UTF8, 0, text, -1, 0, 0);
+		HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wlen * sizeof(wchar_t));
+		if(hg) {
+			wchar_t *dst = (wchar_t *)GlobalLock(hg);
+			MultiByteToWideChar(CP_UTF8, 0, text, -1, dst, wlen);
+			GlobalUnlock(hg);
+			SetClipboardData(CF_UNICODETEXT, hg);
+		}
+	}
+	CloseClipboard();
+}
+
+// [=]===^=[ mkfw_get_clipboard_text ]======================================[=]
+static const char *mkfw_get_clipboard_text(struct mkfw_state *state) {
+	static char *buf = 0;
+	if(!OpenClipboard(PLATFORM(state)->hwnd)) {
+		return "";
+	}
+	HANDLE hg = GetClipboardData(CF_UNICODETEXT);
+	if(!hg) {
+		CloseClipboard();
+		return "";
+	}
+	const wchar_t *src = (const wchar_t *)GlobalLock(hg);
+	if(!src) {
+		CloseClipboard();
+		return "";
+	}
+	int len = WideCharToMultiByte(CP_UTF8, 0, src, -1, 0, 0, 0, 0);
+	free(buf);
+	buf = (char *)malloc(len);
+	WideCharToMultiByte(CP_UTF8, 0, src, -1, buf, len, 0, 0);
+	GlobalUnlock(hg);
+	CloseClipboard();
+	return buf;
 }

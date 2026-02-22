@@ -5,6 +5,7 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
+#include <X11/cursorfont.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/extensions/XI.h>
 #include <X11/extensions/XIproto.h>
@@ -54,6 +55,21 @@ struct x11_mkfw_state {
 	// Framebuffer size tracking (per-window)
 	int32_t last_framebuffer_width;
 	int32_t last_framebuffer_height;
+
+	// XIM for Unicode text input
+	XIM xim;
+	XIC xic;
+
+	// Cursor shapes
+	Cursor cursors[MKFW_CURSOR_LAST];
+	uint32_t current_cursor;
+
+	// Clipboard
+	Atom clipboard_atom;
+	Atom utf8_string_atom;
+	Atom targets_atom;
+	Atom mkfw_clipboard_atom;
+	char *clipboard_text;
 };
 
 static uint32_t map_x11_keysym(struct mkfw_state *state, KeySym keysym, int key_down) {
@@ -85,6 +101,12 @@ static uint32_t map_x11_keysym(struct mkfw_state *state, KeySym keysym, int key_
 			break;
 		case XK_Alt_R:
 			state->keyboard_state[MKS_KEY_RALT] = key_down;
+			break;
+		case XK_Super_L:
+			state->keyboard_state[MKS_KEY_LSUPER] = key_down;
+			break;
+		case XK_Super_R:
+			state->keyboard_state[MKS_KEY_RSUPER] = key_down;
 			break;
 	}
 
@@ -165,7 +187,7 @@ static uint32_t map_x11_keysym(struct mkfw_state *state, KeySym keysym, int key_
 
 	// Call the key callback
 	if(keycode && state->key_callback) {
-		state->key_callback(state, keycode, key_down ? MKS_PRESSED : MKS_RELEASED, (state->keyboard_state[MKS_KEY_SHIFT] ? MKS_MOD_SHIFT : 0) | (state->keyboard_state[MKS_KEY_CTRL]  ? MKS_MOD_CTRL  : 0) | (state->keyboard_state[MKS_KEY_ALT]   ? MKS_MOD_ALT   : 0));
+		state->key_callback(state, keycode, key_down ? MKS_PRESSED : MKS_RELEASED, (state->keyboard_state[MKS_KEY_SHIFT] ? MKS_MOD_SHIFT : 0) | (state->keyboard_state[MKS_KEY_CTRL] ? MKS_MOD_CTRL : 0) | (state->keyboard_state[MKS_KEY_ALT] ? MKS_MOD_ALT : 0) | (state->keyboard_state[MKS_KEY_LSUPER] ? MKS_MOD_LSUPER : 0) | (state->keyboard_state[MKS_KEY_RSUPER] ? MKS_MOD_RSUPER : 0));
 	}
 
 	return keycode;
@@ -412,7 +434,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	Colormap cmap = XCreateColormap(PLATFORM(state)->display, root, vi->visual, AllocNone);
 	XSetWindowAttributes swa;
 	swa.colormap = cmap;
-	swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | EnterWindowMask | LeaveWindowMask;
+	swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | EnterWindowMask | LeaveWindowMask | FocusChangeMask;
 
 	PLATFORM(state)->window = XCreateWindow(PLATFORM(state)->display, root, 0, 0, width, height, 0, vi->depth, InputOutput, vi->visual, CWColormap | CWEventMask, &swa);
 
@@ -485,6 +507,31 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 
 	glXMakeCurrent(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->glctx);
 	XFree(vi);
+
+	// XIM for Unicode text input
+	PLATFORM(state)->xim = XOpenIM(PLATFORM(state)->display, 0, 0, 0);
+	if(PLATFORM(state)->xim) {
+		PLATFORM(state)->xic = XCreateIC(PLATFORM(state)->xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing, XNClientWindow, PLATFORM(state)->window, XNFocusWindow, PLATFORM(state)->window, (char *)0);
+	}
+
+	// Cursor shapes
+	PLATFORM(state)->cursors[MKFW_CURSOR_ARROW]       = XCreateFontCursor(PLATFORM(state)->display, XC_left_ptr);
+	PLATFORM(state)->cursors[MKFW_CURSOR_TEXT_INPUT]   = XCreateFontCursor(PLATFORM(state)->display, XC_xterm);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_ALL]   = XCreateFontCursor(PLATFORM(state)->display, XC_fleur);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NS]    = XCreateFontCursor(PLATFORM(state)->display, XC_sb_v_double_arrow);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_EW]    = XCreateFontCursor(PLATFORM(state)->display, XC_sb_h_double_arrow);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NESW]  = XCreateFontCursor(PLATFORM(state)->display, XC_bottom_left_corner);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NWSE]  = XCreateFontCursor(PLATFORM(state)->display, XC_bottom_right_corner);
+	PLATFORM(state)->cursors[MKFW_CURSOR_HAND]         = XCreateFontCursor(PLATFORM(state)->display, XC_hand2);
+	PLATFORM(state)->cursors[MKFW_CURSOR_NOT_ALLOWED]  = XCreateFontCursor(PLATFORM(state)->display, XC_X_cursor);
+
+	// Clipboard atoms
+	PLATFORM(state)->clipboard_atom      = XInternAtom(PLATFORM(state)->display, "CLIPBOARD", False);
+	PLATFORM(state)->utf8_string_atom    = XInternAtom(PLATFORM(state)->display, "UTF8_STRING", False);
+	PLATFORM(state)->targets_atom        = XInternAtom(PLATFORM(state)->display, "TARGETS", False);
+	PLATFORM(state)->mkfw_clipboard_atom = XInternAtom(PLATFORM(state)->display, "MKFW_CLIPBOARD", False);
+
+	state->has_focus = 1;
 
 	return state;
 }
@@ -652,26 +699,90 @@ static void mkfw_pump_messages(struct mkfw_state *state) {
 
 			case EnterNotify: {
 				PLATFORM(state)->in_window = true;
+				state->mouse_in_window = 1;
 			} break;
 
 			case LeaveNotify: {
 				PLATFORM(state)->in_window = false;
+				state->mouse_in_window = 0;
+			} break;
+
+			case FocusIn: {
+				state->has_focus = 1;
+				if(PLATFORM(state)->xic) {
+					XSetICFocus(PLATFORM(state)->xic);
+				}
+				if(state->focus_callback) {
+					state->focus_callback(state, 1);
+				}
+			} break;
+
+			case FocusOut: {
+				state->has_focus = 0;
+				if(PLATFORM(state)->xic) {
+					XUnsetICFocus(PLATFORM(state)->xic);
+				}
+				if(state->focus_callback) {
+					state->focus_callback(state, 0);
+				}
 			} break;
 
 			case KeyPress: {
 				map_x11_keysym(state, XLookupKeysym(&event.xkey, 0), 1);
 
-				// Generate character input for text editing
-				char buf[32];
-				KeySym keysym;
-				int len = XLookupString(&event.xkey, buf, sizeof(buf), &keysym, 0);
-				if(len > 0 && state->char_callback) {
-					for(int i = 0; i < len; i++) {
-						unsigned char c = (unsigned char)buf[i];
-						// Allow backspace (8) and printable characters (32-126)
-						// Block other control characters (tab, delete, etc.)
-						if(c == 8 || (c >= 32 && c <= 126)) {
-							state->char_callback(state, (uint32_t)c);
+				if(state->char_callback) {
+					char buf[64];
+					KeySym keysym;
+					Status xim_status;
+					int32_t len = 0;
+					if(PLATFORM(state)->xic) {
+						len = Xutf8LookupString(PLATFORM(state)->xic, &event.xkey, buf, sizeof(buf) - 1, &keysym, &xim_status);
+					} else {
+						len = XLookupString(&event.xkey, buf, sizeof(buf) - 1, &keysym, 0);
+					}
+					if(len > 0) {
+						buf[len] = 0;
+						uint32_t ci = 0;
+						while(ci < (uint32_t)len) {
+							uint32_t codepoint = 0;
+							uint8_t c = (uint8_t)buf[ci];
+							if(c < 0x80) {
+								codepoint = c;
+								ci += 1;
+							} else if((c & 0xE0) == 0xC0) {
+								codepoint = (c & 0x1F) << 6;
+								if(ci + 1 < (uint32_t)len) {
+									codepoint |= ((uint8_t)buf[ci + 1] & 0x3F);
+								}
+								ci += 2;
+							} else if((c & 0xF0) == 0xE0) {
+								codepoint = (c & 0x0F) << 12;
+								if(ci + 1 < (uint32_t)len) {
+									codepoint |= ((uint8_t)buf[ci + 1] & 0x3F) << 6;
+								}
+								if(ci + 2 < (uint32_t)len) {
+									codepoint |= ((uint8_t)buf[ci + 2] & 0x3F);
+								}
+								ci += 3;
+							} else if((c & 0xF8) == 0xF0) {
+								codepoint = (c & 0x07) << 18;
+								if(ci + 1 < (uint32_t)len) {
+									codepoint |= ((uint8_t)buf[ci + 1] & 0x3F) << 12;
+								}
+								if(ci + 2 < (uint32_t)len) {
+									codepoint |= ((uint8_t)buf[ci + 2] & 0x3F) << 6;
+								}
+								if(ci + 3 < (uint32_t)len) {
+									codepoint |= ((uint8_t)buf[ci + 3] & 0x3F);
+								}
+								ci += 4;
+							} else {
+								ci += 1;
+								continue;
+							}
+							if(codepoint == 8 || codepoint >= 32) {
+								state->char_callback(state, codepoint);
+							}
 						}
 					}
 				}
@@ -681,33 +792,96 @@ static void mkfw_pump_messages(struct mkfw_state *state) {
 				map_x11_keysym(state, XLookupKeysym(&event.xkey, 0), 0);
 			} break;
 
-			case ButtonPress: {
-				uint8_t button = event.xbutton.button - 1;
+			case SelectionRequest: {
+				XSelectionRequestEvent *req = &event.xselectionrequest;
+				XSelectionEvent reply;
+				memset(&reply, 0, sizeof(reply));
+				reply.type = SelectionNotify;
+				reply.requestor = req->requestor;
+				reply.selection = req->selection;
+				reply.target = req->target;
+				reply.time = req->time;
+				reply.property = None;
 
-				// Handle scroll wheel (buttons 4 and 5)
-				if(button == 3) {  // Scroll up (button 4 in X11, button-1 = 3)
+				if(PLATFORM(state)->clipboard_text) {
+					if(req->target == PLATFORM(state)->targets_atom) {
+						Atom targets[] = { PLATFORM(state)->utf8_string_atom, XA_STRING };
+						XChangeProperty(PLATFORM(state)->display, req->requestor, req->property, XA_ATOM, 32, PropModeReplace, (uint8_t *)targets, 2);
+						reply.property = req->property;
+
+					} else if(req->target == PLATFORM(state)->utf8_string_atom || req->target == XA_STRING) {
+						XChangeProperty(PLATFORM(state)->display, req->requestor, req->property, req->target, 8, PropModeReplace, (uint8_t *)PLATFORM(state)->clipboard_text, strlen(PLATFORM(state)->clipboard_text));
+						reply.property = req->property;
+					}
+				}
+
+				XSendEvent(PLATFORM(state)->display, req->requestor, False, 0, (XEvent *)&reply);
+			} break;
+
+			case ButtonPress: {
+				uint32_t xbtn = event.xbutton.button;
+
+				if(xbtn == 4) {
 					if(state->scroll_callback) {
 						state->scroll_callback(state, 0.0, 1.0);
 					}
-				} else if(button == 4) {  // Scroll down (button 5 in X11, button-1 = 4)
+
+				} else if(xbtn == 5) {
 					if(state->scroll_callback) {
 						state->scroll_callback(state, 0.0, -1.0);
 					}
-				} else if(button < 3) {
-					state->mouse_buttons[button] = 1;
+
+				} else if(xbtn == 6) {
+					if(state->scroll_callback) {
+						state->scroll_callback(state, -1.0, 0.0);
+					}
+
+				} else if(xbtn == 7) {
+					if(state->scroll_callback) {
+						state->scroll_callback(state, 1.0, 0.0);
+					}
+
+				} else {
+					uint8_t mapped = 0;
+					if(xbtn == 1) {
+						mapped = MOUSE_BUTTON_LEFT;
+					} else if(xbtn == 2) {
+						mapped = MOUSE_BUTTON_MIDDLE;
+					} else if(xbtn == 3) {
+						mapped = MOUSE_BUTTON_RIGHT;
+					} else if(xbtn == 8) {
+						mapped = MOUSE_BUTTON_EXTRA1;
+					} else if(xbtn == 9) {
+						mapped = MOUSE_BUTTON_EXTRA2;
+					} else {
+						break;
+					}
+					state->mouse_buttons[mapped] = 1;
 					if(state->mouse_button_callback) {
-						state->mouse_button_callback(state, button, MKS_PRESSED);
+						state->mouse_button_callback(state, mapped, MKS_PRESSED);
 					}
 				}
 			} break;
 
 			case ButtonRelease: {
-				uint8_t button = event.xbutton.button - 1;
-				if(button < 3) {
-					state->mouse_buttons[button] = 0;
-					if(state->mouse_button_callback) {
-						state->mouse_button_callback(state, button, MKS_RELEASED);
-					}
+				uint32_t xbtn = event.xbutton.button;
+				uint8_t mapped = 0;
+				if(xbtn == 1) {
+					mapped = MOUSE_BUTTON_LEFT;
+				} else if(xbtn == 2) {
+					mapped = MOUSE_BUTTON_MIDDLE;
+				} else if(xbtn == 3) {
+					mapped = MOUSE_BUTTON_RIGHT;
+				} else if(xbtn == 8) {
+					mapped = MOUSE_BUTTON_EXTRA1;
+				} else if(xbtn == 9) {
+					mapped = MOUSE_BUTTON_EXTRA2;
+				} else {
+					break;
+				}
+				state->mouse_buttons[mapped] = 0;
+				if(state->mouse_button_callback) {
+					state->mouse_button_callback(state, mapped, MKS_RELEASED);
 				}
 			} break;
 
@@ -870,6 +1044,19 @@ static void mkfw_cleanup(struct mkfw_state *state) {
 	mkfw_set_mouse_cursor(state, 1);
 	mkfw_constrain_mouse(state, 0);
 
+	if(PLATFORM(state)->xic) {
+		XDestroyIC(PLATFORM(state)->xic);
+	}
+	if(PLATFORM(state)->xim) {
+		XCloseIM(PLATFORM(state)->xim);
+	}
+	for(uint32_t i = 0; i < MKFW_CURSOR_LAST; ++i) {
+		if(PLATFORM(state)->cursors[i]) {
+			XFreeCursor(PLATFORM(state)->display, PLATFORM(state)->cursors[i]);
+		}
+	}
+	free(PLATFORM(state)->clipboard_text);
+
 	glXMakeCurrent(PLATFORM(state)->display, None, 0);
 	glXDestroyContext(PLATFORM(state)->display, PLATFORM(state)->glctx);
 	XDestroyWindow(PLATFORM(state)->display, PLATFORM(state)->window);
@@ -896,4 +1083,74 @@ static void mkfw_get_and_clear_mouse_delta(struct mkfw_state *state, int32_t *dx
 	// Keep fractional remainder for next frame
 	PLATFORM(state)->accumulated_dx -= (double)*dx;
 	PLATFORM(state)->accumulated_dy -= (double)*dy;
+}
+
+// [=]===^=[ mkfw_set_cursor_shape ]========================================[=]
+static void mkfw_set_cursor_shape(struct mkfw_state *state, uint32_t cursor) {
+	if(cursor >= MKFW_CURSOR_LAST) {
+		cursor = MKFW_CURSOR_ARROW;
+	}
+	PLATFORM(state)->current_cursor = cursor;
+	XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->cursors[cursor]);
+	XFlush(PLATFORM(state)->display);
+}
+
+// [=]===^=[ mkfw_set_clipboard_text ]======================================[=]
+static void mkfw_set_clipboard_text(struct mkfw_state *state, const char *text) {
+	free(PLATFORM(state)->clipboard_text);
+	PLATFORM(state)->clipboard_text = 0;
+	if(text) {
+		size_t len = strlen(text);
+		PLATFORM(state)->clipboard_text = (char *)malloc(len + 1);
+		memcpy(PLATFORM(state)->clipboard_text, text, len + 1);
+	}
+	XSetSelectionOwner(PLATFORM(state)->display, PLATFORM(state)->clipboard_atom, PLATFORM(state)->window, CurrentTime);
+	XFlush(PLATFORM(state)->display);
+}
+
+// [=]===^=[ mkfw_get_clipboard_text ]======================================[=]
+static const char *mkfw_get_clipboard_text(struct mkfw_state *state) {
+	Window owner = XGetSelectionOwner(PLATFORM(state)->display, PLATFORM(state)->clipboard_atom);
+	if(owner == None) {
+		return "";
+	}
+
+	if(owner == PLATFORM(state)->window) {
+		return PLATFORM(state)->clipboard_text ? PLATFORM(state)->clipboard_text : "";
+	}
+
+	XConvertSelection(PLATFORM(state)->display, PLATFORM(state)->clipboard_atom, PLATFORM(state)->utf8_string_atom, PLATFORM(state)->mkfw_clipboard_atom, PLATFORM(state)->window, CurrentTime);
+	XFlush(PLATFORM(state)->display);
+
+	XEvent ev;
+	for(uint32_t i = 0; i < 50; ++i) {
+		if(XCheckTypedWindowEvent(PLATFORM(state)->display, PLATFORM(state)->window, SelectionNotify, &ev)) {
+			if(ev.xselection.property == None) {
+				return "";
+			}
+
+			Atom actual_type;
+			int actual_format;
+			unsigned long nitems, bytes_after;
+			unsigned char *data = 0;
+
+			XGetWindowProperty(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->mkfw_clipboard_atom, 0, 1024 * 1024, True, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &data);
+
+			if(data) {
+				free(PLATFORM(state)->clipboard_text);
+				size_t len = nitems * (actual_format / 8);
+				PLATFORM(state)->clipboard_text = (char *)malloc(len + 1);
+				memcpy(PLATFORM(state)->clipboard_text, data, len);
+				PLATFORM(state)->clipboard_text[len] = 0;
+				XFree(data);
+				return PLATFORM(state)->clipboard_text;
+			}
+
+			return "";
+		}
+		struct timespec ts = { 0, 10000000 };
+		nanosleep(&ts, 0);
+	}
+
+	return "";
 }
