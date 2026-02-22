@@ -70,6 +70,20 @@ struct x11_mkfw_state {
 	Atom targets_atom;
 	Atom mkfw_clipboard_atom;
 	char *clipboard_text;
+
+	// XDND drag-and-drop
+	Atom xdnd_aware;
+	Atom xdnd_enter;
+	Atom xdnd_position;
+	Atom xdnd_status;
+	Atom xdnd_leave;
+	Atom xdnd_drop;
+	Atom xdnd_finished;
+	Atom xdnd_selection;
+	Atom xdnd_type_list;
+	Atom text_uri_list;
+	Window xdnd_source;
+	uint8_t xdnd_has_uri_list;
 };
 
 static uint32_t map_x11_keysym(struct mkfw_state *state, KeySym keysym, int key_down) {
@@ -531,6 +545,18 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	PLATFORM(state)->targets_atom        = XInternAtom(PLATFORM(state)->display, "TARGETS", False);
 	PLATFORM(state)->mkfw_clipboard_atom = XInternAtom(PLATFORM(state)->display, "MKFW_CLIPBOARD", False);
 
+	// XDND atoms
+	PLATFORM(state)->xdnd_aware     = XInternAtom(PLATFORM(state)->display, "XdndAware", False);
+	PLATFORM(state)->xdnd_enter     = XInternAtom(PLATFORM(state)->display, "XdndEnter", False);
+	PLATFORM(state)->xdnd_position  = XInternAtom(PLATFORM(state)->display, "XdndPosition", False);
+	PLATFORM(state)->xdnd_status    = XInternAtom(PLATFORM(state)->display, "XdndStatus", False);
+	PLATFORM(state)->xdnd_leave     = XInternAtom(PLATFORM(state)->display, "XdndLeave", False);
+	PLATFORM(state)->xdnd_drop      = XInternAtom(PLATFORM(state)->display, "XdndDrop", False);
+	PLATFORM(state)->xdnd_finished  = XInternAtom(PLATFORM(state)->display, "XdndFinished", False);
+	PLATFORM(state)->xdnd_selection = XInternAtom(PLATFORM(state)->display, "XdndSelection", False);
+	PLATFORM(state)->xdnd_type_list = XInternAtom(PLATFORM(state)->display, "XdndTypeList", False);
+	PLATFORM(state)->text_uri_list  = XInternAtom(PLATFORM(state)->display, "text/uri-list", False);
+
 	state->has_focus = 1;
 
 	return state;
@@ -645,6 +671,100 @@ static void mkfw_fullscreen(struct mkfw_state *state, int32_t enable) {
 	}
 
 	XFlush(PLATFORM(state)->display);
+}
+
+// [=]===^=[ mkfw_enable_drop ]==============================================[=]
+static void mkfw_enable_drop(struct mkfw_state *state, uint8_t enable) {
+	if(enable) {
+		Atom version = 5;
+		XChangeProperty(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->xdnd_aware, XA_ATOM, 32, PropModeReplace, (uint8_t *)&version, 1);
+	} else {
+		XDeleteProperty(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->xdnd_aware);
+	}
+	XFlush(PLATFORM(state)->display);
+}
+
+// [=]===^=[ xdnd_percent_decode ]===========================================[=]
+static uint32_t xdnd_percent_decode(const char *src, uint32_t src_len, char *dst) {
+	uint32_t out = 0;
+	for(uint32_t i = 0; i < src_len; ++i) {
+		if(src[i] == '%' && i + 2 < src_len) {
+			uint8_t hi = (uint8_t)src[i + 1];
+			uint8_t lo = (uint8_t)src[i + 2];
+			uint8_t val = 0;
+			if(hi >= '0' && hi <= '9') {
+				val = (hi - '0') << 4;
+			} else if(hi >= 'A' && hi <= 'F') {
+				val = (hi - 'A' + 10) << 4;
+			} else if(hi >= 'a' && hi <= 'f') {
+				val = (hi - 'a' + 10) << 4;
+			}
+			if(lo >= '0' && lo <= '9') {
+				val |= (lo - '0');
+			} else if(lo >= 'A' && lo <= 'F') {
+				val |= (lo - 'A' + 10);
+			} else if(lo >= 'a' && lo <= 'f') {
+				val |= (lo - 'a' + 10);
+			}
+			dst[out++] = (char)val;
+			i += 2;
+		} else {
+			dst[out++] = src[i];
+		}
+	}
+	dst[out] = 0;
+	return out;
+}
+
+// [=]===^=[ xdnd_parse_uri_list ]===========================================[=]
+static void xdnd_parse_uri_list(struct mkfw_state *state, const char *data, uint32_t len) {
+	uint32_t count = 0;
+	uint32_t capacity = 8;
+	char **paths = (char **)malloc(capacity * sizeof(char *));
+	char *decoded = (char *)malloc(len + 1);
+
+	const char *p = data;
+	const char *end = data + len;
+	while(p < end) {
+		const char *line_end = p;
+		while(line_end < end && *line_end != '\r' && *line_end != '\n') {
+			++line_end;
+		}
+		uint32_t line_len = (uint32_t)(line_end - p);
+
+		if(line_len > 0 && p[0] != '#') {
+			const char *path_start = p;
+			uint32_t path_len = line_len;
+			if(line_len >= 7 && memcmp(p, "file://", 7) == 0) {
+				path_start = p + 7;
+				path_len = line_len - 7;
+			}
+			uint32_t decoded_len = xdnd_percent_decode(path_start, path_len, decoded);
+			char *path = (char *)malloc(decoded_len + 1);
+			memcpy(path, decoded, decoded_len + 1);
+			if(count >= capacity) {
+				capacity *= 2;
+				paths = (char **)realloc(paths, capacity * sizeof(char *));
+			}
+			paths[count++] = path;
+		}
+
+		p = line_end;
+		while(p < end && (*p == '\r' || *p == '\n')) {
+			++p;
+		}
+	}
+
+	free(decoded);
+
+	if(count > 0 && state->drop_callback) {
+		state->drop_callback(count, (const char **)paths);
+	}
+
+	for(uint32_t i = 0; i < count; ++i) {
+		free(paths[i]);
+	}
+	free(paths);
 }
 
 // Process X events and raw XInput2 events
@@ -925,8 +1045,105 @@ static void mkfw_pump_messages(struct mkfw_state *state) {
 			} break;
 
 			case ClientMessage: {
+				Atom msg_type = event.xclient.message_type;
+
 				if((Atom)event.xclient.data.l[0] == PLATFORM(state)->wm_delete_window) {
 					PLATFORM(state)->should_close = 1;
+
+				} else if(msg_type == PLATFORM(state)->xdnd_enter) {
+					PLATFORM(state)->xdnd_source = (Window)event.xclient.data.l[0];
+					PLATFORM(state)->xdnd_has_uri_list = 0;
+					uint8_t more_than_three = (event.xclient.data.l[1] >> 0) & 1;
+					if(more_than_three) {
+						Atom actual_type;
+						int actual_format;
+						unsigned long nitems, bytes_after;
+						unsigned char *type_data = 0;
+						XGetWindowProperty(PLATFORM(state)->display, PLATFORM(state)->xdnd_source, PLATFORM(state)->xdnd_type_list, 0, 1024, False, XA_ATOM, &actual_type, &actual_format, &nitems, &bytes_after, &type_data);
+						if(type_data) {
+							Atom *types = (Atom *)type_data;
+							for(unsigned long ti = 0; ti < nitems; ++ti) {
+								if(types[ti] == PLATFORM(state)->text_uri_list) {
+									PLATFORM(state)->xdnd_has_uri_list = 1;
+									break;
+								}
+							}
+							XFree(type_data);
+						}
+					} else {
+						for(uint32_t ti = 0; ti < 3; ++ti) {
+							if((Atom)event.xclient.data.l[2 + ti] == PLATFORM(state)->text_uri_list) {
+								PLATFORM(state)->xdnd_has_uri_list = 1;
+								break;
+							}
+						}
+					}
+
+				} else if(msg_type == PLATFORM(state)->xdnd_position) {
+					XEvent reply;
+					memset(&reply, 0, sizeof(reply));
+					reply.xclient.type = ClientMessage;
+					reply.xclient.window = PLATFORM(state)->xdnd_source;
+					reply.xclient.message_type = PLATFORM(state)->xdnd_status;
+					reply.xclient.format = 32;
+					reply.xclient.data.l[0] = (long)PLATFORM(state)->window;
+					reply.xclient.data.l[1] = PLATFORM(state)->xdnd_has_uri_list ? 1 : 0;
+					reply.xclient.data.l[2] = 0;
+					reply.xclient.data.l[3] = 0;
+					reply.xclient.data.l[4] = 0;
+					XSendEvent(PLATFORM(state)->display, PLATFORM(state)->xdnd_source, False, NoEventMask, &reply);
+					XFlush(PLATFORM(state)->display);
+
+				} else if(msg_type == PLATFORM(state)->xdnd_leave) {
+					PLATFORM(state)->xdnd_source = 0;
+					PLATFORM(state)->xdnd_has_uri_list = 0;
+
+				} else if(msg_type == PLATFORM(state)->xdnd_drop) {
+					if(PLATFORM(state)->xdnd_has_uri_list) {
+						XConvertSelection(PLATFORM(state)->display, PLATFORM(state)->xdnd_selection, PLATFORM(state)->text_uri_list, PLATFORM(state)->xdnd_selection, PLATFORM(state)->window, CurrentTime);
+						XFlush(PLATFORM(state)->display);
+					} else {
+						XEvent reply;
+						memset(&reply, 0, sizeof(reply));
+						reply.xclient.type = ClientMessage;
+						reply.xclient.window = PLATFORM(state)->xdnd_source;
+						reply.xclient.message_type = PLATFORM(state)->xdnd_finished;
+						reply.xclient.format = 32;
+						reply.xclient.data.l[0] = (long)PLATFORM(state)->window;
+						reply.xclient.data.l[1] = 0;
+						reply.xclient.data.l[2] = 0;
+						XSendEvent(PLATFORM(state)->display, PLATFORM(state)->xdnd_source, False, NoEventMask, &reply);
+						XFlush(PLATFORM(state)->display);
+						PLATFORM(state)->xdnd_source = 0;
+					}
+				}
+			} break;
+
+			case SelectionNotify: {
+				if(event.xselection.selection == PLATFORM(state)->xdnd_selection) {
+					Atom actual_type;
+					int actual_format;
+					unsigned long nitems, bytes_after;
+					unsigned char *data = 0;
+					XGetWindowProperty(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->xdnd_selection, 0, 1024 * 1024, True, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &data);
+					if(data) {
+						xdnd_parse_uri_list(state, (const char *)data, (uint32_t)(nitems * (actual_format / 8)));
+						XFree(data);
+					}
+
+					XEvent reply;
+					memset(&reply, 0, sizeof(reply));
+					reply.xclient.type = ClientMessage;
+					reply.xclient.window = PLATFORM(state)->xdnd_source;
+					reply.xclient.message_type = PLATFORM(state)->xdnd_finished;
+					reply.xclient.format = 32;
+					reply.xclient.data.l[0] = (long)PLATFORM(state)->window;
+					reply.xclient.data.l[1] = 1;
+					reply.xclient.data.l[2] = 0;
+					XSendEvent(PLATFORM(state)->display, PLATFORM(state)->xdnd_source, False, NoEventMask, &reply);
+					XFlush(PLATFORM(state)->display);
+					PLATFORM(state)->xdnd_source = 0;
+					PLATFORM(state)->xdnd_has_uri_list = 0;
 				}
 			} break;
 		}

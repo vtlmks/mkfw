@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <wingdi.h>
+#include <shellapi.h>
 #include <stdlib.h>
 
 __declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
@@ -509,6 +510,30 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 			return 0;
 		} break;
 
+		case WM_DROPFILES: {
+			HDROP hdrop = (HDROP)wParam;
+			uint32_t count = DragQueryFileW(hdrop, 0xFFFFFFFF, 0, 0);
+			if(count > 0 && state->drop_callback) {
+				char **paths = (char **)malloc(count * sizeof(char *));
+				for(uint32_t i = 0; i < count; ++i) {
+					uint32_t wlen = DragQueryFileW(hdrop, i, 0, 0) + 1;
+					wchar_t *wpath = (wchar_t *)malloc(wlen * sizeof(wchar_t));
+					DragQueryFileW(hdrop, i, wpath, wlen);
+					int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, 0, 0, 0, 0);
+					paths[i] = (char *)malloc(utf8_len);
+					WideCharToMultiByte(CP_UTF8, 0, wpath, -1, paths[i], utf8_len, 0, 0);
+					free(wpath);
+				}
+				state->drop_callback(count, (const char **)paths);
+				for(uint32_t i = 0; i < count; ++i) {
+					free(paths[i]);
+				}
+				free(paths);
+			}
+			DragFinish(hdrop);
+			return 0;
+		}
+
 		case WM_SETCURSOR: {
 			if(LOWORD(lParam) == HTCLIENT) {
 				if(PLATFORM(state)->cursor_hidden) {
@@ -1001,4 +1026,9 @@ static const char *mkfw_get_clipboard_text(struct mkfw_state *state) {
 	GlobalUnlock(hg);
 	CloseClipboard();
 	return buf;
+}
+
+// [=]===^=[ mkfw_enable_drop ]==============================================[=]
+static void mkfw_enable_drop(struct mkfw_state *state, uint8_t enable) {
+	DragAcceptFiles(PLATFORM(state)->hwnd, enable ? TRUE : FALSE);
 }
