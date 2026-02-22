@@ -1,4 +1,5 @@
-*.xml
-*.py
-ui_example
+joystick_example/joystick_example
+generate_gl_loader.py
+gl.xml
 threaded_example/threaded_example
+ui_example/ui_example
