@@ -11,13 +11,16 @@ MKFW is a minimal, single-header windowing and input library for OpenGL applicat
 - Multiple independent window support
 - Window creation and management
 - OpenGL context creation (Compatibility Profile, configurable version)
-- Keyboard and mouse input handling
-- Raw mouse motion support (XInput2 on Linux)
+- Keyboard and mouse input handling (5 buttons, Unicode character input)
+- Raw mouse motion support (XInput2 on Linux, Raw Input on Windows)
+- Mouse cursor shape control (arrow, text beam, resize handles, hand, etc.)
 - Fullscreen toggling
 - Window aspect ratio enforcement
 - VSync control
-- Event callbacks
-- Character input callbacks
+- Event callbacks (key, char, scroll, mouse, focus, resize, file drop)
+- Clipboard access (get/set UTF-8 text)
+- File drag-and-drop
+- Window focus and mouse hover tracking
 
 ## Platform Support
 
@@ -369,6 +372,7 @@ Each window state contains a `keyboard_state` array tracking current key states.
 - `MKS_KEY_SHIFT`, `MKS_KEY_LSHIFT`, `MKS_KEY_RSHIFT`
 - `MKS_KEY_CTRL`, `MKS_KEY_LCTRL`, `MKS_KEY_RCTRL`
 - `MKS_KEY_ALT`, `MKS_KEY_LALT`, `MKS_KEY_RALT`
+- `MKS_KEY_LSUPER`, `MKS_KEY_RSUPER` (Windows/Super key)
 
 **Function Keys:**
 - `MKS_KEY_F1` through `MKS_KEY_F12`
@@ -386,9 +390,11 @@ Each window state contains a `keyboard_state` array tracking current key states.
 
 #### Modifier Bits
 
-- `MKS_MOD_SHIFT` (0x03) - Either shift key
-- `MKS_MOD_CTRL` (0x0C) - Either control key
-- `MKS_MOD_ALT` (0x30) - Either alt key
+- `MKS_MOD_SHIFT` - Either shift key
+- `MKS_MOD_CTRL` - Either control key
+- `MKS_MOD_ALT` - Either alt key
+- `MKS_MOD_SUPER` - Either super/Windows key
+- Individual bits: `MKS_MOD_LSHIFT`, `MKS_MOD_RSHIFT`, `MKS_MOD_LCTRL`, `MKS_MOD_RCTRL`, `MKS_MOD_LALT`, `MKS_MOD_RALT`, `MKS_MOD_LSUPER`, `MKS_MOD_RSUPER`
 
 ---
 
@@ -501,6 +507,8 @@ Each window state contains a mouse button state array.
 - `MOUSE_BUTTON_LEFT` (0)
 - `MOUSE_BUTTON_MIDDLE` (1)
 - `MOUSE_BUTTON_RIGHT` (2)
+- `MOUSE_BUTTON_EXTRA1` (3) - Side button (back)
+- `MOUSE_BUTTON_EXTRA2` (4) - Side button (forward)
 
 #### Mouse Actions
 
@@ -519,7 +527,7 @@ Check if a mouse button was just pressed.
 
 **Parameters:**
 - `state` - Window state pointer
-- `button` - Button index (0-2)
+- `button` - Button index (0-4, `MOUSE_BUTTON_*`)
 
 **Returns:**
 - Non-zero if button was pressed this frame
@@ -536,7 +544,7 @@ Check if a mouse button was just released.
 
 **Parameters:**
 - `state` - Window state pointer
-- `button` - Button index (0-2)
+- `button` - Button index (0-4, `MOUSE_BUTTON_*`)
 
 **Returns:**
 - Non-zero if button was released this frame
@@ -656,10 +664,13 @@ Register a callback for character input events.
 
 **Callback Parameters:**
 - `state` - Window state pointer
-- `codepoint` - ASCII character code (backspace=8, printable 32-126)
+- `codepoint` - Unicode codepoint (backspace=8, printable >= 32)
 
 **Notes:**
 - Used for text input (typing characters)
+- Delivers full Unicode codepoints (not just ASCII)
+- On Linux: uses XIM (X Input Method) via `Xutf8LookupString` for international input
+- On Windows: handles UTF-16 surrogate pairs from `WM_CHAR`
 - Filters out control characters except backspace
 - Distinct from key callback (handles translated characters, not raw keys)
 
@@ -715,6 +726,157 @@ Get accumulated mouse delta since last call, then reset the accumulator. Keeps f
 - Alternative to the delta callback for polling-style mouse input
 - Sensitivity scaling is applied before accumulation
 - Fractional values are preserved between calls for smooth motion
+
+---
+
+## Cursor Shapes
+
+### `mkfw_set_cursor_shape`
+
+```c
+void mkfw_set_cursor_shape(struct mkfw_state *state, uint32_t cursor)
+```
+
+Set the mouse cursor shape.
+
+**Parameters:**
+- `state` - Window state pointer
+- `cursor` - Cursor type (`MKFW_CURSOR_*`)
+
+**Cursor Types:**
+- `MKFW_CURSOR_ARROW` - Default arrow cursor
+- `MKFW_CURSOR_TEXT_INPUT` - I-beam for text fields
+- `MKFW_CURSOR_RESIZE_ALL` - 4-way arrow (move)
+- `MKFW_CURSOR_RESIZE_NS` - Vertical resize
+- `MKFW_CURSOR_RESIZE_EW` - Horizontal resize
+- `MKFW_CURSOR_RESIZE_NESW` - Diagonal resize (NE-SW)
+- `MKFW_CURSOR_RESIZE_NWSE` - Diagonal resize (NW-SE)
+- `MKFW_CURSOR_HAND` - Pointing hand (links)
+- `MKFW_CURSOR_NOT_ALLOWED` - Not allowed / forbidden
+
+**Notes:**
+- Falls back to `MKFW_CURSOR_ARROW` if cursor >= `MKFW_CURSOR_LAST`
+- On Linux: uses X11 font cursors
+- On Windows: uses system cursors via `WM_SETCURSOR`
+
+**Example:**
+```c
+mkfw_set_cursor_shape(window, MKFW_CURSOR_HAND);
+```
+
+---
+
+## Clipboard
+
+### `mkfw_set_clipboard_text`
+
+```c
+void mkfw_set_clipboard_text(struct mkfw_state *state, const char *text)
+```
+
+Set the system clipboard to a UTF-8 string.
+
+**Parameters:**
+- `state` - Window state pointer
+- `text` - Null-terminated UTF-8 string to copy to clipboard
+
+**Notes:**
+- On Linux: takes ownership of the X11 CLIPBOARD selection
+- On Windows: uses `SetClipboardData(CF_UNICODETEXT)` with UTF-8 to UTF-16 conversion
+
+---
+
+### `mkfw_get_clipboard_text`
+
+```c
+const char *mkfw_get_clipboard_text(struct mkfw_state *state)
+```
+
+Get the current system clipboard text as UTF-8.
+
+**Parameters:**
+- `state` - Window state pointer
+
+**Returns:**
+- Pointer to a UTF-8 string owned by mkfw. Do not free. Valid until the next call to `mkfw_get_clipboard_text` or `mkfw_set_clipboard_text`.
+- Returns `""` (empty string) if clipboard is empty or unavailable.
+
+**Notes:**
+- On Linux: requests the CLIPBOARD selection via `XConvertSelection`. Blocks briefly (up to ~500ms) waiting for the selection owner to respond.
+- On Windows: uses `GetClipboardData(CF_UNICODETEXT)` with UTF-16 to UTF-8 conversion.
+
+**Example:**
+```c
+mkfw_set_clipboard_text(window, "Hello clipboard");
+const char *text = mkfw_get_clipboard_text(window);
+printf("Clipboard: %s\n", text);
+```
+
+---
+
+## Focus and Hover
+
+### `mkfw_set_focus_callback`
+
+```c
+typedef void (*focus_callback_t)(struct mkfw_state *state, uint8_t focused);
+void mkfw_set_focus_callback(struct mkfw_state *state, focus_callback_t callback)
+```
+
+Register a callback for window focus changes.
+
+**Callback Parameters:**
+- `state` - Window state pointer
+- `focused` - 1 if window gained focus, 0 if lost
+
+**Notes:**
+- On Linux: handles `FocusIn`/`FocusOut` X11 events
+- On Windows: handles `WM_SETFOCUS`/`WM_KILLFOCUS`
+
+### Window State Fields
+
+The `mkfw_state` struct exposes:
+- `state->has_focus` - Non-zero if window currently has keyboard focus
+- `state->mouse_in_window` - Non-zero if mouse cursor is inside the window client area
+
+These are updated automatically by `mkfw_pump_messages()`.
+
+---
+
+## File Drop
+
+### `mkfw_set_drop_callback`
+
+```c
+typedef void (*drop_callback_t)(uint32_t count, const char **paths);
+void mkfw_set_drop_callback(struct mkfw_state *state, drop_callback_t callback)
+```
+
+Register a callback for file drag-and-drop events. Setting a callback enables drop acceptance on the window. Setting it to `NULL` disables drops.
+
+**Callback Parameters:**
+- `count` - Number of files dropped
+- `paths` - Array of `count` null-terminated UTF-8 file paths
+
+**Important:** mkfw owns the `paths` array and all strings in it. Both the array and every path string are freed immediately after the callback returns. If you need to keep any paths, you must copy them (e.g. with `strdup`) inside the callback.
+
+**Platform details:**
+- Linux: implements the XDND protocol (version 5), accepting `text/uri-list` drops. Paths are percent-decoded and `file://` prefixes are stripped.
+- Windows: uses `DragAcceptFiles` / `WM_DROPFILES`. Wide paths are converted to UTF-8.
+
+**Example:**
+```c
+void on_drop(uint32_t count, const char **paths) {
+    for(uint32_t i = 0; i < count; ++i) {
+        // paths[i] is only valid for the duration of this callback
+        char *copy = strdup(paths[i]);
+        printf("Dropped: %s\n", copy);
+        // ... store copy somewhere, free it later ...
+    }
+}
+
+mkfw_set_drop_callback(window, on_drop);
+```
 
 ---
 
@@ -1158,11 +1320,8 @@ MKFW is simpler than GLFW:
 
 - Monitor enumeration and video mode queries
 - Window hints system
-- Clipboard access
-- File drop events
 - Window positioning API
 - Iconification/restoration
-- Window focus management
 
 ### Simplified Features
 

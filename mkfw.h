@@ -22,6 +22,7 @@ typedef void (*mouse_move_delta_callback_t)(struct mkfw_state *state, int32_t x,
 typedef void (*mouse_button_callback_t)(struct mkfw_state *state, uint8_t button, int action);
 typedef void (*framebuffer_callback_t)(struct mkfw_state *state, int32_t width, int32_t height, float aspect_ratio);
 typedef void (*focus_callback_t)(struct mkfw_state *state, uint8_t focused);
+typedef void (*drop_callback_t)(uint32_t count, const char **paths);
 
 /* Main state structure */
 struct mkfw_state {
@@ -46,6 +47,7 @@ struct mkfw_state {
 	mouse_button_callback_t mouse_button_callback;
 	framebuffer_callback_t framebuffer_callback;
 	focus_callback_t focus_callback;
+	drop_callback_t drop_callback;
 
 	// Platform-specific state
 	void *platform;
@@ -171,6 +173,7 @@ static inline void mkfw_set_mouse_move_delta_callback(struct mkfw_state *state, 
 static inline void mkfw_set_mouse_button_callback(struct mkfw_state *state, mouse_button_callback_t callback) { state->mouse_button_callback = callback; }
 static inline void mkfw_set_framebuffer_size_callback(struct mkfw_state *state, framebuffer_callback_t callback) { state->framebuffer_callback = callback; }
 static inline void mkfw_set_focus_callback(struct mkfw_state *state, focus_callback_t callback) { state->focus_callback = callback; }
+static inline void mkfw_set_drop_callback(struct mkfw_state *state, drop_callback_t callback) { state->drop_callback = callback; mkfw_enable_drop(state, callback != 0); }
 static inline int mkfw_is_key_pressed(struct mkfw_state *state, uint8_t key) { return state->keyboard_state[key] && !state->prev_keyboard_state[key]; }
 static inline int mkfw_was_key_released(struct mkfw_state *state, uint8_t key) { return !state->keyboard_state[key] && state->prev_keyboard_state[key]; }
 static inline uint8_t mkfw_is_button_pressed(struct mkfw_state *state, uint8_t button) { return state->mouse_buttons[button] && !state->previous_mouse_buttons[button]; }
