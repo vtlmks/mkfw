@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 //
 // Minimal OpenGL function loader. Freestanding -- no dependency on mkfw.
-// Include before mkfw.h if using MKFW_UI, or use independently.
+// Include before mkfw.h, or use independently.
 //
 // Set MKFW_GL_VERSION before including to select which GL version's
 // enums and functions are available:

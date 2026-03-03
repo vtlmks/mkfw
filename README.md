@@ -24,7 +24,6 @@ mkfw is what I use in my own projects. It covers similar ground to GLFW — wind
 | `MKFW_JOYSTICK_GAMEDB` | GameDB | SDL GameController DB mappings for standardized button names |
 | `MKFW_AUDIO` | Audio | Low-latency callback-based audio output (WASAPI / ALSA) |
 | `MKFW_TIMER` | Timer | High-precision timing with sleep+spin strategy |
-| `MKFW_UI` | UI | Immediate-mode debug UI with built-in font, single draw call |
 
 ## Platforms
 
@@ -79,7 +78,6 @@ Enable subsystems by defining the corresponding flag before including the header
 #define MKFW_TIMER
 #define MKFW_JOYSTICK
 #define MKFW_JOYSTICK_GAMEDB
-#define MKFW_UI
 #include "mkfw.h"
 ```
 
@@ -103,14 +101,12 @@ See [MKFW_API.md](documentation/MKFW_API.md#opengl-version-configuration) for de
 
 Working examples are included in the repository:
 
-- [ui_example/](ui_example/) — demonstrates all UI widgets (buttons, sliders, text input, combo boxes, etc.)
-- [joystick_example/](joystick_example/) — gamepad input with real-time visualization
+- [joystick_example/](joystick_example/) — gamepad input with terminal visualization
 - [threaded_example/](threaded_example/) — render loop on a separate thread, decoupled from the OS message pump
 
 Build an example:
 
 ```sh
-cd ui_example && sh build_ui.sh
 cd joystick_example && sh build_joystick.sh
 cd threaded_example && sh build_threaded.sh
 ```
@@ -144,8 +140,6 @@ Detailed API documentation for each subsystem is in the [documentation/](documen
 - [MKFW_AUDIO_API.md](documentation/MKFW_AUDIO_API.md) — audio output
 - [MKFW_TIMER_API.md](documentation/MKFW_TIMER_API.md) — high-precision timing
 - [MKFW_JOYSTICK_API.md](documentation/MKFW_JOYSTICK_API.md) — gamepad input
-- [MKFW_UI_API.md](documentation/MKFW_UI_API.md) — immediate-mode UI
-- [MKFW_UI_WIDGET_REFERENCE.md](documentation/MKFW_UI_WIDGET_REFERENCE.md) — UI widget quick reference
 
 ## OpenGL function loader
 
@@ -161,8 +155,6 @@ It provides all GL types, constants, and function declarations up to OpenGL 4.6,
 // after mkfw_init + mkfw_show_window:
 mkfw_gl_loader();
 ```
-
-If you're using `MKFW_UI`, include the loader *before* `mkfw.h` so the UI subsystem can see the GL types.
 
 ## Dependencies
 

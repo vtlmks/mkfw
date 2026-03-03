@@ -254,39 +254,6 @@ static inline void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback)
 #define mkfw_gamepad_axis(idx, axis) (0.0f)
 #endif
 
-/* UI subsystem - optional */
-#ifdef MKFW_UI
-#include "mkfw_ui.c"
-#else
-/* Stub macros when UI is not enabled - allows code to compile without #ifdefs */
-#define mkui_init(mkfw) ((void)0)
-#define mkui_shutdown() ((void)0)
-#define mkui_new_frame(w, h) ((void)0)
-#define mkui_render() ((void)0)
-#define mkui_begin_window(title, x, y, w, h) ((void)0)
-#define mkui_end_window() ((void)0)
-#define mkui_text(text) ((void)0)
-#define mkui_text_colored(text, color) ((void)0)
-#define mkui_button(label) (0)
-#define mkui_checkbox(label, checked) (0)
-#define mkui_slider_float(label, value, min_val, max_val) (0)
-#define mkui_slider_int(label, value, min_val, max_val) (0)
-#define mkui_slider_int64(label, value, min_val, max_val) (0)
-#define mkui_radio_button(label, selected, value) (0)
-#define mkui_collapsing_header(label, open) (0)
-#define mkui_text_input(label, buffer, buffer_size) (0)
-#define mkui_combo(label, current_item, items, items_count) (0)
-#define mkui_listbox(label, current_item, items, items_count, visible_items) (0)
-#define mkui_separator() ((void)0)
-#define mkui_set_cursor_pos(x, y) ((void)0)
-#define mkui_same_line() ((void)0)
-#define mkui_image(texture_id, width, height) ((void)0)
-#define mkui_image_rgba(rgba_buffer, width, height) ((void)0)
-#define mkui_rgb(r, g, b) ((struct mkui_color){0,0,0,0})
-#define mkui_rgba(r, g, b, a) ((struct mkui_color){0,0,0,0})
-#define mkui_get_style() ((struct mkui_style*)0)
-#define mkui_style_set_color(color_id, r, g, b, a) ((void)0)
-#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
