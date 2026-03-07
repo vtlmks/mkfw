@@ -981,7 +981,9 @@ static void mkfw_set_cursor_shape(struct mkfw_state *state, uint32_t cursor) {
 		cursor = MKFW_CURSOR_ARROW;
 	}
 	PLATFORM(state)->current_cursor = cursor;
-	SetCursor(PLATFORM(state)->cursors[cursor]);
+	if(!PLATFORM(state)->cursor_hidden) {
+		SetCursor(PLATFORM(state)->cursors[cursor]);
+	}
 }
 
 // [=]===^=[ mkfw_set_clipboard_text ]======================================[=]
