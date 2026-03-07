@@ -22,6 +22,7 @@ struct mkfw_timer_handle {
 	uint32_t running;
 	mkfw_thread timer_thread;
 
+	uint32_t spin;
 	int futex_word;
 
 #ifdef MKFW_TIMER_DEBUG
@@ -69,9 +70,12 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 #endif
 
 		int64_t diff_ns = mkfw_timespec_diff_ns(&t->next_deadline, &now);
-		if(diff_ns > MKFW_SPIN_THRESHOLD_NS) {
+		uint32_t spin = __atomic_load_n(&t->spin, __ATOMIC_ACQUIRE);
+		int64_t threshold = spin ? MKFW_SPIN_THRESHOLD_NS : 0;
+
+		if(diff_ns > threshold) {
 			struct timespec sleep_time;
-			uint64_t sleep_ns = diff_ns - MKFW_SPIN_THRESHOLD_NS;
+			uint64_t sleep_ns = diff_ns - threshold;
 			sleep_time.tv_sec = sleep_ns / 1000000000;
 			sleep_time.tv_nsec = sleep_ns % 1000000000;
 			nanosleep(&sleep_time, 0);
@@ -81,8 +85,10 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 #endif
 		}
 
-		while(clock_gettime(CLOCK_MONOTONIC_RAW, &now), mkfw_timespec_diff_ns(&t->next_deadline, &now) > 0) {
-			mkfw_cpu_yield();
+		if(spin) {
+			while(clock_gettime(CLOCK_MONOTONIC_RAW, &now), mkfw_timespec_diff_ns(&t->next_deadline, &now) > 0) {
+				mkfw_cpu_yield();
+			}
 		}
 
 		__atomic_store_n(&t->futex_word, 1, __ATOMIC_RELEASE);
@@ -115,6 +121,7 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 	clock_gettime(CLOCK_MONOTONIC_RAW, &t->next_deadline);
 	mkfw_timespec_add_ns(&t->next_deadline, interval_ns);
 	t->running = 1;
+	t->spin = 1;
 	t->futex_word = 0;
 
 #ifdef MKFW_TIMER_DEBUG
@@ -136,6 +143,11 @@ static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 // [=]===^=[ mkfw_timer_set_interval ]=====================================[=]
 static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
 	t->interval_ns = interval_ns;
+}
+
+// [=]===^=[ mkfw_timer_set_spin ]=========================================[=]
+static void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
+	__atomic_store_n(&t->spin, enabled ? 1 : 0, __ATOMIC_RELEASE);
 }
 
 static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {

@@ -16,6 +16,7 @@ struct mkfw_timer_handle {
 	uint64_t next_deadline_qpc;
 	uint64_t spin_threshold_100ns;
 	uint32_t running;
+	uint32_t spin;
 
 	HANDLE event;
 	mkfw_thread timer_thread;
@@ -87,17 +88,21 @@ static DWORD WINAPI mkfw_timer_thread_func(LPVOID arg) {
 		if(now_qpc < t->next_deadline_qpc) {
 			uint64_t diff_qpc = t->next_deadline_qpc - now_qpc;
 			uint64_t diff_ns = mkfw_qpc_to_ns(diff_qpc, t->qpc_frequency);
+			uint32_t spin = __atomic_load_n(&t->spin, __ATOMIC_ACQUIRE);
+			uint64_t threshold = spin ? MKFW_SPIN_THRESHOLD_NS : 0;
 
-			if(diff_ns > MKFW_SPIN_THRESHOLD_NS) {
-				uint64_t sleep_ns = diff_ns - MKFW_SPIN_THRESHOLD_NS;
+			if(diff_ns > threshold) {
+				uint64_t sleep_ns = diff_ns - threshold;
 				mkfw_timer_sleep(sleep_ns / 100);
 #ifdef MKFW_TIMER_DEBUG
 				now_qpc = mkfw_qpc_now();
 				remaining_after_sleep_ns = (int64_t)mkfw_qpc_to_ns(t->next_deadline_qpc - now_qpc, t->qpc_frequency);
 #endif
 			}
-			while(mkfw_qpc_now() < t->next_deadline_qpc) {
-				_mm_pause();
+			if(spin) {
+				while(mkfw_qpc_now() < t->next_deadline_qpc) {
+					_mm_pause();
+				}
 			}
 		}
 
@@ -154,6 +159,7 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 	t->spin_threshold_100ns = MKFW_SPIN_THRESHOLD_NS / 100;
 	t->next_deadline_qpc = mkfw_qpc_now() + t->interval_qpc;
 	__atomic_store_n(&t->running, 1, __ATOMIC_RELEASE);
+	t->spin = 1;
 	t->mmcss_handle = 0;
 
 #ifdef MKFW_TIMER_DEBUG
@@ -175,6 +181,11 @@ static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
 	t->interval_ns = interval_ns;
 	t->interval_qpc = (interval_ns * t->qpc_frequency + 500000000ULL) / 1000000000ULL;
+}
+
+// [=]===^=[ mkfw_timer_set_spin ]=========================================[=]
+static void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
+	__atomic_store_n(&t->spin, enabled ? 1 : 0, __ATOMIC_RELEASE);
 }
 
 static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
