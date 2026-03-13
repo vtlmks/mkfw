@@ -30,6 +30,7 @@ struct mkfw_timer_handle {
 #endif
 };
 
+// [=]===^=[ mkfw_timespec_add_ns ]===============================================================[=]
 static void mkfw_timespec_add_ns(struct timespec *ts, uint64_t ns) {
 	ts->tv_nsec += ns;
 	while(ts->tv_nsec >= 1000000000L) {
@@ -38,6 +39,7 @@ static void mkfw_timespec_add_ns(struct timespec *ts, uint64_t ns) {
 	}
 }
 
+// [=]===^=[ mkfw_timespec_diff_ns ]==============================================================[=]
 static int64_t mkfw_timespec_diff_ns(struct timespec *a, struct timespec *b) {
 	int64_t sec = a->tv_sec - b->tv_sec;
 	int64_t nsec = a->tv_nsec - b->tv_nsec;
@@ -50,14 +52,17 @@ static int64_t mkfw_timespec_diff_ns(struct timespec *a, struct timespec *b) {
 	return sec * 1000000000LL + nsec;
 }
 
+// [=]===^=[ mkfw_futex_wait ]====================================================================[=]
 static int mkfw_futex_wait(int *addr, int val) {
 	return syscall(SYS_futex, addr, FUTEX_WAIT_PRIVATE, val, 0, 0, 0);
 }
 
+// [=]===^=[ mkfw_futex_wake ]====================================================================[=]
 static int mkfw_futex_wake(int *addr) {
 	return syscall(SYS_futex, addr, FUTEX_WAKE_PRIVATE, 1, 0, 0, 0);
 }
 
+// [=]===^=[ mkfw_timer_thread_func ]=============================================================[=]
 static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 	struct mkfw_timer_handle *t = (struct mkfw_timer_handle *)arg;
 
@@ -114,6 +119,7 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 	return 0;
 }
 
+// [=]===^=[ mkfw_timer_new ]=====================================================================[=]
 static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 	struct mkfw_timer_handle *t = calloc(1, sizeof(struct mkfw_timer_handle));
 
@@ -134,18 +140,19 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 	return t;
 }
 
+// [=]===^=[ mkfw_timer_wait ]====================================================================[=]
 static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 	mkfw_futex_wait(&t->futex_word, 0);
 	__atomic_store_n(&t->futex_word, 0, __ATOMIC_RELEASE);
 	return 1;
 }
 
-// [=]===^=[ mkfw_timer_set_interval ]=====================================[=]
+// [=]===^=[ mkfw_timer_set_interval ]============================================================[=]
 static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
 	t->interval_ns = interval_ns;
 }
 
-// [=]===^=[ mkfw_timer_set_spin ]=========================================[=]
+// [=]===^=[ mkfw_timer_set_spin ]================================================================[=]
 static void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
 	__atomic_store_n(&t->spin, enabled ? 1 : 0, __ATOMIC_RELEASE);
 }

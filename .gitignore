@@ -2,3 +2,5 @@ joystick_example/joystick_example
 generate_gl_loader.py
 gl.xml
 threaded_example/threaded_example
+monitor_example/monitor_example
+transparency_example/transparency_example

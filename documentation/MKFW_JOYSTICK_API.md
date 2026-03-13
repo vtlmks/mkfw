@@ -16,6 +16,7 @@ An optional mapping layer (`MKFW_JOYSTICK_GAMEDB`) provides standardized gamepad
 - Normalized axes (-1.0 to 1.0)
 - D-pad as discrete hat values
 - Hotplug detection (connect/disconnect callbacks)
+- Rumble/vibration support (force feedback)
 - Optional SDL GameController DB mapping layer
 - No external library dependencies (Linux)
 
@@ -283,6 +284,37 @@ void on_gamepad(int pad, int connected) {
 }
 
 mkfw_joystick_set_callback(on_gamepad);
+```
+
+---
+
+### `mkfw_joystick_rumble`
+
+```c
+void mkfw_joystick_rumble(int pad_index, float low_freq, float high_freq, uint32_t duration_ms)
+```
+
+Trigger rumble/vibration on a controller.
+
+**Parameters:**
+- `pad_index` - Controller slot (0-3)
+- `low_freq` - Low-frequency (heavy) motor intensity, 0.0 to 1.0
+- `high_freq` - High-frequency (light) motor intensity, 0.0 to 1.0
+- `duration_ms` - Duration in milliseconds (Linux only, max 65535; ignored on Windows)
+
+**Notes:**
+- On Linux: Uses evdev force feedback (`FF_RUMBLE`). The device must be opened with write access and support `FF_RUMBLE`. Effects are uploaded via `EVIOCSFF` ioctl and played via `EV_FF` event. The effect ID is cached per pad so subsequent calls update the same slot.
+- On Windows: Uses `XInputSetState` with `XINPUT_VIBRATION`. Duration is not supported by XInput -- vibration stays on until you call `mkfw_joystick_rumble(pad, 0, 0, 0)` to stop it.
+- No-op if the controller doesn't support rumble or is not connected.
+- No-op if `MKFW_JOYSTICK` is not defined (stub macro returns void).
+
+**Example:**
+```c
+// Trigger a strong rumble for 200ms
+mkfw_joystick_rumble(0, 0.8f, 0.5f, 200);
+
+// Stop rumble (important on Windows where duration is ignored)
+mkfw_joystick_rumble(0, 0.0f, 0.0f, 0);
 ```
 
 ---

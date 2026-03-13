@@ -16,10 +16,12 @@
 
 void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
 
+// [=]===^=[ mkfw_set_audio_callback ]============================================================[=]
 static void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t)) {
 	__atomic_store(&mkfw_audio_callback, &cb, __ATOMIC_RELEASE);
 }
 
+// [=]===^=[ mkfw_audio_callback_thread ]=========================================================[=]
 static void mkfw_audio_callback_thread(int16_t *audio_buffer, size_t frames) {
 	memset(audio_buffer, 0, frames * MKFW_NUM_CHANNELS * 2);
 	void (*cb)(int16_t *, size_t);
@@ -40,7 +42,7 @@ static HANDLE mkfw_audio_event;
 static mkfw_thread mkfw_audio_thread;
 static int mkfw_audio_running;
 
-// [=]===^=[ mkfw_audio_open_device_win32 ]================================[=]
+// [=]===^=[ mkfw_audio_open_device_win32 ]=======================================================[=]
 static int32_t mkfw_audio_open_device_win32(void) {
 	WAVEFORMATEX wf;
 	REFERENCE_TIME dur_out;
@@ -89,7 +91,7 @@ fail:
 	return -1;
 }
 
-// [=]===^=[ mkfw_audio_close_device_win32 ]===============================[=]
+// [=]===^=[ mkfw_audio_close_device_win32 ]======================================================[=]
 static void mkfw_audio_close_device_win32(void) {
 	if(mkfw_audio_client_out) {
 		IAudioClient_Stop(mkfw_audio_client_out);
@@ -109,7 +111,7 @@ static void mkfw_audio_close_device_win32(void) {
 	}
 }
 
-// [=]===^=[ mkfw_audio_thread_proc ]======================================[=]
+// [=]===^=[ mkfw_audio_thread_proc ]=============================================================[=]
 static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	uint32_t buffer_size = 0;
 	uint32_t padding;
@@ -162,7 +164,7 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	return 0;
 }
 
-// [=]===^=[ mkfw_audio_initialize ]=======================================[=]
+// [=]===^=[ mkfw_audio_initialize ]==============================================================[=]
 static void mkfw_audio_initialize(void) {
 	if(FAILED(CoInitializeEx(0, COINIT_MULTITHREADED))) {
 		return;
@@ -192,7 +194,7 @@ static void mkfw_audio_initialize(void) {
 	}
 }
 
-// [=]===^=[ mkfw_audio_shutdown ]=========================================[=]
+// [=]===^=[ mkfw_audio_shutdown ]================================================================[=]
 static void mkfw_audio_shutdown(void) {
 	__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
 	if(mkfw_audio_thread) {

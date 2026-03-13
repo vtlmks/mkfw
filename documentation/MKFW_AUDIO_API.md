@@ -13,7 +13,8 @@ The MKFW Audio API provides low-latency, real-time audio output for applications
 - High-priority audio thread for glitch-free playback
 - Simple callback-based interface
 - Platform-optimized implementations (WASAPI/ALSA)
-- Automatic recovery from audio device issues
+- Automatic hotplug recovery (device disconnect/reconnect)
+- Thread-safe callback swapping via `mkfw_set_audio_callback`
 
 ## Platform Support
 
@@ -124,6 +125,33 @@ Stop playback and clean up audio resources.
 **Example:**
 ```c
 mkfw_audio_shutdown();
+```
+
+---
+
+### `mkfw_set_audio_callback`
+
+```c
+void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t))
+```
+
+Set or change the audio callback function. Thread-safe -- can be called while audio is running.
+
+**Parameters:**
+- `cb` - New callback function, or `NULL` for silence
+
+**Notes:**
+- Uses atomic store, safe to call from any thread at any time
+- The new callback takes effect on the next buffer fill
+- Preferred over directly assigning `mkfw_audio_callback` when audio is already running
+
+**Example:**
+```c
+// Switch to a different audio source at runtime
+mkfw_set_audio_callback(new_synth_callback);
+
+// Mute audio without stopping the thread
+mkfw_set_audio_callback(NULL);
 ```
 
 ---
@@ -456,21 +484,27 @@ int main(int argc, char **argv) {
 
 The audio system handles errors gracefully:
 
-- **Device open failure:** Returns silently, no audio plays
+- **Device open failure:** Audio thread stays alive and retries every 100ms until a device becomes available
 - **Buffer underrun (Linux):** Automatically recovered via `snd_pcm_recover()`
-- **Device disconnect:** Thread exits, may need restart
+- **Device disconnect (hotplug):** Audio thread detects the failure, tears down the device, and immediately begins retrying. First retry is instant (no delay), then 100ms backoff between attempts. Audio resumes automatically when a new device appears.
 - **Initialization failure:** `mkfw_audio_shutdown()` is still safe to call
+
+**Hotplug behavior:**
+- Disconnecting a USB audio interface causes ~100ms of silence per retry cycle
+- Reconnecting the same or a different device resumes playback automatically
+- The audio thread never exits -- it retries indefinitely until shutdown is called
+- On Linux: reopens ALSA device (tries PipeWire first, then default)
+- On Windows: re-enumerates WASAPI default endpoint
 
 **Checking for success:**
 ```c
 // The API doesn't return error codes
-// If audio initializes, it plays
-// If it fails, it silently disables audio
+// Audio thread always starts, even if no device is available
 
-mkfw_audio_callback = my_callback;
+mkfw_set_audio_callback(my_callback);
 mkfw_audio_initialize();
 
-// Audio is either playing or silently disabled
+// Audio plays when a device is available, retries silently when not
 ```
 
 ---
@@ -480,12 +514,13 @@ mkfw_audio_initialize();
 ### Safe Operations
 
 - Setting `mkfw_audio_callback` before `mkfw_audio_initialize()`
+- Calling `mkfw_set_audio_callback()` while audio is running (atomic swap)
 - Calling `mkfw_audio_shutdown()` from any thread
 - Reading audio state from callback (one-way communication)
 
 ### Unsafe Operations
 
-- Modifying `mkfw_audio_callback` while audio is running
+- Directly assigning `mkfw_audio_callback` while audio is running (use `mkfw_set_audio_callback()` instead)
 - Accessing audio thread internals from outside
 
 ### Inter-thread Communication

@@ -12,10 +12,12 @@
 
 void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
 
+// [=]===^=[ mkfw_set_audio_callback ]============================================================[=]
 static void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t)) {
 	__atomic_store(&mkfw_audio_callback, &cb, __ATOMIC_RELEASE);
 }
 
+// [=]===^=[ mkfw_audio_callback_thread ]=========================================================[=]
 static void mkfw_audio_callback_thread(int16_t *audio_buffer, size_t frames) {
 	memset(audio_buffer, 0, frames * MKFW_NUM_CHANNELS * 2);
 	void (*cb)(int16_t *, size_t);
@@ -36,6 +38,7 @@ static int16_t *mkfw_audio_buffer;
 static snd_pcm_uframes_t mkfw_frames_per_period;
 static int mkfw_audio_running;
 
+// [=]===^=[ mkfw_set_hw_params ]=================================================================[=]
 static int32_t mkfw_set_hw_params(snd_pcm_t *handle) {
 	snd_pcm_hw_params_t *params;
 	snd_pcm_uframes_t period = MKFW_PREFERRED_FRAMES_PER_BUFFER;
@@ -75,7 +78,7 @@ static int32_t mkfw_set_hw_params(snd_pcm_t *handle) {
 	return 0;
 }
 
-// [=]===^=[ mkfw_audio_open_device ]======================================[=]
+// [=]===^=[ mkfw_audio_open_device ]=============================================================[=]
 static int32_t mkfw_audio_open_device(void) {
 	if(snd_pcm_open(&mkfw_pcm, "plug:pipewire", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
 		if(snd_pcm_open(&mkfw_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
@@ -98,7 +101,7 @@ static int32_t mkfw_audio_open_device(void) {
 	return 0;
 }
 
-// [=]===^=[ mkfw_audio_close_device ]=====================================[=]
+// [=]===^=[ mkfw_audio_close_device ]============================================================[=]
 static void mkfw_audio_close_device(void) {
 	if(mkfw_pcm) {
 		snd_pcm_drop(mkfw_pcm);
@@ -107,7 +110,7 @@ static void mkfw_audio_close_device(void) {
 	}
 }
 
-// [=]===^=[ mkfw_audio_thread_func ]======================================[=]
+// [=]===^=[ mkfw_audio_thread_func ]=============================================================[=]
 static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
 	while(__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
 		if(!mkfw_pcm) {
@@ -144,14 +147,14 @@ static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
 	return 0;
 }
 
-// [=]===^=[ mkfw_audio_initialize ]=======================================[=]
+// [=]===^=[ mkfw_audio_initialize ]==============================================================[=]
 static void mkfw_audio_initialize(void) {
 	mkfw_audio_open_device();
 	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
 	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_func, 0);
 }
 
-// [=]===^=[ mkfw_audio_shutdown ]=========================================[=]
+// [=]===^=[ mkfw_audio_shutdown ]================================================================[=]
 static void mkfw_audio_shutdown(void) {
 	__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
 	if(mkfw_audio_thread) {

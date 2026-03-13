@@ -16,13 +16,13 @@
 
 static volatile sig_atomic_t running = 1;
 
-// [=]===^=[ on_signal ]====================================================[=]
+// [=]===^=[ on_signal ]=========================================================================[=]
 static void on_signal(int sig) {
 	(void)sig;
 	running = 0;
 }
 
-// [=]===^=[ on_gamepad_connect ]============================================[=]
+// [=]===^=[ on_gamepad_connect ]=================================================================[=]
 static void on_gamepad_connect(int pad, int connected) {
 	if(connected) {
 		printf("Pad %d connected: %s (vendor:%04x product:%04x)\n",
@@ -34,7 +34,7 @@ static void on_gamepad_connect(int pad, int connected) {
 	}
 }
 
-// [=]===^=[ sleep_ms ]=====================================================[=]
+// [=]===^=[ sleep_ms ]==========================================================================[=]
 static void sleep_ms(uint32_t ms) {
 	struct timespec ts;
 	ts.tv_sec = ms / 1000;
@@ -42,7 +42,7 @@ static void sleep_ms(uint32_t ms) {
 	nanosleep(&ts, NULL);
 }
 
-// [=]===^=[ main ]=========================================================[=]
+// [=]===^=[ main ]==============================================================================[=]
 int main(void) {
 	signal(SIGINT, on_signal);
 	signal(SIGTERM, on_signal);

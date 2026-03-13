@@ -8,6 +8,7 @@ static struct mkfw_joystick_pad mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS];
 static mkfw_joystick_callback_t mkfw_joystick_cb;
 static uint8_t mkfw_joystick_initialized;
 
+// [=]===^=[ mkfw_joystick_apply_deadzone ]=======================================================[=]
 static float mkfw_joystick_apply_deadzone(int16_t value, int16_t deadzone) {
 	if(value > deadzone) {
 		return (float)(value - deadzone) / (float)(32767 - deadzone);
@@ -17,6 +18,7 @@ static float mkfw_joystick_apply_deadzone(int16_t value, int16_t deadzone) {
 	return 0.0f;
 }
 
+// [=]===^=[ mkfw_joystick_normalize_trigger ]====================================================[=]
 static float mkfw_joystick_normalize_trigger(uint8_t value, uint8_t threshold) {
 	if(value > threshold) {
 		return (float)(value - threshold) / (float)(255 - threshold);
@@ -24,18 +26,21 @@ static float mkfw_joystick_normalize_trigger(uint8_t value, uint8_t threshold) {
 	return 0.0f;
 }
 
+// [=]===^=[ mkfw_joystick_init ]=================================================================[=]
 static void mkfw_joystick_init(void) {
 	memset(mkfw_joystick_pads, 0, sizeof(mkfw_joystick_pads));
 	mkfw_joystick_cb = 0;
 	mkfw_joystick_initialized = 1;
 }
 
+// [=]===^=[ mkfw_joystick_shutdown ]=============================================================[=]
 static void mkfw_joystick_shutdown(void) {
 	memset(mkfw_joystick_pads, 0, sizeof(mkfw_joystick_pads));
 	mkfw_joystick_cb = 0;
 	mkfw_joystick_initialized = 0;
 }
 
+// [=]===^=[ mkfw_joystick_update ]===============================================================[=]
 static void mkfw_joystick_update(void) {
 	if(!mkfw_joystick_initialized) return;
 
@@ -110,4 +115,13 @@ static void mkfw_joystick_update(void) {
 			pad->name[0] = 0;
 		}
 	}
+}
+
+// [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
+static void mkfw_joystick_rumble_platform(int pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+	(void)duration_ms;
+	XINPUT_VIBRATION vibration;
+	vibration.wLeftMotorSpeed = (WORD)(low_freq * 65535.0f);
+	vibration.wRightMotorSpeed = (WORD)(high_freq * 65535.0f);
+	XInputSetState((DWORD)pad_index, &vibration);
 }

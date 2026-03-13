@@ -33,18 +33,21 @@ typedef NTSTATUS (__stdcall *mkfw_NtDelayExecution_t)(BOOLEAN Alertable, PLARGE_
 static mkfw_NtDelayExecution_t mkfw_pNtDelayExecution;
 static uint64_t mkfw_cached_qpc_frequency = 0;
 
+// [=]===^=[ mkfw_qpc_now ]=======================================================================[=]
 static inline uint64_t mkfw_qpc_now(void) {
 	LARGE_INTEGER qpc;
 	QueryPerformanceCounter(&qpc);
 	return (uint64_t)qpc.QuadPart;
 }
 
+// [=]===^=[ mkfw_qpc_to_ns ]=====================================================================[=]
 static inline uint64_t mkfw_qpc_to_ns(uint64_t qpc_ticks, uint64_t freq) {
 	uint64_t s = qpc_ticks / freq;
 	uint64_t r = qpc_ticks % freq;
 	return s * 1000000000ULL + (r * 1000000000ULL + (freq >> 1)) / freq;
 }
 
+// [=]===^=[ mkfw_try_set_nt_timer_resolution ]===================================================[=]
 static void mkfw_try_set_nt_timer_resolution(void) {
 	typedef LONG NTSTATUS;
 	typedef NTSTATUS (__stdcall *mkfw_NtSetTimerResolution_t)(ULONG, BOOLEAN, ULONG *);
@@ -56,6 +59,7 @@ static void mkfw_try_set_nt_timer_resolution(void) {
 	}
 }
 
+// [=]===^=[ mkfw_set_realtime_priority ]=========================================================[=]
 static void mkfw_set_realtime_priority(HANDLE *mmcss_handle) {
 	DWORD task_index = 0;
 	*mmcss_handle = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index);
@@ -65,6 +69,7 @@ static void mkfw_set_realtime_priority(HANDLE *mmcss_handle) {
 	}
 }
 
+// [=]===^=[ mkfw_timer_sleep ]===================================================================[=]
 static void mkfw_timer_sleep(uint64_t delay_100ns_units) {
 	LONGLONG delay_100ns = -(LONGLONG)delay_100ns_units;
 	if(delay_100ns < 0) {
@@ -74,6 +79,7 @@ static void mkfw_timer_sleep(uint64_t delay_100ns_units) {
 	}
 }
 
+// [=]===^=[ mkfw_timer_thread_func ]=============================================================[=]
 static DWORD WINAPI mkfw_timer_thread_func(LPVOID arg) {
 	struct mkfw_timer_handle *t = (struct mkfw_timer_handle *)arg;
 	SetThreadAffinityMask(GetCurrentThread(), 1);
@@ -132,6 +138,7 @@ static DWORD WINAPI mkfw_timer_thread_func(LPVOID arg) {
 	return 0;
 }
 
+// [=]===^=[ mkfw_timer_init ]====================================================================[=]
 static void mkfw_timer_init(void) {
 	if(!mkfw_pNtDelayExecution) {
 		mkfw_pNtDelayExecution = (mkfw_NtDelayExecution_t)(uintptr_t)GetProcAddress( GetModuleHandleW(L"ntdll.dll"), "NtDelayExecution" );
@@ -145,11 +152,13 @@ static void mkfw_timer_init(void) {
 	mkfw_try_set_nt_timer_resolution();
 }
 
+// [=]===^=[ mkfw_timer_shutdown ]================================================================[=]
 static void mkfw_timer_shutdown(void) {
 	timeEndPeriod(1);
 }
 
 
+// [=]===^=[ mkfw_timer_new ]=====================================================================[=]
 static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 	struct mkfw_timer_handle *t = calloc(1, sizeof(struct mkfw_timer_handle));
 
@@ -172,18 +181,19 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 	return t;
 }
 
+// [=]===^=[ mkfw_timer_wait ]====================================================================[=]
 static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 	WaitForSingleObject(t->event, INFINITE);
 	return 1;
 }
 
-// [=]===^=[ mkfw_timer_set_interval ]=====================================[=]
+// [=]===^=[ mkfw_timer_set_interval ]============================================================[=]
 static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
 	t->interval_ns = interval_ns;
 	t->interval_qpc = (interval_ns * t->qpc_frequency + 500000000ULL) / 1000000000ULL;
 }
 
-// [=]===^=[ mkfw_timer_set_spin ]=========================================[=]
+// [=]===^=[ mkfw_timer_set_spin ]================================================================[=]
 static void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
 	__atomic_store_n(&t->spin, enabled ? 1 : 0, __ATOMIC_RELEASE);
 }

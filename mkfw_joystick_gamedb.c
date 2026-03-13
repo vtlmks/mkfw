@@ -29,7 +29,7 @@ struct mkfw_gamedb_mapping {
 
 static struct mkfw_gamedb_mapping mkfw_gamedb_maps[MKFW_JOYSTICK_MAX_PADS];
 
-/* Parse a number from string, advance pointer */
+// [=]===^=[ mkfw_gamedb_parse_int ]==============================================================[=]
 static int mkfw_gamedb_parse_int(const char **p) {
 	int val = 0;
 	while(**p >= '0' && **p <= '9') {
@@ -39,7 +39,7 @@ static int mkfw_gamedb_parse_int(const char **p) {
 	return val;
 }
 
-/* Parse a hex digit */
+// [=]===^=[ mkfw_gamedb_hex_digit ]==============================================================[=]
 static int mkfw_gamedb_hex_digit(char c) {
 	if(c >= '0' && c <= '9') return c - '0';
 	if(c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -47,7 +47,7 @@ static int mkfw_gamedb_hex_digit(char c) {
 	return -1;
 }
 
-/* Parse 16-bit value from GUID at byte offset (little-endian in hex) */
+// [=]===^=[ mkfw_gamedb_guid_u16 ]===============================================================[=]
 static uint16_t mkfw_gamedb_guid_u16(const char *guid, int byte_offset) {
 	int pos = byte_offset * 2;
 	int lo_hi = mkfw_gamedb_hex_digit(guid[pos]);
@@ -60,7 +60,7 @@ static uint16_t mkfw_gamedb_guid_u16(const char *guid, int byte_offset) {
 	return (hi << 8) | lo;
 }
 
-/* Parse a source binding like "b0", "a2", "h0.4", "+a3", "-a3" */
+// [=]===^=[ mkfw_gamedb_parse_source ]===========================================================[=]
 static struct mkfw_gamedb_bind mkfw_gamedb_parse_source(const char *src) {
 	struct mkfw_gamedb_bind bind = {0};
 	const char *p = src;
@@ -94,8 +94,7 @@ static struct mkfw_gamedb_bind mkfw_gamedb_parse_source(const char *src) {
 	return bind;
 }
 
-/* Map target name to gamepad button/axis enum. Returns -1 if unknown.
-   Sets *is_axis = 1 if this is an axis target. */
+// [=]===^=[ mkfw_gamedb_target_id ]==============================================================[=]
 static int mkfw_gamedb_target_id(const char *name, int len, int *is_axis) {
 	*is_axis = 0;
 
@@ -127,7 +126,7 @@ static int mkfw_gamedb_target_id(const char *name, int len, int *is_axis) {
 	return -1;
 }
 
-/* Search the database for a matching controller and populate the mapping */
+// [=]===^=[ mkfw_gamedb_lookup ]=================================================================[=]
 static void mkfw_gamedb_lookup(int pad_index) {
 	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
 	struct mkfw_gamedb_mapping *map = &mkfw_gamedb_maps[pad_index];
@@ -261,7 +260,7 @@ next_line:
 	}
 }
 
-/* Ensure mapping is populated for a connected pad (lazy lookup) */
+// [=]===^=[ mkfw_gamedb_ensure_mapping ]=========================================================[=]
 static void mkfw_gamedb_ensure_mapping(int pad_index) {
 	struct mkfw_gamedb_mapping *map = &mkfw_gamedb_maps[pad_index];
 	if(!map->valid && mkfw_joystick_pads[pad_index].connected) {
@@ -273,7 +272,7 @@ static void mkfw_gamedb_ensure_mapping(int pad_index) {
 	}
 }
 
-/* Read a button value through the mapping */
+// [=]===^=[ mkfw_gamepad_button ]================================================================[=]
 static int mkfw_gamepad_button(int pad_index, int gamepad_button) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
 	if(gamepad_button < 0 || gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) return 0;
@@ -311,7 +310,7 @@ static int mkfw_gamepad_button(int pad_index, int gamepad_button) {
 	return 0;
 }
 
-/* Read a button press edge through the mapping */
+// [=]===^=[ mkfw_gamepad_button_pressed ]========================================================[=]
 static int mkfw_gamepad_button_pressed(int pad_index, int gamepad_button) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
 	if(gamepad_button < 0 || gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) return 0;
@@ -331,7 +330,7 @@ static int mkfw_gamepad_button_pressed(int pad_index, int gamepad_button) {
 	return 0;
 }
 
-/* Read an axis value through the mapping */
+// [=]===^=[ mkfw_gamepad_axis ]==================================================================[=]
 static float mkfw_gamepad_axis(int pad_index, int gamepad_axis) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0.0f;
 	if(gamepad_axis < 0 || gamepad_axis >= MKFW_GAMEPAD_AXIS_LAST) return 0.0f;

@@ -81,6 +81,23 @@ static inline void mkfw_set_gl_version(int major, int minor) {
 	mkfw_gl_minor = minor;
 }
 
+/* Per-pixel transparency (call before mkfw_init) */
+static int mkfw_transparent = 0;
+static inline void mkfw_set_transparent(int enable) { mkfw_transparent = enable; }
+
+/* Monitor information */
+#define MKFW_MAX_MONITORS 16
+
+struct mkfw_monitor {
+	char name[128];
+	int32_t x;
+	int32_t y;
+	int32_t width;
+	int32_t height;
+	int32_t refresh_rate;
+	uint8_t primary;
+};
+
 /* Suppress unused-function warnings for API functions the user may not call */
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -230,11 +247,16 @@ static inline int mkfw_joystick_axis_count(int pad_index) {
 static inline void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback) {
 	mkfw_joystick_cb = callback;
 }
+static inline void mkfw_joystick_rumble(int pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return;
+	mkfw_joystick_rumble_platform(pad_index, low_freq, high_freq, duration_ms);
+}
 #else
 /* Stub macros when joystick is not enabled */
 #define mkfw_joystick_init() ((void)0)
 #define mkfw_joystick_shutdown() ((void)0)
 #define mkfw_joystick_update() ((void)0)
+#define mkfw_joystick_rumble(idx, low, high, ms) ((void)0)
 #define mkfw_joystick_connected(idx) (0)
 #define mkfw_joystick_name(idx) ("")
 #define mkfw_joystick_button(idx, btn) (0)

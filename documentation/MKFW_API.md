@@ -16,6 +16,11 @@ MKFW is a minimal, single-header windowing and input library for OpenGL applicat
 - Mouse cursor shape control (arrow, text beam, resize handles, hand, etc.)
 - Fullscreen toggling
 - Window aspect ratio enforcement
+- Window position get/set
+- Window minimize, maximize, and restore
+- Window icon (RGBA pixel data)
+- Monitor enumeration (name, resolution, position, refresh rate, primary flag)
+- Per-pixel transparency (composited windows with alpha channel)
 - VSync control
 - Event callbacks (key, char, scroll, mouse, focus, resize, file drop)
 - Clipboard access (get/set UTF-8 text)
@@ -108,6 +113,41 @@ if (mkfw_query_max_gl_version(&max_major, &max_minor)) {
 }
 
 struct mkfw_state *window = mkfw_init(1280, 720);
+```
+
+---
+
+## Per-Pixel Transparency
+
+### `mkfw_set_transparent`
+
+```c
+void mkfw_set_transparent(int enable)
+```
+
+Enable per-pixel transparency for the window. Call before `mkfw_init()`.
+
+**Parameters:**
+- `enable` - Non-zero to enable transparency
+
+**Notes:**
+- Requires a compositor (X11: picom/kwin/mutter, Windows: DWM)
+- On Linux: Selects an ARGB visual with alpha channel support
+- On Windows: Uses `DwmExtendFrameIntoClientArea` to enable glass (loaded dynamically, no dwmapi.h dependency)
+- Clear with `glClearColor(0, 0, 0, 0)` and use `GL_BLEND` for transparent areas
+- Module-level setting -- applies to all subsequent `mkfw_init()` calls
+
+**Example:**
+```c
+mkfw_set_transparent(1);
+struct mkfw_state *window = mkfw_init(800, 600);
+
+// In render loop:
+glEnable(GL_BLEND);
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+glClearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Fully transparent background
+glClear(GL_COLOR_BUFFER_BIT);
+// Draw with alpha < 1.0 for semi-transparent areas
 ```
 
 ---
@@ -268,6 +308,99 @@ mkfw_set_window_resizable(window, 1);
 
 ---
 
+### `mkfw_set_window_icon`
+
+```c
+void mkfw_set_window_icon(struct mkfw_state *state, int32_t width, int32_t height, const uint8_t *rgba)
+```
+
+Set the window icon from RGBA pixel data.
+
+**Parameters:**
+- `state` - Window state pointer
+- `width` - Icon width in pixels
+- `height` - Icon height in pixels
+- `rgba` - Pointer to `width * height * 4` bytes of RGBA pixel data (8 bits per channel)
+
+**Notes:**
+- On Linux: Sets `_NET_WM_ICON` property (ARGB format, converted internally)
+- On Windows: Creates an icon via `CreateIconIndirect` from a DIB section (RGBA to BGRA conversion)
+- Common icon sizes: 32x32, 48x48, 64x64
+- Pass `NULL` for `rgba` to reset to default icon
+
+**Example:**
+```c
+// Load icon pixels from your image loader
+uint8_t *icon_rgba = load_image("icon.png", &w, &h);
+mkfw_set_window_icon(window, w, h, icon_rgba);
+```
+
+---
+
+### `mkfw_set_window_position`
+
+```c
+void mkfw_set_window_position(struct mkfw_state *state, int32_t x, int32_t y)
+```
+
+Set the window position on screen.
+
+**Parameters:**
+- `state` - Window state pointer
+- `x` - X position in pixels
+- `y` - Y position in pixels
+
+---
+
+### `mkfw_get_window_position`
+
+```c
+void mkfw_get_window_position(struct mkfw_state *state, int32_t *x, int32_t *y)
+```
+
+Get the current window position.
+
+**Parameters:**
+- `state` - Window state pointer
+- `x` - Pointer to receive X position
+- `y` - Pointer to receive Y position
+
+---
+
+### `mkfw_maximize_window`
+
+```c
+void mkfw_maximize_window(struct mkfw_state *state)
+```
+
+Maximize the window.
+
+**Notes:**
+- On Linux: Sends `_NET_WM_STATE_MAXIMIZED_HORZ` and `_NET_WM_STATE_MAXIMIZED_VERT` via client message
+- On Windows: Calls `ShowWindow(hwnd, SW_MAXIMIZE)`
+
+---
+
+### `mkfw_minimize_window`
+
+```c
+void mkfw_minimize_window(struct mkfw_state *state)
+```
+
+Minimize (iconify) the window.
+
+---
+
+### `mkfw_restore_window`
+
+```c
+void mkfw_restore_window(struct mkfw_state *state)
+```
+
+Restore the window from maximized or minimized state.
+
+---
+
 ### `mkfw_get_framebuffer_size`
 
 ```c
@@ -305,6 +438,50 @@ Toggle fullscreen mode.
 - Uses `_NET_WM_STATE_FULLSCREEN` on Linux
 - Saves and restores window position and size
 - Hides cursor when entering fullscreen
+
+---
+
+### `mkfw_get_monitors`
+
+```c
+int32_t mkfw_get_monitors(struct mkfw_state *state, struct mkfw_monitor *out, int32_t max)
+```
+
+Enumerate connected monitors.
+
+**Parameters:**
+- `state` - Window state pointer
+- `out` - Array of `struct mkfw_monitor` to fill
+- `max` - Maximum number of monitors to return (use `MKFW_MAX_MONITORS` for the full set)
+
+**Returns:**
+- Number of monitors found
+
+**Monitor struct fields:**
+- `name[128]` - Monitor name/identifier
+- `x`, `y` - Position in virtual screen coordinates
+- `width`, `height` - Resolution in pixels
+- `refresh_rate` - Refresh rate in Hz
+- `primary` - Non-zero if this is the primary monitor
+
+**Notes:**
+- On Linux: Uses Xrandr to query connected outputs with active CRTCs
+- On Windows: Uses `EnumDisplayMonitors` and `EnumDisplaySettings`
+- Returns only currently active monitors (not disconnected outputs)
+
+**Example:**
+```c
+struct mkfw_monitor monitors[MKFW_MAX_MONITORS];
+int32_t count = mkfw_get_monitors(window, monitors, MKFW_MAX_MONITORS);
+
+for (int32_t i = 0; i < count; i++) {
+    printf("%s: %dx%d @ %dHz%s\n",
+        monitors[i].name,
+        monitors[i].width, monitors[i].height,
+        monitors[i].refresh_rate,
+        monitors[i].primary ? " (primary)" : "");
+}
+```
 
 ---
 
@@ -1266,14 +1443,15 @@ mkfw_cleanup(window);
 
 ### Linux (X11)
 
-- Requires X11, GLX, and XInput2 development libraries
+- Requires X11, GLX, XInput2, and Xrandr development libraries
 - Uses XInput2 for raw mouse motion
+- Uses Xrandr for monitor enumeration
 - Creates OpenGL Compatibility Profile context via `glXCreateContextAttribsARB`
 - Handles `_NET_WM_STATE` for fullscreen
 
 **Linking:**
 ```bash
-gcc -o app main.c -lX11 -lGL -lXi -ldl -lpthread
+gcc -o app main.c -lX11 -lGL -lXi -lXrandr -ldl -lpthread
 ```
 
 ### Windows
@@ -1318,10 +1496,8 @@ MKFW is simpler than GLFW:
 
 ### Removed Features
 
-- Monitor enumeration and video mode queries
+- Video mode queries (resolution/refresh rate switching)
 - Window hints system
-- Window positioning API
-- Iconification/restoration
 
 ### Simplified Features
 
@@ -1338,6 +1514,7 @@ MKFW is simpler than GLFW:
 - **Aspect ratio enforcement** - Integrated with minimum size
 - **Character input callbacks** - Via `mkfw_set_char_callback`
 - **Thread context management helpers** - Simplified context transfer
+- **Per-pixel transparency** - Composited windows with alpha channel
 - **NULL return on init failure** - Instead of calling exit()
 
 MKFW is ideal for single or multi-window games and tools that don't need GLFW's extensive feature set.

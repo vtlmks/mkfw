@@ -63,7 +63,7 @@ struct win32_mkfw_state {
 	uint8_t mouse_tracked;
 };
 
-// Map Win32 VK_ codes to MKS_KEY_
+// [=]===^=[ map_vk_to_scancode ]=================================================================[=]
 static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPARAM lParam, int key_down) {
 	uint32_t keycode = 0;
 
@@ -208,6 +208,7 @@ static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPAR
 	return keycode;
 }
 
+// [=]===^=[ Win32WindowProc ]====================================================================[=]
 static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	struct mkfw_state *state = (struct mkfw_state *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
@@ -553,15 +554,17 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 }
 
 
+// [=]===^=[ mkfw_detach_context ]================================================================[=]
 static void mkfw_detach_context(struct mkfw_state *state) {
 	wglMakeCurrent(0, 0);
 }
 
+// [=]===^=[ mkfw_attach_context ]================================================================[=]
 static void mkfw_attach_context(struct mkfw_state *state) {
 	wglMakeCurrent(PLATFORM(state)->hdc, PLATFORM(state)->hglrc);
 }
 
-/* Register for raw input if desired */
+// [=]===^=[ mkfw_enable_raw_mouse ]==============================================================[=]
 static void mkfw_enable_raw_mouse(struct mkfw_state *state, int32_t enable) {
 	RAWINPUTDEVICE rid;
 	rid.usUsagePage = 0x01;	// Generic desktop
@@ -577,14 +580,13 @@ static void mkfw_setup_signal_handlers() {
 	/* No-op on Windows, typically. */
 }
 
+// [=]===^=[ mkfw_show_window ]===================================================================[=]
 static void mkfw_show_window(struct mkfw_state *state) {
 	ShowWindow(PLATFORM(state)->hwnd, SW_SHOW);
 	UpdateWindow(PLATFORM(state)->hwnd);
 }
 
-// Query the maximum OpenGL version supported by the driver.
-// Returns 1 on success (major/minor filled), 0 on failure.
-// This creates a temporary window and context, then cleans up.
+// [=]===^=[ mkfw_query_max_gl_version ]==========================================================[=]
 static int mkfw_query_max_gl_version(int *major, int *minor) {
 	WNDCLASS wc = {0};
 	wc.lpfnWndProc = DefWindowProc;
@@ -630,6 +632,7 @@ static int mkfw_query_max_gl_version(int *major, int *minor) {
 	return result;
 }
 
+// [=]===^=[ mkfw_init ]==========================================================================[=]
 static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	struct mkfw_state *state = (struct mkfw_state *)calloc(1, sizeof(struct mkfw_state));
 	if(!state) {
@@ -641,6 +644,8 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 		free(state);
 		return 0;
 	}
+
+	SetProcessDPIAware();
 
 	PLATFORM(state)->mouse_sensitivity = 1.0;
 	PLATFORM(state)->hinstance = GetModuleHandle(0);
@@ -736,11 +741,27 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	PLATFORM(state)->cursors[MKFW_CURSOR_HAND]          = LoadCursor(0, IDC_HAND);
 	PLATFORM(state)->cursors[MKFW_CURSOR_NOT_ALLOWED]   = LoadCursor(0, IDC_NO);
 
+	if(mkfw_transparent) {
+		// Define locally to avoid dwmapi.h dependency
+		typedef struct { int left; int right; int top; int bottom; } MKFW_DWM_MARGINS;
+		typedef HRESULT (WINAPI *PFN_DwmExtendFrameIntoClientArea)(HWND, const MKFW_DWM_MARGINS *);
+		HMODULE dwm = LoadLibraryA("dwmapi.dll");
+		if(dwm) {
+			PFN_DwmExtendFrameIntoClientArea pExtend = (PFN_DwmExtendFrameIntoClientArea)(void *)GetProcAddress(dwm, "DwmExtendFrameIntoClientArea");
+			if(pExtend) {
+				MKFW_DWM_MARGINS m = {-1, -1, -1, -1};
+				pExtend(PLATFORM(state)->hwnd, &m);
+			}
+			FreeLibrary(dwm);
+		}
+	}
+
 	state->has_focus = 1;
 
 	return state;
 }
 
+// [=]===^=[ mkfw_fullscreen ]====================================================================[=]
 static void mkfw_fullscreen(struct mkfw_state *state, int32_t enable) {
 	PLATFORM(state)->window_placement.length = sizeof(PLATFORM(state)->window_placement);
 	DWORD dwStyle = GetWindowLong(PLATFORM(state)->hwnd, GWL_STYLE);
@@ -766,6 +787,7 @@ static void mkfw_fullscreen(struct mkfw_state *state, int32_t enable) {
 	}
 }
 
+// [=]===^=[ mkfw_pump_messages ]=================================================================[=]
 static void mkfw_pump_messages(struct mkfw_state *state) {
 	MSG msg;
 	while(PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
@@ -778,6 +800,7 @@ static void mkfw_pump_messages(struct mkfw_state *state) {
 	}
 }
 
+// [=]===^=[ mkfw_constrain_mouse ]===============================================================[=]
 static void mkfw_constrain_mouse(struct mkfw_state *state, int32_t constrain) {
 	PLATFORM(state)->mouse_constrained = constrain;
 	if(constrain) {
@@ -797,6 +820,7 @@ static void mkfw_constrain_mouse(struct mkfw_state *state, int32_t constrain) {
 	}
 }
 
+// [=]===^=[ mkfw_set_mouse_cursor ]==============================================================[=]
 static void mkfw_set_mouse_cursor(struct mkfw_state *state, int32_t visible) {
 	if(visible) {
 		PLATFORM(state)->cursor_hidden = 0;
@@ -809,6 +833,7 @@ static void mkfw_set_mouse_cursor(struct mkfw_state *state, int32_t visible) {
 	}
 }
 
+// [=]===^=[ mkfw_set_swapinterval ]==============================================================[=]
 static void mkfw_set_swapinterval(struct mkfw_state *state, uint32_t interval) {
 	typedef BOOL (WINAPI *PFNWGLSWAPINTERVALEXT)(int);
 	PFNWGLSWAPINTERVALEXT wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXT)(void*)wglGetProcAddress("wglSwapIntervalEXT");
@@ -818,18 +843,22 @@ static void mkfw_set_swapinterval(struct mkfw_state *state, uint32_t interval) {
 	}
 }
 
+// [=]===^=[ mkfw_should_close ]==================================================================[=]
 static int32_t mkfw_should_close(struct mkfw_state *state) {
 	return PLATFORM(state)->should_close;
 }
 
+// [=]===^=[ mkfw_set_should_close ]==============================================================[=]
 static void mkfw_set_should_close(struct mkfw_state *state, int32_t value) {
 	PLATFORM(state)->should_close = value;
 }
 
+// [=]===^=[ mkfw_swap_buffers ]==================================================================[=]
 static void mkfw_swap_buffers(struct mkfw_state *state) {
 	SwapBuffers(PLATFORM(state)->hdc);
 }
 
+// [=]===^=[ mkfw_set_window_min_size_and_aspect ]================================================[=]
 static void mkfw_set_window_min_size_and_aspect(struct mkfw_state *state, int32_t min_width, int32_t min_height, float aspect_width, float aspect_height) {
 	PLATFORM(state)->aspect_ratio_enabled = 1;
 
@@ -870,6 +899,7 @@ static void mkfw_set_window_min_size_and_aspect(struct mkfw_state *state, int32_
 	SetWindowPos(PLATFORM(state)->hwnd, 0, x, y, new_window_width, new_window_height, SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
+// [=]===^=[ mkfw_get_framebuffer_size ]==========================================================[=]
 static void mkfw_get_framebuffer_size(struct mkfw_state *state, int32_t *width, int32_t *height) {
 	RECT rect;
 	GetClientRect(PLATFORM(state)->hwnd, &rect);
@@ -877,10 +907,12 @@ static void mkfw_get_framebuffer_size(struct mkfw_state *state, int32_t *width, 
 	*height = rect.bottom - rect.top;
 }
 
+// [=]===^=[ mkfw_set_window_title ]==============================================================[=]
 static void mkfw_set_window_title(struct mkfw_state *state, const char *title) {
 	SetWindowTextA(PLATFORM(state)->hwnd, title);
 }
 
+// [=]===^=[ mkfw_set_window_resizable ]==========================================================[=]
 static void mkfw_set_window_resizable(struct mkfw_state *state, int32_t resizable) {
 	DWORD style = GetWindowLong(PLATFORM(state)->hwnd, GWL_STYLE);
 	DWORD exStyle = GetWindowLong(PLATFORM(state)->hwnd, GWL_EXSTYLE);
@@ -911,6 +943,122 @@ static void mkfw_set_window_resizable(struct mkfw_state *state, int32_t resizabl
 	SetWindowPos(PLATFORM(state)->hwnd, 0, window_rect.left, window_rect.top, new_width, new_height, SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOOWNERZORDER);
 }
 
+// [=]===^=[ mkfw_set_window_icon ]=============================================================[=]
+static void mkfw_set_window_icon(struct mkfw_state *state, int32_t width, int32_t height, const uint8_t *rgba) {
+	// Create a DIB section with BGRA pixel data
+	BITMAPV5HEADER bi = {0};
+	bi.bV5Size = sizeof(bi);
+	bi.bV5Width = width;
+	bi.bV5Height = -height; // top-down
+	bi.bV5Planes = 1;
+	bi.bV5BitCount = 32;
+	bi.bV5Compression = BI_BITFIELDS;
+	bi.bV5RedMask   = 0x00FF0000;
+	bi.bV5GreenMask = 0x0000FF00;
+	bi.bV5BlueMask  = 0x000000FF;
+	bi.bV5AlphaMask = 0xFF000000;
+
+	HDC dc = GetDC(0);
+	uint8_t *target = 0;
+	HBITMAP color = CreateDIBSection(dc, (BITMAPINFO *)&bi, DIB_RGB_COLORS, (void **)&target, 0, 0);
+	ReleaseDC(0, dc);
+	if(!color) return;
+
+	// Convert RGBA to BGRA
+	int32_t pixel_count = width * height;
+	for(int32_t i = 0; i < pixel_count; ++i) {
+		target[i * 4 + 0] = rgba[i * 4 + 2]; // B
+		target[i * 4 + 1] = rgba[i * 4 + 1]; // G
+		target[i * 4 + 2] = rgba[i * 4 + 0]; // R
+		target[i * 4 + 3] = rgba[i * 4 + 3]; // A
+	}
+
+	HBITMAP mask = CreateBitmap(width, height, 1, 1, 0);
+
+	ICONINFO ii = {0};
+	ii.fIcon = TRUE;
+	ii.hbmMask = mask;
+	ii.hbmColor = color;
+
+	HICON icon = CreateIconIndirect(&ii);
+	DeleteObject(color);
+	DeleteObject(mask);
+
+	if(icon) {
+		SendMessage(PLATFORM(state)->hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
+		SendMessage(PLATFORM(state)->hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
+	}
+}
+
+struct mkfw_monitor_enum_data {
+	struct mkfw_monitor *out;
+	int32_t max;
+	int32_t count;
+};
+
+// [=]===^=[ mkfw_monitor_enum_proc ]===========================================================[=]
+static BOOL CALLBACK mkfw_monitor_enum_proc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
+	struct mkfw_monitor_enum_data *d = (struct mkfw_monitor_enum_data *)dwData;
+	if(d->count >= d->max) return FALSE;
+
+	MONITORINFOEXA mi = {0};
+	mi.cbSize = sizeof(mi);
+	GetMonitorInfoA(hMonitor, (MONITORINFO *)&mi);
+
+	DEVMODEA dm = {0};
+	dm.dmSize = sizeof(dm);
+	EnumDisplaySettingsA(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm);
+
+	struct mkfw_monitor *m = &d->out[d->count++];
+	memset(m, 0, sizeof(*m));
+	snprintf(m->name, sizeof(m->name), "%s", mi.szDevice);
+	m->x = mi.rcMonitor.left;
+	m->y = mi.rcMonitor.top;
+	m->width = mi.rcMonitor.right - mi.rcMonitor.left;
+	m->height = mi.rcMonitor.bottom - mi.rcMonitor.top;
+	m->refresh_rate = dm.dmDisplayFrequency;
+	m->primary = (mi.dwFlags & MONITORINFOF_PRIMARY) ? 1 : 0;
+
+	return TRUE;
+}
+
+// [=]===^=[ mkfw_get_monitors ]================================================================[=]
+static int32_t mkfw_get_monitors(struct mkfw_state *state, struct mkfw_monitor *out, int32_t max) {
+	(void)state;
+	struct mkfw_monitor_enum_data data = {out, max, 0};
+	EnumDisplayMonitors(0, 0, mkfw_monitor_enum_proc, (LPARAM)&data);
+	return data.count;
+}
+
+// [=]===^=[ mkfw_set_window_position ]=========================================================[=]
+static void mkfw_set_window_position(struct mkfw_state *state, int32_t x, int32_t y) {
+	SetWindowPos(PLATFORM(state)->hwnd, 0, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
+}
+
+// [=]===^=[ mkfw_get_window_position ]=========================================================[=]
+static void mkfw_get_window_position(struct mkfw_state *state, int32_t *x, int32_t *y) {
+	RECT rect;
+	GetWindowRect(PLATFORM(state)->hwnd, &rect);
+	*x = rect.left;
+	*y = rect.top;
+}
+
+// [=]===^=[ mkfw_maximize_window ]=============================================================[=]
+static void mkfw_maximize_window(struct mkfw_state *state) {
+	ShowWindow(PLATFORM(state)->hwnd, SW_MAXIMIZE);
+}
+
+// [=]===^=[ mkfw_minimize_window ]=============================================================[=]
+static void mkfw_minimize_window(struct mkfw_state *state) {
+	ShowWindow(PLATFORM(state)->hwnd, SW_MINIMIZE);
+}
+
+// [=]===^=[ mkfw_restore_window ]==============================================================[=]
+static void mkfw_restore_window(struct mkfw_state *state) {
+	ShowWindow(PLATFORM(state)->hwnd, SW_RESTORE);
+}
+
+// [=]===^=[ mkfw_cleanup ]=======================================================================[=]
 static void mkfw_cleanup(struct mkfw_state *state) {
 	if(!state) return;
 
@@ -940,12 +1088,14 @@ static void mkfw_cleanup(struct mkfw_state *state) {
 	free(state);
 }
 
+// [=]===^=[ mkfw_gettime ]=======================================================================[=]
 static uint64_t mkfw_gettime(struct mkfw_state *state) {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	return (now.QuadPart * 1000000000ULL) / PLATFORM(state)->performance_frequency.QuadPart;
 }
 
+// [=]===^=[ mkfw_sleep ]=========================================================================[=]
 static void mkfw_sleep(uint64_t nanoseconds) {
 	HANDLE timer;
 	LARGE_INTEGER ft;
@@ -963,10 +1113,12 @@ static void mkfw_sleep(uint64_t nanoseconds) {
 	CloseHandle(timer);
 }
 
+// [=]===^=[ mkfw_set_mouse_sensitivity ]=========================================================[=]
 static void mkfw_set_mouse_sensitivity(struct mkfw_state *state, double sensitivity) {
 	PLATFORM(state)->mouse_sensitivity = sensitivity;
 }
 
+// [=]===^=[ mkfw_get_and_clear_mouse_delta ]=====================================================[=]
 static void mkfw_get_and_clear_mouse_delta(struct mkfw_state *state, int32_t *dx, int32_t *dy) {
 	*dx = (int32_t)PLATFORM(state)->accumulated_dx;
 	*dy = (int32_t)PLATFORM(state)->accumulated_dy;
@@ -975,7 +1127,7 @@ static void mkfw_get_and_clear_mouse_delta(struct mkfw_state *state, int32_t *dx
 	PLATFORM(state)->accumulated_dy -= (double)*dy;
 }
 
-// [=]===^=[ mkfw_set_cursor_shape ]========================================[=]
+// [=]===^=[ mkfw_set_cursor_shape ]=============================================================[=]
 static void mkfw_set_cursor_shape(struct mkfw_state *state, uint32_t cursor) {
 	if(cursor >= MKFW_CURSOR_LAST) {
 		cursor = MKFW_CURSOR_ARROW;
@@ -986,7 +1138,7 @@ static void mkfw_set_cursor_shape(struct mkfw_state *state, uint32_t cursor) {
 	}
 }
 
-// [=]===^=[ mkfw_set_clipboard_text ]======================================[=]
+// [=]===^=[ mkfw_set_clipboard_text ]===========================================================[=]
 static void mkfw_set_clipboard_text(struct mkfw_state *state, const char *text) {
 	if(!OpenClipboard(PLATFORM(state)->hwnd)) {
 		return;
@@ -1005,7 +1157,7 @@ static void mkfw_set_clipboard_text(struct mkfw_state *state, const char *text) 
 	CloseClipboard();
 }
 
-// [=]===^=[ mkfw_get_clipboard_text ]======================================[=]
+// [=]===^=[ mkfw_get_clipboard_text ]===========================================================[=]
 static const char *mkfw_get_clipboard_text(struct mkfw_state *state) {
 	static char *buf = 0;
 	if(!OpenClipboard(PLATFORM(state)->hwnd)) {
@@ -1030,7 +1182,7 @@ static const char *mkfw_get_clipboard_text(struct mkfw_state *state) {
 	return buf;
 }
 
-// [=]===^=[ mkfw_enable_drop ]==============================================[=]
+// [=]===^=[ mkfw_enable_drop ]===================================================================[=]
 static void mkfw_enable_drop(struct mkfw_state *state, uint8_t enable) {
 	DragAcceptFiles(PLATFORM(state)->hwnd, enable ? TRUE : FALSE);
 }
