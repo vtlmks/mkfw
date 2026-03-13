@@ -40,8 +40,78 @@ static HANDLE mkfw_audio_event;
 static mkfw_thread mkfw_audio_thread;
 static int mkfw_audio_running;
 
+// [=]===^=[ mkfw_audio_open_device_win32 ]================================[=]
+static int32_t mkfw_audio_open_device_win32(void) {
+	WAVEFORMATEX wf;
+	REFERENCE_TIME dur_out;
+
+	if(FAILED(IMMDeviceEnumerator_GetDefaultAudioEndpoint(mkfw_enumerator, eRender, eConsole, &mkfw_device_out))) {
+		return -1;
+	}
+	if(FAILED(IMMDevice_Activate(mkfw_device_out, &IID_IAudioClient, CLSCTX_ALL, 0, (void**)&mkfw_audio_client_out))) {
+		IMMDevice_Release(mkfw_device_out);
+		mkfw_device_out = 0;
+		return -1;
+	}
+
+	wf.wFormatTag = WAVE_FORMAT_PCM;
+	wf.nChannels = MKFW_NUM_CHANNELS;
+	wf.nSamplesPerSec = MKFW_SAMPLE_RATE;
+	wf.wBitsPerSample = 16;
+	wf.nBlockAlign = (wf.nChannels * wf.wBitsPerSample) / 8;
+	wf.nAvgBytesPerSec = wf.nSamplesPerSec * wf.nBlockAlign;
+	wf.cbSize = 0;
+
+	if(FAILED(IAudioClient_GetDevicePeriod(mkfw_audio_client_out, &dur_out, 0))) {
+		goto fail;
+	}
+	if(FAILED(IAudioClient_Initialize(mkfw_audio_client_out, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, dur_out, 0, &wf, 0))) {
+		goto fail;
+	}
+	if(FAILED(IAudioClient_SetEventHandle(mkfw_audio_client_out, mkfw_audio_event))) {
+		goto fail;
+	}
+	if(FAILED(IAudioClient_GetService(mkfw_audio_client_out, &IID_IAudioRenderClient, (void**)&mkfw_render_client))) {
+		goto fail;
+	}
+	if(FAILED(IAudioClient_Start(mkfw_audio_client_out))) {
+		IAudioRenderClient_Release(mkfw_render_client);
+		mkfw_render_client = 0;
+		goto fail;
+	}
+	return 0;
+
+fail:
+	IAudioClient_Release(mkfw_audio_client_out);
+	mkfw_audio_client_out = 0;
+	IMMDevice_Release(mkfw_device_out);
+	mkfw_device_out = 0;
+	return -1;
+}
+
+// [=]===^=[ mkfw_audio_close_device_win32 ]===============================[=]
+static void mkfw_audio_close_device_win32(void) {
+	if(mkfw_audio_client_out) {
+		IAudioClient_Stop(mkfw_audio_client_out);
+		IAudioClient_Reset(mkfw_audio_client_out);
+	}
+	if(mkfw_render_client) {
+		IAudioRenderClient_Release(mkfw_render_client);
+		mkfw_render_client = 0;
+	}
+	if(mkfw_audio_client_out) {
+		IAudioClient_Release(mkfw_audio_client_out);
+		mkfw_audio_client_out = 0;
+	}
+	if(mkfw_device_out) {
+		IMMDevice_Release(mkfw_device_out);
+		mkfw_device_out = 0;
+	}
+}
+
+// [=]===^=[ mkfw_audio_thread_proc ]======================================[=]
 static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
-	uint32_t buffer_size;
+	uint32_t buffer_size = 0;
 	uint32_t padding;
 	uint32_t available;
 	uint8_t *data;
@@ -49,27 +119,39 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	DWORD task_index = 0;
 
 	avrt_handle = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index);
-	IAudioClient_GetBufferSize(mkfw_audio_client_out, &buffer_size);
 
-	for(;;) {
-		DWORD r = WaitForSingleObject(mkfw_audio_event, INFINITE);
+	while(__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
+		if(!mkfw_audio_client_out) {
+			if(mkfw_audio_open_device_win32() < 0) {
+				Sleep(100);
+				continue;
+			}
+			IAudioClient_GetBufferSize(mkfw_audio_client_out, &buffer_size);
+		}
+
+		WaitForSingleObject(mkfw_audio_event, 500);
 		if(!__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
 			break;
 		}
 
-		IAudioClient_GetCurrentPadding(mkfw_audio_client_out, &padding);
+		if(FAILED(IAudioClient_GetCurrentPadding(mkfw_audio_client_out, &padding))) {
+			mkfw_audio_close_device_win32();
+			continue;
+		}
 		available = buffer_size - padding;
 
 		while(available) {
-			if(SUCCEEDED(IAudioRenderClient_GetBuffer(mkfw_render_client, available, &data))) {
-				mkfw_audio_callback_thread((int16_t*)data, available);
-				IAudioRenderClient_ReleaseBuffer(mkfw_render_client, available, 0);
-			} else {
-				__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
+			if(FAILED(IAudioRenderClient_GetBuffer(mkfw_render_client, available, &data))) {
+				mkfw_audio_close_device_win32();
 				break;
 			}
+			mkfw_audio_callback_thread((int16_t*)data, available);
+			IAudioRenderClient_ReleaseBuffer(mkfw_render_client, available, 0);
 
-			IAudioClient_GetCurrentPadding(mkfw_audio_client_out, &padding);
+			if(FAILED(IAudioClient_GetCurrentPadding(mkfw_audio_client_out, &padding))) {
+				mkfw_audio_close_device_win32();
+				break;
+			}
 			available = buffer_size - padding;
 		}
 	}
@@ -80,110 +162,45 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	return 0;
 }
 
+// [=]===^=[ mkfw_audio_initialize ]=======================================[=]
 static void mkfw_audio_initialize(void) {
-	WAVEFORMATEX wf;
-	REFERENCE_TIME dur_out;
-	int com_initialized = 0;
-
-	if(SUCCEEDED(CoInitializeEx(0, COINIT_MULTITHREADED))) {
-		com_initialized = 1;
+	if(FAILED(CoInitializeEx(0, COINIT_MULTITHREADED))) {
+		return;
 	}
-
-	if(com_initialized && SUCCEEDED(CoCreateInstance(&CLSID_MMDeviceEnumerator, 0, CLSCTX_ALL, &IID_IMMDeviceEnumerator, (void**)&mkfw_enumerator))) {
-		if(SUCCEEDED(IMMDeviceEnumerator_GetDefaultAudioEndpoint(mkfw_enumerator, eRender, eConsole, &mkfw_device_out))) {
-			if(SUCCEEDED(IMMDevice_Activate(mkfw_device_out, &IID_IAudioClient, CLSCTX_ALL, 0, (void**)&mkfw_audio_client_out))) {
-				wf.wFormatTag = WAVE_FORMAT_PCM;
-				wf.nChannels = MKFW_NUM_CHANNELS;
-				wf.nSamplesPerSec = MKFW_SAMPLE_RATE;
-				wf.wBitsPerSample = 16;
-				wf.nBlockAlign = (wf.nChannels * wf.wBitsPerSample) / 8;
-				wf.nAvgBytesPerSec = wf.nSamplesPerSec * wf.nBlockAlign;
-				wf.cbSize = 0;
-				if(SUCCEEDED(IAudioClient_GetDevicePeriod(mkfw_audio_client_out, &dur_out, 0))) {
-					if(SUCCEEDED(IAudioClient_Initialize( mkfw_audio_client_out, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK|AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM|AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, dur_out, 0, &wf, 0))) {
-						mkfw_audio_event = CreateEvent(0, 0, 0, 0);
-						if(mkfw_audio_event) {
-							if(SUCCEEDED(IAudioClient_SetEventHandle(mkfw_audio_client_out, mkfw_audio_event))) {
-								if(SUCCEEDED(IAudioClient_GetService(mkfw_audio_client_out, &IID_IAudioRenderClient, (void**)&mkfw_render_client))) {
-									if(SUCCEEDED(IAudioClient_Start(mkfw_audio_client_out))) {
-										__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
-										mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_proc, 0);
-										if(mkfw_audio_thread) {
-											return;
-
-										} else { mkfw_error("mkfw_thread_create failed"); }
-										IAudioClient_Stop(mkfw_audio_client_out);
-
-									} else { mkfw_error("IAudioClient_Start failed"); }
-									IAudioRenderClient_Release(mkfw_render_client);
-
-								} else { mkfw_error("IAudioClient_GetService(IAudioRenderClient) failed"); }
-
-							} else { mkfw_error("IAudioClient_SetEventHandle failed"); }
-							CloseHandle(mkfw_audio_event);
-
-						} else { mkfw_error("CreateEvent failed"); }
-
-					} else { mkfw_error("IAudioClient_Initialize failed"); }
-
-				} else { mkfw_error("IAudioClient_GetDevicePeriod failed"); }
-				IAudioClient_Release(mkfw_audio_client_out);
-
-			} else { mkfw_error("IMMDevice_Activate failed"); }
-			IMMDevice_Release(mkfw_device_out);
-
-		} else { mkfw_error("IMMDeviceEnumerator_GetDefaultAudioEndpoint failed"); }
+	if(FAILED(CoCreateInstance(&CLSID_MMDeviceEnumerator, 0, CLSCTX_ALL, &IID_IMMDeviceEnumerator, (void**)&mkfw_enumerator))) {
+		CoUninitialize();
+		return;
+	}
+	mkfw_audio_event = CreateEvent(0, 0, 0, 0);
+	if(!mkfw_audio_event) {
 		IMMDeviceEnumerator_Release(mkfw_enumerator);
-
-	} else { mkfw_error("CoCreateInstance(CLSID_MMDeviceEnumerator) failed"); }
-
-	mkfw_enumerator = 0;
-	mkfw_device_out = 0;
-	mkfw_audio_client_out = 0;
-	mkfw_render_client = 0;
-	mkfw_audio_event = 0;
-
-	if(com_initialized) {
+		mkfw_enumerator = 0;
+		CoUninitialize();
+		return;
+	}
+	mkfw_audio_open_device_win32();
+	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
+	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_proc, 0);
+	if(!mkfw_audio_thread) {
+		__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
+		mkfw_audio_close_device_win32();
+		CloseHandle(mkfw_audio_event);
+		mkfw_audio_event = 0;
+		IMMDeviceEnumerator_Release(mkfw_enumerator);
+		mkfw_enumerator = 0;
 		CoUninitialize();
 	}
 }
 
+// [=]===^=[ mkfw_audio_shutdown ]=========================================[=]
 static void mkfw_audio_shutdown(void) {
-	uint32_t frames;
-	uint32_t padding;
-
 	__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
-
 	if(mkfw_audio_thread) {
 		SetEvent(mkfw_audio_event);
 		mkfw_thread_join(mkfw_audio_thread);
 	}
-
-	if(mkfw_audio_client_out && mkfw_render_client) {
-		if(SUCCEEDED(IAudioClient_GetBufferSize(mkfw_audio_client_out, &frames))) {
-			for(;;) {
-				if(FAILED(IAudioClient_GetCurrentPadding(mkfw_audio_client_out, &padding))) { break; }
-				if(padding >= frames) { break; }
-
-				uint32_t to_write = frames - padding;
-				uint8_t *p;
-				if(FAILED(IAudioRenderClient_GetBuffer(mkfw_render_client, to_write, &p))) { break; }
-				IAudioRenderClient_ReleaseBuffer(mkfw_render_client, to_write, AUDCLNT_BUFFERFLAGS_SILENT);
-			}
-		}
-	}
-
-	if(mkfw_audio_client_out) {
-		IAudioClient_Stop(mkfw_audio_client_out);
-		IAudioClient_Reset(mkfw_audio_client_out);
-		IAudioClient_Release(mkfw_audio_client_out);
-	}
-
-	if(mkfw_render_client) { IAudioRenderClient_Release(mkfw_render_client); }
+	mkfw_audio_close_device_win32();
 	if(mkfw_audio_event) { CloseHandle(mkfw_audio_event); }
-	if(mkfw_device_out) { IMMDevice_Release(mkfw_device_out); }
 	if(mkfw_enumerator) { IMMDeviceEnumerator_Release(mkfw_enumerator); }
-
 	CoUninitialize();
 }
-

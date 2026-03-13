@@ -36,25 +36,6 @@ static int16_t *mkfw_audio_buffer;
 static snd_pcm_uframes_t mkfw_frames_per_period;
 static int mkfw_audio_running;
 
-static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
-	while(__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
-		int32_t err = snd_pcm_wait(mkfw_pcm, 100);
-		if(err < 0) {
-			if(!__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) break;
-			snd_pcm_recover(mkfw_pcm, err, 0);
-			continue;
-		}
-		if(err == 0) continue; // timeout, re-check flag
-
-		mkfw_audio_callback_thread(mkfw_audio_buffer, mkfw_frames_per_period);
-		err = snd_pcm_writei(mkfw_pcm, mkfw_audio_buffer, mkfw_frames_per_period);
-		if(err < 0) {
-			snd_pcm_recover(mkfw_pcm, err, 0);
-		}
-	}
-	return 0;
-}
-
 static int32_t mkfw_set_hw_params(snd_pcm_t *handle) {
 	snd_pcm_hw_params_t *params;
 	snd_pcm_uframes_t period = MKFW_PREFERRED_FRAMES_PER_BUFFER;
@@ -94,30 +75,89 @@ static int32_t mkfw_set_hw_params(snd_pcm_t *handle) {
 	return 0;
 }
 
-static void mkfw_audio_initialize(void) {
+// [=]===^=[ mkfw_audio_open_device ]======================================[=]
+static int32_t mkfw_audio_open_device(void) {
 	if(snd_pcm_open(&mkfw_pcm, "plug:pipewire", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
 		if(snd_pcm_open(&mkfw_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-			return;
+			mkfw_pcm = 0;
+			return -1;
 		}
 	}
 	if(mkfw_set_hw_params(mkfw_pcm) < 0) {
-		return;
+		snd_pcm_close(mkfw_pcm);
+		mkfw_pcm = 0;
+		return -1;
 	}
-
+	free(mkfw_audio_buffer);
 	mkfw_audio_buffer = calloc(mkfw_frames_per_period * MKFW_NUM_CHANNELS, sizeof(int16_t));
-
 	if(snd_pcm_start(mkfw_pcm) < 0) {
-		return;
+		snd_pcm_close(mkfw_pcm);
+		mkfw_pcm = 0;
+		return -1;
 	}
+	return 0;
+}
+
+// [=]===^=[ mkfw_audio_close_device ]=====================================[=]
+static void mkfw_audio_close_device(void) {
+	if(mkfw_pcm) {
+		snd_pcm_drop(mkfw_pcm);
+		snd_pcm_close(mkfw_pcm);
+		mkfw_pcm = 0;
+	}
+}
+
+// [=]===^=[ mkfw_audio_thread_func ]======================================[=]
+static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
+	while(__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
+		if(!mkfw_pcm) {
+			if(mkfw_audio_open_device() < 0) {
+				struct timespec ts = {0, 100000000};
+				nanosleep(&ts, 0);
+				continue;
+			}
+		}
+
+		int32_t err = snd_pcm_wait(mkfw_pcm, 100);
+		if(err < 0) {
+			if(!__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
+				break;
+			}
+			if(snd_pcm_recover(mkfw_pcm, err, 0) < 0) {
+				mkfw_audio_close_device();
+				continue;
+			}
+			continue;
+		}
+		if(err == 0) {
+			continue;
+		}
+
+		mkfw_audio_callback_thread(mkfw_audio_buffer, mkfw_frames_per_period);
+		err = snd_pcm_writei(mkfw_pcm, mkfw_audio_buffer, mkfw_frames_per_period);
+		if(err < 0) {
+			if(snd_pcm_recover(mkfw_pcm, err, 0) < 0) {
+				mkfw_audio_close_device();
+			}
+		}
+	}
+	return 0;
+}
+
+// [=]===^=[ mkfw_audio_initialize ]=======================================[=]
+static void mkfw_audio_initialize(void) {
+	mkfw_audio_open_device();
 	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
 	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_func, 0);
 }
 
+// [=]===^=[ mkfw_audio_shutdown ]=========================================[=]
 static void mkfw_audio_shutdown(void) {
 	__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
-	mkfw_thread_join(mkfw_audio_thread);
-	snd_pcm_drop(mkfw_pcm);
-	snd_pcm_close(mkfw_pcm);
+	if(mkfw_audio_thread) {
+		mkfw_thread_join(mkfw_audio_thread);
+	}
+	mkfw_audio_close_device();
 	free(mkfw_audio_buffer);
+	mkfw_audio_buffer = 0;
 }
-
