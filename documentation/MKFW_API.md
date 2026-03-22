@@ -19,12 +19,18 @@ MKFW is a minimal, single-header windowing and input library for OpenGL applicat
 - Window position get/set
 - Window minimize, maximize, and restore
 - Window icon (RGBA pixel data)
+- Window size set/get
+- Window decoration toggle (borderless windowed)
+- Window opacity control
+- Window minimized/maximized state queries
 - Monitor enumeration (name, resolution, position, refresh rate, primary flag)
 - Per-pixel transparency (composited windows with alpha channel)
-- VSync control
+- VSync control and query
+- Cursor position get/set
 - Event callbacks (key, char, scroll, mouse, focus, resize, file drop)
 - Clipboard access (get/set UTF-8 text)
 - File drag-and-drop
+- Key name lookup for rebindable controls
 - Window focus and mouse hover tracking
 
 ## Platform Support
@@ -422,6 +428,140 @@ mkfw_get_framebuffer_size(window, &w, &h);
 
 ---
 
+### `mkfw_set_window_size`
+
+```c
+void mkfw_set_window_size(struct mkfw_state *state, int32_t width, int32_t height)
+```
+
+Resize the window's client area to the specified dimensions.
+
+**Parameters:**
+- `state` - Window state pointer
+- `width` - New client area width in pixels
+- `height` - New client area height in pixels
+
+**Notes:**
+- Sets the client area size (not including title bar and borders)
+- On Windows: uses `AdjustWindowRectEx` to account for decorations
+- On Linux: calls `XResizeWindow` directly (X11 window size is the client area)
+
+**Example:**
+```c
+mkfw_set_window_size(window, 1920, 1080);
+```
+
+---
+
+### `mkfw_hide_window`
+
+```c
+void mkfw_hide_window(struct mkfw_state *state)
+```
+
+Hide the window. The window remains valid and can be shown again with `mkfw_show_window()`.
+
+**Parameters:**
+- `state` - Window state pointer
+
+**Notes:**
+- On Linux: calls `XUnmapWindow`
+- On Windows: calls `ShowWindow(hwnd, SW_HIDE)`
+- Useful for creating windows hidden, configuring them, then showing
+
+**Example:**
+```c
+mkfw_hide_window(window);
+// ... reconfigure ...
+mkfw_show_window(window);
+```
+
+---
+
+### `mkfw_is_minimized`
+
+```c
+int32_t mkfw_is_minimized(struct mkfw_state *state)
+```
+
+Check if the window is currently minimized (iconified).
+
+**Returns:**
+- Non-zero if the window is minimized
+
+**Notes:**
+- On Windows: uses `IsIconic()`
+- On Linux: reads the `WM_STATE` property (iconic state = 3)
+
+---
+
+### `mkfw_is_maximized`
+
+```c
+int32_t mkfw_is_maximized(struct mkfw_state *state)
+```
+
+Check if the window is currently maximized.
+
+**Returns:**
+- Non-zero if the window is maximized (both horizontally and vertically)
+
+**Notes:**
+- On Windows: uses `IsZoomed()`
+- On Linux: reads `_NET_WM_STATE` for `_NET_WM_STATE_MAXIMIZED_HORZ` and `_NET_WM_STATE_MAXIMIZED_VERT`
+
+---
+
+### `mkfw_set_window_decorated`
+
+```c
+void mkfw_set_window_decorated(struct mkfw_state *state, int32_t decorated)
+```
+
+Enable or disable window decorations (title bar, borders) at runtime.
+
+**Parameters:**
+- `state` - Window state pointer
+- `decorated` - Non-zero for decorated, 0 for borderless
+
+**Notes:**
+- On Windows: toggles between `WS_OVERLAPPEDWINDOW` and `WS_POPUP` styles, preserving client area size
+- On Linux: sets `_MOTIF_WM_HINTS` to control decoration visibility
+- Useful for borderless windowed mode
+
+**Example:**
+```c
+mkfw_set_window_decorated(window, 0); // Borderless
+mkfw_set_window_decorated(window, 1); // Restore decorations
+```
+
+---
+
+### `mkfw_set_window_opacity`
+
+```c
+void mkfw_set_window_opacity(struct mkfw_state *state, float opacity)
+```
+
+Set whole-window opacity (not per-pixel transparency).
+
+**Parameters:**
+- `state` - Window state pointer
+- `opacity` - Opacity value from 0.0 (fully transparent) to 1.0 (fully opaque)
+
+**Notes:**
+- Distinct from `mkfw_set_transparent()` which enables per-pixel alpha blending
+- On Windows: uses `WS_EX_LAYERED` with `SetLayeredWindowAttributes`
+- On Linux: sets `_NET_WM_WINDOW_OPACITY` property (requires compositor)
+- Setting opacity to 1.0 removes the layered/opacity property entirely
+
+**Example:**
+```c
+mkfw_set_window_opacity(window, 0.8f); // 80% opaque
+```
+
+---
+
 ### `mkfw_fullscreen`
 
 ```c
@@ -632,6 +772,37 @@ Update previous keyboard and mouse button state. Call once per frame after proce
 mkfw_pump_messages(window);
 // ... handle input ...
 mkfw_update_input_state(window);
+```
+
+---
+
+### `mkfw_get_key_name`
+
+```c
+const char *mkfw_get_key_name(uint32_t key)
+```
+
+Get a human-readable name for a key code.
+
+**Parameters:**
+- `key` - Key code from `MKS_KEY_*` constants
+
+**Returns:**
+- Pointer to a string literal with the key name (e.g. "A", "Space", "Left Ctrl", "F1")
+- Returns "Unknown" for unrecognized key codes
+
+**Notes:**
+- Platform-independent (implemented in mkfw.h)
+- Letters are returned as uppercase ("A" through "Z")
+- Useful for key binding UIs and debug output
+
+**Example:**
+```c
+void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
+    if(action == MKS_PRESSED) {
+        printf("Pressed: %s\n", mkfw_get_key_name(key));
+    }
+}
 ```
 
 ---
@@ -943,6 +1114,60 @@ mkfw_set_cursor_shape(window, MKFW_CURSOR_HAND);
 
 ---
 
+## Cursor Position
+
+### `mkfw_get_cursor_position`
+
+```c
+void mkfw_get_cursor_position(struct mkfw_state *state, int32_t *x, int32_t *y)
+```
+
+Get the cursor position relative to the window's client area.
+
+**Parameters:**
+- `state` - Window state pointer
+- `x` - Pointer to receive X position
+- `y` - Pointer to receive Y position
+
+**Notes:**
+- Coordinates are relative to the top-left corner of the client area
+- On Windows: uses `GetCursorPos` + `ScreenToClient`
+- On Linux: uses `XQueryPointer`
+
+---
+
+### `mkfw_set_cursor_position`
+
+```c
+void mkfw_set_cursor_position(struct mkfw_state *state, int32_t x, int32_t y)
+```
+
+Warp the cursor to a position relative to the window's client area.
+
+**Parameters:**
+- `state` - Window state pointer
+- `x` - X position in client area pixels
+- `y` - Y position in client area pixels
+
+**Notes:**
+- On Windows: uses `ClientToScreen` + `SetCursorPos`
+- On Linux: uses `XWarpPointer`
+- Useful for centering the cursor in FPS games or UI interactions
+
+**Example:**
+```c
+int32_t cx, cy;
+mkfw_get_cursor_position(window, &cx, &cy);
+printf("Cursor at: %d, %d\n", cx, cy);
+
+// Center cursor in window
+int32_t w, h;
+mkfw_get_framebuffer_size(window, &w, &h);
+mkfw_set_cursor_position(window, w / 2, h / 2);
+```
+
+---
+
 ## Clipboard
 
 ### `mkfw_set_clipboard_text`
@@ -1127,6 +1352,33 @@ Control VSync behavior.
 **Example:**
 ```c
 mkfw_set_swapinterval(window, 0); // Disable VSync
+```
+
+---
+
+### `mkfw_get_swapinterval`
+
+```c
+int32_t mkfw_get_swapinterval(struct mkfw_state *state)
+```
+
+Query the current swap interval (VSync setting).
+
+**Parameters:**
+- `state` - Window state pointer
+
+**Returns:**
+- Current swap interval value (0 = no VSync, 1 = VSync, etc.)
+- Returns 0 if the query extension is not available
+
+**Notes:**
+- On Windows: uses `wglGetSwapIntervalEXT`
+- On Linux: uses `glXQueryDrawable` with `GLX_SWAP_INTERVAL_EXT`
+
+**Example:**
+```c
+int32_t vsync = mkfw_get_swapinterval(window);
+printf("VSync: %s\n", vsync ? "on" : "off");
 ```
 
 ---

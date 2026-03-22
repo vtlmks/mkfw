@@ -196,6 +196,95 @@ static inline int mkfw_was_key_released(struct mkfw_state *state, uint8_t key) {
 static inline uint8_t mkfw_is_button_pressed(struct mkfw_state *state, uint8_t button) { return state->mouse_buttons[button] && !state->previous_mouse_buttons[button]; }
 static inline uint8_t mkfw_was_button_released(struct mkfw_state *state, uint8_t button) { return !state->mouse_buttons[button] && state->previous_mouse_buttons[button]; }
 
+static inline const char *mkfw_get_key_name(uint32_t key) {
+	if(key >= 'a' && key <= 'z') {
+		static char letter[2];
+		letter[0] = (char)(key - 32);
+		letter[1] = 0;
+		return letter;
+	}
+	if(key >= '0' && key <= '9') {
+		static char digit[2];
+		digit[0] = (char)key;
+		digit[1] = 0;
+		return digit;
+	}
+	switch(key) {
+		case MKS_KEY_SPACE:       return "Space";
+		case MKS_KEY_APOSTROPHE:  return "'";
+		case MKS_KEY_COMMA:       return ",";
+		case MKS_KEY_MINUS:       return "-";
+		case MKS_KEY_PERIOD:      return ".";
+		case MKS_KEY_SLASH:       return "/";
+		case MKS_KEY_SEMICOLON:   return ";";
+		case MKS_KEY_EQUAL:       return "=";
+		case MKS_KEY_LEFT_BRACKET: return "[";
+		case MKS_KEY_BACKSLASH:   return "\\";
+		case MKS_KEY_RIGHT_BRACKET: return "]";
+		case MKS_KEY_GRAVE:       return "`";
+		case MKS_KEY_ESCAPE:      return "Escape";
+		case MKS_KEY_RETURN:      return "Enter";
+		case MKS_KEY_TAB:         return "Tab";
+		case MKS_KEY_BACKSPACE:   return "Backspace";
+		case MKS_KEY_INSERT:      return "Insert";
+		case MKS_KEY_DELETE:      return "Delete";
+		case MKS_KEY_LEFT:        return "Left";
+		case MKS_KEY_RIGHT:       return "Right";
+		case MKS_KEY_UP:          return "Up";
+		case MKS_KEY_DOWN:        return "Down";
+		case MKS_KEY_HOME:        return "Home";
+		case MKS_KEY_END:         return "End";
+		case MKS_KEY_PAGEUP:      return "PageUp";
+		case MKS_KEY_PAGEDOWN:    return "PageDown";
+		case MKS_KEY_CAPSLOCK:    return "CapsLock";
+		case MKS_KEY_NUMLOCK:     return "NumLock";
+		case MKS_KEY_SCROLLLOCK:  return "ScrollLock";
+		case MKS_KEY_PRINTSCREEN: return "PrintScreen";
+		case MKS_KEY_PAUSE:       return "Pause";
+		case MKS_KEY_MENU:        return "Menu";
+		case MKS_KEY_F1:          return "F1";
+		case MKS_KEY_F2:          return "F2";
+		case MKS_KEY_F3:          return "F3";
+		case MKS_KEY_F4:          return "F4";
+		case MKS_KEY_F5:          return "F5";
+		case MKS_KEY_F6:          return "F6";
+		case MKS_KEY_F7:          return "F7";
+		case MKS_KEY_F8:          return "F8";
+		case MKS_KEY_F9:          return "F9";
+		case MKS_KEY_F10:         return "F10";
+		case MKS_KEY_F11:         return "F11";
+		case MKS_KEY_F12:         return "F12";
+		case MKS_KEY_SHIFT:       return "Shift";
+		case MKS_KEY_LSHIFT:      return "Left Shift";
+		case MKS_KEY_RSHIFT:      return "Right Shift";
+		case MKS_KEY_CTRL:        return "Ctrl";
+		case MKS_KEY_LCTRL:       return "Left Ctrl";
+		case MKS_KEY_RCTRL:       return "Right Ctrl";
+		case MKS_KEY_ALT:         return "Alt";
+		case MKS_KEY_LALT:        return "Left Alt";
+		case MKS_KEY_RALT:        return "Right Alt";
+		case MKS_KEY_LSUPER:      return "Left Super";
+		case MKS_KEY_RSUPER:      return "Right Super";
+		case MKS_KEY_NUMPAD_0:    return "Numpad 0";
+		case MKS_KEY_NUMPAD_1:    return "Numpad 1";
+		case MKS_KEY_NUMPAD_2:    return "Numpad 2";
+		case MKS_KEY_NUMPAD_3:    return "Numpad 3";
+		case MKS_KEY_NUMPAD_4:    return "Numpad 4";
+		case MKS_KEY_NUMPAD_5:    return "Numpad 5";
+		case MKS_KEY_NUMPAD_6:    return "Numpad 6";
+		case MKS_KEY_NUMPAD_7:    return "Numpad 7";
+		case MKS_KEY_NUMPAD_8:    return "Numpad 8";
+		case MKS_KEY_NUMPAD_9:    return "Numpad 9";
+		case MKS_KEY_NUMPAD_DECIMAL:  return "Numpad .";
+		case MKS_KEY_NUMPAD_DIVIDE:   return "Numpad /";
+		case MKS_KEY_NUMPAD_MULTIPLY: return "Numpad *";
+		case MKS_KEY_NUMPAD_SUBTRACT: return "Numpad -";
+		case MKS_KEY_NUMPAD_ADD:      return "Numpad +";
+		case MKS_KEY_NUMPAD_ENTER:    return "Numpad Enter";
+		default:                  return "Unknown";
+	}
+}
+
 /* Joystick query helpers */
 #ifdef MKFW_JOYSTICK
 static inline int mkfw_joystick_connected(int pad_index) {
