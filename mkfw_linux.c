@@ -1359,6 +1359,16 @@ static int32_t mkfw_get_monitors(struct mkfw_state *state, struct mkfw_monitor *
 		XRRFreeCrtcInfo(ci);
 	}
 	XRRFreeScreenResources(sr);
+
+	for(int32_t i = 1; i < count; ++i) {
+		if(out[i].primary) {
+			struct mkfw_monitor tmp = out[0];
+			out[0] = out[i];
+			out[i] = tmp;
+			break;
+		}
+	}
+
 	return count;
 }
 
