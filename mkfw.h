@@ -288,56 +288,86 @@ static inline const char *mkfw_get_key_name(uint32_t key) {
 /* Joystick query helpers */
 #ifdef MKFW_JOYSTICK
 static inline int mkfw_joystick_connected(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0;
+	}
 	return mkfw_joystick_pads[pad_index].connected;
 }
 static inline const char *mkfw_joystick_name(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return "";
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return "";
+	}
 	return mkfw_joystick_pads[pad_index].name;
 }
 static inline int mkfw_joystick_button(int pad_index, int button_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
-	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) return 0;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0;
+	}
+	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
+		return 0;
+	}
 	return mkfw_joystick_pads[pad_index].buttons[button_index];
 }
 static inline int mkfw_joystick_button_pressed(int pad_index, int button_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
-	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) return 0;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0;
+	}
+	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
+		return 0;
+	}
 	return mkfw_joystick_pads[pad_index].buttons[button_index] &&
 	       !mkfw_joystick_pads[pad_index].prev_buttons[button_index];
 }
 static inline int mkfw_joystick_button_released(int pad_index, int button_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
-	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) return 0;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0;
+	}
+	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
+		return 0;
+	}
 	return !mkfw_joystick_pads[pad_index].buttons[button_index] &&
 	       mkfw_joystick_pads[pad_index].prev_buttons[button_index];
 }
 static inline float mkfw_joystick_axis(int pad_index, int axis_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0.0f;
-	if(axis_index < 0 || axis_index >= MKFW_JOYSTICK_MAX_AXES) return 0.0f;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0.0f;
+	}
+	if(axis_index < 0 || axis_index >= MKFW_JOYSTICK_MAX_AXES) {
+		return 0.0f;
+	}
 	return mkfw_joystick_pads[pad_index].axes[axis_index];
 }
 static inline float mkfw_joystick_hat_x(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0.0f;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0.0f;
+	}
 	return mkfw_joystick_pads[pad_index].hat_x;
 }
 static inline float mkfw_joystick_hat_y(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0.0f;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0.0f;
+	}
 	return mkfw_joystick_pads[pad_index].hat_y;
 }
 static inline int mkfw_joystick_button_count(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0;
+	}
 	return mkfw_joystick_pads[pad_index].button_count;
 }
 static inline int mkfw_joystick_axis_count(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return 0;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return 0;
+	}
 	return mkfw_joystick_pads[pad_index].axis_count;
 }
 static inline void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback) {
 	mkfw_joystick_cb = callback;
 }
 static inline void mkfw_joystick_rumble(int pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) return;
+	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return;
+	}
 	mkfw_joystick_rumble_platform(pad_index, low_freq, high_freq, duration_ms);
 }
 #else

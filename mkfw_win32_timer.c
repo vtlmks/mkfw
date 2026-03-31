@@ -121,7 +121,9 @@ static DWORD WINAPI mkfw_timer_thread_func(LPVOID arg) {
 
 		if(t->last_wait_start_ns > 0) {
 			int64_t overshoot_ns = (int64_t)(now_ns - deadline_ns);
-			if(overshoot_ns < 0) overshoot_ns = 0;
+			if(overshoot_ns < 0) {
+				overshoot_ns = 0;
+			}
 
 			if(remaining_after_sleep_ns >= 0) {
 				mkfw_error("[DEBUG] Woke up with %lld ns left. Overshoot: %5lld ns", remaining_after_sleep_ns, overshoot_ns);
@@ -183,22 +185,34 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 
 // [=]===^=[ mkfw_timer_wait ]====================================================================[=]
 static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
+	if(!t) {
+		return 0;
+	}
 	WaitForSingleObject(t->event, INFINITE);
 	return 1;
 }
 
 // [=]===^=[ mkfw_timer_set_interval ]============================================================[=]
 static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
+	if(!t) {
+		return;
+	}
 	t->interval_ns = interval_ns;
 	t->interval_qpc = (interval_ns * t->qpc_frequency + 500000000ULL) / 1000000000ULL;
 }
 
 // [=]===^=[ mkfw_timer_set_spin ]================================================================[=]
 static void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
+	if(!t) {
+		return;
+	}
 	__atomic_store_n(&t->spin, enabled ? 1 : 0, __ATOMIC_RELEASE);
 }
 
 static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
+	if(!t) {
+		return;
+	}
 	__atomic_store_n(&t->running, 0, __ATOMIC_RELEASE);
 
 	SetEvent(t->event);

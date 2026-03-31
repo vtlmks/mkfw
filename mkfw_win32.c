@@ -70,14 +70,26 @@ static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPAR
 	// Special handling for ambiguous keys (VK_SHIFT, VK_CONTROL, VK_MENU)
 	if(wParam == VK_SHIFT) {
 		uint32_t scancode = (lParam >> 16) & 0xFF;
-		if(scancode == 0x2A) wParam = VK_LSHIFT;
-		else if(scancode == 0x36) wParam = VK_RSHIFT;
+		if(scancode == 0x2A) {
+			wParam = VK_LSHIFT;
+
+		} else if(scancode == 0x36) {
+			wParam = VK_RSHIFT;
+		}
 	} else if(wParam == VK_CONTROL) {
-		if(lParam & 0x01000000) wParam = VK_RCONTROL; // Extended bit means Right Ctrl
-		else wParam = VK_LCONTROL;
+		if(lParam & 0x01000000) {
+			wParam = VK_RCONTROL;
+
+		} else {
+			wParam = VK_LCONTROL;
+		}
 	} else if(wParam == VK_MENU) {
-		if(lParam & 0x01000000) wParam = VK_RMENU; // Extended bit means Right Alt
-		else wParam = VK_LMENU;
+		if(lParam & 0x01000000) {
+			wParam = VK_RMENU;
+
+		} else {
+			wParam = VK_LMENU;
+		}
 	}
 
 	// Track modifier state
@@ -624,7 +636,16 @@ static int mkfw_query_max_gl_version(int *major, int *minor) {
 	if(pglGetString) {
 		const char *version = (const char *)pglGetString(0x1F02); // GL_VERSION
 		if(version) {
-			result = (sscanf(version, "%d.%d", major, minor) == 2);
+			int tmp_major, tmp_minor;
+			result = (sscanf(version, "%d.%d", &tmp_major, &tmp_minor) == 2);
+			if(result) {
+				if(major) {
+					*major = tmp_major;
+				}
+				if(minor) {
+					*minor = tmp_minor;
+				}
+			}
 		}
 	}
 
@@ -716,7 +737,9 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 			int max_major = 0, max_minor = 0;
 			if(pglGetString) {
 				const char *ver = (const char *)pglGetString(0x1F02);
-				if(ver) sscanf(ver, "%d.%d", &max_major, &max_minor);
+				if(ver) {
+					sscanf(ver, "%d.%d", &max_major, &max_minor);
+				}
 			}
 			wglMakeCurrent(0, 0);
 			wglDeleteContext(temp_ctx);
@@ -928,12 +951,19 @@ static void mkfw_set_window_size(struct mkfw_state *state, int32_t width, int32_
 static void mkfw_get_framebuffer_size(struct mkfw_state *state, int32_t *width, int32_t *height) {
 	RECT rect;
 	GetClientRect(PLATFORM(state)->hwnd, &rect);
-	*width = rect.right - rect.left;
-	*height = rect.bottom - rect.top;
+	if(width) {
+		*width = rect.right - rect.left;
+	}
+	if(height) {
+		*height = rect.bottom - rect.top;
+	}
 }
 
 // [=]===^=[ mkfw_set_window_title ]==============================================================[=]
 static void mkfw_set_window_title(struct mkfw_state *state, const char *title) {
+	if(!title) {
+		return;
+	}
 	SetWindowTextA(PLATFORM(state)->hwnd, title);
 }
 
@@ -1008,6 +1038,9 @@ static void mkfw_set_window_opacity(struct mkfw_state *state, float opacity) {
 
 // [=]===^=[ mkfw_set_window_icon ]=============================================================[=]
 static void mkfw_set_window_icon(struct mkfw_state *state, int32_t width, int32_t height, const uint8_t *rgba) {
+	if(!rgba) {
+		return;
+	}
 	// Create a DIB section with BGRA pixel data
 	BITMAPV5HEADER bi = {0};
 	bi.bV5Size = sizeof(bi);
@@ -1025,7 +1058,9 @@ static void mkfw_set_window_icon(struct mkfw_state *state, int32_t width, int32_
 	uint8_t *target = 0;
 	HBITMAP color = CreateDIBSection(dc, (BITMAPINFO *)&bi, DIB_RGB_COLORS, (void **)&target, 0, 0);
 	ReleaseDC(0, dc);
-	if(!color) return;
+	if(!color) {
+		return;
+	}
 
 	// Convert RGBA to BGRA
 	int32_t pixel_count = width * height;
@@ -1062,7 +1097,9 @@ struct mkfw_monitor_enum_data {
 // [=]===^=[ mkfw_monitor_enum_proc ]===========================================================[=]
 static BOOL CALLBACK mkfw_monitor_enum_proc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
 	struct mkfw_monitor_enum_data *d = (struct mkfw_monitor_enum_data *)dwData;
-	if(d->count >= d->max) return FALSE;
+	if(d->count >= d->max) {
+		return FALSE;
+	}
 
 	MONITORINFOEXA mi = {0};
 	mi.cbSize = sizeof(mi);
@@ -1088,6 +1125,9 @@ static BOOL CALLBACK mkfw_monitor_enum_proc(HMONITOR hMonitor, HDC hdcMonitor, L
 // [=]===^=[ mkfw_get_monitors ]================================================================[=]
 static int32_t mkfw_get_monitors(struct mkfw_state *state, struct mkfw_monitor *out, int32_t max) {
 	(void)state;
+	if(!out || max <= 0) {
+		return 0;
+	}
 	struct mkfw_monitor_enum_data data = {out, max, 0};
 	EnumDisplayMonitors(0, 0, mkfw_monitor_enum_proc, (LPARAM)&data);
 
@@ -1112,8 +1152,12 @@ static void mkfw_set_window_position(struct mkfw_state *state, int32_t x, int32_
 static void mkfw_get_window_position(struct mkfw_state *state, int32_t *x, int32_t *y) {
 	RECT rect;
 	GetWindowRect(PLATFORM(state)->hwnd, &rect);
-	*x = rect.left;
-	*y = rect.top;
+	if(x) {
+		*x = rect.left;
+	}
+	if(y) {
+		*y = rect.top;
+	}
 }
 
 // [=]===^=[ mkfw_maximize_window ]=============================================================[=]
@@ -1143,7 +1187,9 @@ static int32_t mkfw_is_maximized(struct mkfw_state *state) {
 
 // [=]===^=[ mkfw_cleanup ]=======================================================================[=]
 static void mkfw_cleanup(struct mkfw_state *state) {
-	if(!state) return;
+	if(!state) {
+		return;
+	}
 
 	mkfw_set_mouse_cursor(state, 1);
 	mkfw_constrain_mouse(state, 0);
@@ -1203,11 +1249,16 @@ static void mkfw_set_mouse_sensitivity(struct mkfw_state *state, double sensitiv
 
 // [=]===^=[ mkfw_get_and_clear_mouse_delta ]=====================================================[=]
 static void mkfw_get_and_clear_mouse_delta(struct mkfw_state *state, int32_t *dx, int32_t *dy) {
-	*dx = (int32_t)PLATFORM(state)->accumulated_dx;
-	*dy = (int32_t)PLATFORM(state)->accumulated_dy;
-	// Keep fractional remainder for next frame
-	PLATFORM(state)->accumulated_dx -= (double)*dx;
-	PLATFORM(state)->accumulated_dy -= (double)*dy;
+	int32_t tdx = (int32_t)PLATFORM(state)->accumulated_dx;
+	int32_t tdy = (int32_t)PLATFORM(state)->accumulated_dy;
+	PLATFORM(state)->accumulated_dx -= (double)tdx;
+	PLATFORM(state)->accumulated_dy -= (double)tdy;
+	if(dx) {
+		*dx = tdx;
+	}
+	if(dy) {
+		*dy = tdy;
+	}
 }
 
 // [=]===^=[ mkfw_set_cursor_shape ]=============================================================[=]
@@ -1226,8 +1277,12 @@ static void mkfw_get_cursor_position(struct mkfw_state *state, int32_t *x, int32
 	POINT pt;
 	GetCursorPos(&pt);
 	ScreenToClient(PLATFORM(state)->hwnd, &pt);
-	*x = pt.x;
-	*y = pt.y;
+	if(x) {
+		*x = pt.x;
+	}
+	if(y) {
+		*y = pt.y;
+	}
 }
 
 // [=]===^=[ mkfw_set_cursor_position ]===========================================================[=]

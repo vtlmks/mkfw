@@ -102,7 +102,9 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 #ifdef MKFW_TIMER_DEBUG
 		if(t->last_wait_start.tv_sec) {
 			int64_t overshoot_ns = mkfw_timespec_diff_ns(&now, &t->next_deadline);
-			if(overshoot_ns < 0) overshoot_ns = 0;
+			if(overshoot_ns < 0) {
+				overshoot_ns = 0;
+			}
 
 			if(remaining_after_sleep_ns >= 0) {
 				mkfw_error("[DEBUG] Woke up with %ld ns left. Overshoot: %5ld ns", remaining_after_sleep_ns, overshoot_ns);
@@ -142,6 +144,9 @@ static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
 
 // [=]===^=[ mkfw_timer_wait ]====================================================================[=]
 static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
+	if(!t) {
+		return 0;
+	}
 	mkfw_futex_wait(&t->futex_word, 0);
 	__atomic_store_n(&t->futex_word, 0, __ATOMIC_RELEASE);
 	return 1;
@@ -149,15 +154,24 @@ static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 
 // [=]===^=[ mkfw_timer_set_interval ]============================================================[=]
 static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
+	if(!t) {
+		return;
+	}
 	t->interval_ns = interval_ns;
 }
 
 // [=]===^=[ mkfw_timer_set_spin ]================================================================[=]
 static void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
+	if(!t) {
+		return;
+	}
 	__atomic_store_n(&t->spin, enabled ? 1 : 0, __ATOMIC_RELEASE);
 }
 
 static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
+	if(!t) {
+		return;
+	}
 	__atomic_store_n(&t->running, 0, __ATOMIC_RELEASE);
 	__atomic_store_n(&t->futex_word, 1, __ATOMIC_RELEASE);
 	mkfw_futex_wake(&t->futex_word);

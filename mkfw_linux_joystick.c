@@ -50,17 +50,27 @@ static int mkfw_joystick_is_gamepad(int fd) {
 	unsigned long evbits[(EV_MAX + 1 + sizeof(unsigned long) * 8 - 1) / (sizeof(unsigned long) * 8)] = {0};
 	unsigned long keybits[(KEY_MAX + 1 + sizeof(unsigned long) * 8 - 1) / (sizeof(unsigned long) * 8)] = {0};
 
-	if(ioctl(fd, EVIOCGBIT(0, sizeof(evbits)), evbits) < 0) return 0;
+	if(ioctl(fd, EVIOCGBIT(0, sizeof(evbits)), evbits) < 0) {
+		return 0;
+	}
 
 	/* Must support EV_ABS and EV_KEY */
-	if(!MKFW_JOYSTICK_BIT_TEST(evbits, EV_ABS)) return 0;
-	if(!MKFW_JOYSTICK_BIT_TEST(evbits, EV_KEY)) return 0;
+	if(!MKFW_JOYSTICK_BIT_TEST(evbits, EV_ABS)) {
+		return 0;
+	}
+	if(!MKFW_JOYSTICK_BIT_TEST(evbits, EV_KEY)) {
+		return 0;
+	}
 
-	if(ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keybits)), keybits) < 0) return 0;
+	if(ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keybits)), keybits) < 0) {
+		return 0;
+	}
 
 	/* Check for gamepad buttons (BTN_GAMEPAD = BTN_SOUTH = 0x130) */
 	for(int code = BTN_GAMEPAD; code < BTN_GAMEPAD + 16; code++) {
-		if(MKFW_JOYSTICK_BIT_TEST(keybits, code)) return 1;
+		if(MKFW_JOYSTICK_BIT_TEST(keybits, code)) {
+			return 1;
+		}
 	}
 
 	return 0;
@@ -68,14 +78,18 @@ static int mkfw_joystick_is_gamepad(int fd) {
 
 // [=]===^=[ mkfw_joystick_normalize_axis ]=======================================================[=]
 static float mkfw_joystick_normalize_axis(int32_t value, int32_t min, int32_t max) {
-	if(max == min) return 0.0f;
+	if(max == min) {
+		return 0.0f;
+	}
 	return 2.0f * (float)(value - min) / (float)(max - min) - 1.0f;
 }
 
 // [=]===^=[ mkfw_joystick_find_free_slot ]=======================================================[=]
 static int mkfw_joystick_find_free_slot(void) {
 	for(int i = 0; i < MKFW_JOYSTICK_MAX_PADS; i++) {
-		if(mkfw_joystick_linux[i].fd < 0) return i;
+		if(mkfw_joystick_linux[i].fd < 0) {
+			return i;
+		}
 	}
 	return -1;
 }
@@ -94,16 +108,22 @@ static int mkfw_joystick_find_by_devpath(const char *devpath) {
 // [=]===^=[ mkfw_joystick_try_open ]=============================================================[=]
 static void mkfw_joystick_try_open(const char *devpath) {
 	/* Already open? */
-	if(mkfw_joystick_find_by_devpath(devpath) >= 0) return;
+	if(mkfw_joystick_find_by_devpath(devpath) >= 0) {
+		return;
+	}
 
 	int slot = mkfw_joystick_find_free_slot();
-	if(slot < 0) return;
+	if(slot < 0) {
+		return;
+	}
 
 	int fd = open(devpath, O_RDWR | O_NONBLOCK | O_CLOEXEC);
 	if(fd < 0) {
 		fd = open(devpath, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	}
-	if(fd < 0) return;
+	if(fd < 0) {
+		return;
+	}
 
 	if(!mkfw_joystick_is_gamepad(fd)) {
 		close(fd);
@@ -218,11 +238,15 @@ static void mkfw_joystick_close_pad(int slot) {
 // [=]===^=[ mkfw_joystick_scan_devices ]=========================================================[=]
 static void mkfw_joystick_scan_devices(void) {
 	DIR *dir = opendir("/dev/input");
-	if(!dir) return;
+	if(!dir) {
+		return;
+	}
 
 	struct dirent *entry;
 	while((entry = readdir(dir)) != 0) {
-		if(strncmp(entry->d_name, "event", 5) != 0) continue;
+		if(strncmp(entry->d_name, "event", 5) != 0) {
+			continue;
+		}
 
 		char path[MKFW_JOYSTICK_DEVPATH_LEN];
 		snprintf(path, sizeof(path), "/dev/input/%s", entry->d_name);
@@ -277,11 +301,15 @@ static void mkfw_joystick_shutdown(void) {
 
 // [=]===^=[ mkfw_joystick_check_hotplug ]========================================================[=]
 static void mkfw_joystick_check_hotplug(void) {
-	if(mkfw_inotify_fd < 0) return;
+	if(mkfw_inotify_fd < 0) {
+		return;
+	}
 
 	char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
 	ssize_t len = read(mkfw_inotify_fd, buf, sizeof(buf));
-	if(len <= 0) return;
+	if(len <= 0) {
+		return;
+	}
 
 	char *ptr = buf;
 	while(ptr < buf + len) {
@@ -313,7 +341,9 @@ static void mkfw_joystick_check_hotplug(void) {
 
 // [=]===^=[ mkfw_joystick_update ]===============================================================[=]
 static void mkfw_joystick_update(void) {
-	if(!mkfw_joystick_initialized) return;
+	if(!mkfw_joystick_initialized) {
+		return;
+	}
 
 	mkfw_joystick_check_hotplug();
 
@@ -331,7 +361,9 @@ static void mkfw_joystick_update(void) {
 		memcpy(pad->prev_buttons, pad->buttons, sizeof(pad->buttons));
 		pad->was_connected = pad->connected;
 
-		if(lpad->fd < 0) continue;
+		if(lpad->fd < 0) {
+			continue;
+		}
 
 		struct input_event ev;
 		int had_error = 0;
@@ -394,7 +426,9 @@ static void mkfw_joystick_update(void) {
 // [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
 static void mkfw_joystick_rumble_platform(int pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
 	struct mkfw_joystick_linux_pad *lpad = &mkfw_joystick_linux[pad_index];
-	if(lpad->fd < 0 || !lpad->has_rumble) return;
+	if(lpad->fd < 0 || !lpad->has_rumble) {
+		return;
+	}
 
 	struct ff_effect effect;
 	memset(&effect, 0, sizeof(effect));
@@ -405,7 +439,9 @@ static void mkfw_joystick_rumble_platform(int pad_index, float low_freq, float h
 	effect.replay.length = (uint16_t)(duration_ms > 65535 ? 65535 : duration_ms);
 	effect.replay.delay = 0;
 
-	if(ioctl(lpad->fd, EVIOCSFF, &effect) < 0) return;
+	if(ioctl(lpad->fd, EVIOCSFF, &effect) < 0) {
+		return;
+	}
 	lpad->ff_id = effect.id;
 
 	struct input_event play;

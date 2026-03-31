@@ -42,7 +42,9 @@ static void mkfw_joystick_shutdown(void) {
 
 // [=]===^=[ mkfw_joystick_update ]===============================================================[=]
 static void mkfw_joystick_update(void) {
-	if(!mkfw_joystick_initialized) return;
+	if(!mkfw_joystick_initialized) {
+		return;
+	}
 
 	for(int i = 0; i < MKFW_JOYSTICK_MAX_PADS; i++) {
 		struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[i];
@@ -93,10 +95,18 @@ static void mkfw_joystick_update(void) {
 			/* D-pad as hat (screen coordinates: Y-down) */
 			pad->hat_x = 0.0f;
 			pad->hat_y = 0.0f;
-			if(w & XINPUT_GAMEPAD_DPAD_LEFT)  pad->hat_x = -1.0f;
-			if(w & XINPUT_GAMEPAD_DPAD_RIGHT) pad->hat_x =  1.0f;
-			if(w & XINPUT_GAMEPAD_DPAD_UP)    pad->hat_y = -1.0f;
-			if(w & XINPUT_GAMEPAD_DPAD_DOWN)  pad->hat_y =  1.0f;
+			if(w & XINPUT_GAMEPAD_DPAD_LEFT) {
+				pad->hat_x = -1.0f;
+			}
+			if(w & XINPUT_GAMEPAD_DPAD_RIGHT) {
+				pad->hat_x = 1.0f;
+			}
+			if(w & XINPUT_GAMEPAD_DPAD_UP) {
+				pad->hat_y = -1.0f;
+			}
+			if(w & XINPUT_GAMEPAD_DPAD_DOWN) {
+				pad->hat_y = 1.0f;
+			}
 
 			if(!pad->was_connected && mkfw_joystick_cb) {
 				mkfw_joystick_cb(i, 1);
