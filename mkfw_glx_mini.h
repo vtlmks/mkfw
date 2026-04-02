@@ -4,7 +4,11 @@
 #pragma once
 
 /* Forward declarations for glXGetProcAddress */
+// GLubyte may already be typedefed by mkfw_gl_loader.h or a user GL loader
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wtypedef-redefinition"
 typedef unsigned char GLubyte;
+#pragma GCC diagnostic pop
 extern void *glXGetProcAddress(const GLubyte *procName);
 
 typedef XID GLXDrawable;

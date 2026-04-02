@@ -73,6 +73,10 @@ static inline void mkfw_error(const char *fmt, ...) {
 }
 
 /* OpenGL version configuration (call before mkfw_init, defaults to 3.1) */
+#ifdef __EMSCRIPTEN__
+__attribute__((error("mkfw_set_gl_version not available on Emscripten -- WebGL2 is fixed at ES 3.0")))
+static inline void mkfw_set_gl_version(int major, int minor);
+#else
 static int mkfw_gl_major = 3;
 static int mkfw_gl_minor = 1;
 
@@ -80,10 +84,16 @@ static inline void mkfw_set_gl_version(int major, int minor) {
 	mkfw_gl_major = major;
 	mkfw_gl_minor = minor;
 }
+#endif
 
 /* Per-pixel transparency (call before mkfw_init) */
+#ifdef __EMSCRIPTEN__
+__attribute__((error("mkfw_set_transparent not available on Emscripten")))
+static inline void mkfw_set_transparent(int enable);
+#else
 static int mkfw_transparent = 0;
 static inline void mkfw_set_transparent(int enable) { mkfw_transparent = enable; }
+#endif
 
 /* Monitor information */
 #define MKFW_MAX_MONITORS 16
@@ -98,6 +108,11 @@ struct mkfw_monitor {
 	uint8_t primary;
 };
 
+/* Platform capability define */
+#if defined(_WIN32) || (defined(__linux__) && !defined(__EMSCRIPTEN__))
+#define MKFW_DESKTOP
+#endif
+
 /* Suppress unused-function warnings for API functions the user may not call */
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -107,7 +122,9 @@ struct mkfw_monitor {
 /* Platform-specific implementation includes */
 #ifdef _WIN32
 #include "mkfw_win32.c"
-#elif __linux__
+#elif defined(__EMSCRIPTEN__)
+#include "mkfw_emscripten.c"
+#elif defined(__linux__)
 #include "mkfw_linux.c"
 #endif
 
@@ -124,7 +141,20 @@ struct mkfw_monitor {
 		WaitForSingleObject(t, INFINITE);
 		CloseHandle(t);
 	}
-#else
+#elif defined(__EMSCRIPTEN__)
+	typedef int mkfw_thread;
+	#define MKFW_THREAD_FUNC(name, arg) int name(void *arg)
+
+	static inline mkfw_thread mkfw_thread_create(void *(*func)(void *), void *arg) {
+		(void)func;
+		(void)arg;
+		return 0;
+	}
+
+	static inline void mkfw_thread_join(mkfw_thread t) {
+		(void)t;
+	}
+#elif defined(__linux__)
 	#include <pthread.h>
 	typedef pthread_t mkfw_thread;
 	#define MKFW_THREAD_FUNC(name, arg) void *name(void *arg)
@@ -146,7 +176,9 @@ struct mkfw_monitor {
 #ifdef MKFW_AUDIO
 #ifdef _WIN32
 #include "mkfw_win32_audio.c"
-#elif __linux__
+#elif defined(__EMSCRIPTEN__)
+#include "mkfw_emscripten_audio.c"
+#elif defined(__linux__)
 #include "mkfw_linux_audio.c"
 #endif
 #endif
@@ -155,7 +187,9 @@ struct mkfw_monitor {
 #ifdef MKFW_TIMER
 #ifdef _WIN32
 #include "mkfw_win32_timer.c"
-#elif __linux__
+#elif defined(__EMSCRIPTEN__)
+/* Timer stubs are in mkfw_emscripten.c */
+#elif defined(__linux__)
 #include "mkfw_linux_timer.c"
 #endif
 #endif
@@ -165,7 +199,9 @@ struct mkfw_monitor {
 #include "mkfw_joystick.h"
 #ifdef _WIN32
 #include "mkfw_win32_joystick.c"
-#elif __linux__
+#elif defined(__EMSCRIPTEN__)
+#include "mkfw_emscripten_joystick.c"
+#elif defined(__linux__)
 #include "mkfw_linux_joystick.c"
 #endif
 #ifdef MKFW_JOYSTICK_GAMEDB

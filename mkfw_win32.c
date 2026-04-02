@@ -1340,3 +1340,42 @@ static const char *mkfw_get_clipboard_text(struct mkfw_state *state) {
 static void mkfw_enable_drop(struct mkfw_state *state, uint8_t enable) {
 	DragAcceptFiles(PLATFORM(state)->hwnd, enable ? TRUE : FALSE);
 }
+
+// [=]===^=[ mkfw_run_render_thread ]=============================================================^===[=]
+struct mkfw_run_ctx {
+	struct mkfw_state *window;
+	void (*frame)(struct mkfw_state *);
+	volatile int32_t running;
+};
+
+static DWORD WINAPI mkfw_run_render_thread(LPVOID arg) {
+	struct mkfw_run_ctx *ctx = (struct mkfw_run_ctx *)arg;
+	mkfw_attach_context(ctx->window);
+	while(ctx->running) {
+		ctx->frame(ctx->window);
+		mkfw_swap_buffers(ctx->window);
+	}
+	mkfw_detach_context(ctx->window);
+	return 0;
+}
+
+// [=]===^=[ mkfw_run ]============================================================================^===[=]
+static void mkfw_run(struct mkfw_state *state, void (*frame)(struct mkfw_state *)) {
+	struct mkfw_run_ctx ctx;
+	ctx.window = state;
+	ctx.frame = frame;
+	ctx.running = 1;
+
+	mkfw_detach_context(state);
+	HANDLE render_thread = CreateThread(0, 0, mkfw_run_render_thread, &ctx, 0, 0);
+
+	while(!mkfw_should_close(state) && ctx.running) {
+		mkfw_pump_messages(state);
+		mkfw_sleep(5000000);
+	}
+
+	ctx.running = 0;
+	WaitForSingleObject(render_thread, INFINITE);
+	CloseHandle(render_thread);
+	mkfw_attach_context(state);
+}
