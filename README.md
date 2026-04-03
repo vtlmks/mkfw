@@ -67,7 +67,7 @@ int main() {
 Compile on Linux:
 
 ```sh
-gcc main.c -lX11 -lXi -lGL -lm -o app
+gcc main.c -lX11 -lXi -lXrandr -lGL -lm -o app
 ```
 
 ## Optional subsystems
