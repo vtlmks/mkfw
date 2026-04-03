@@ -1298,7 +1298,7 @@ static void mkfw_set_window_opacity(struct mkfw_state *state, float opacity) {
 	if(opacity >= 1.0f) {
 		XDeleteProperty(dpy, PLATFORM(state)->window, net_wm_opacity);
 	} else {
-		uint32_t val = (uint32_t)(opacity * 0xffffffff);
+		uint32_t val = (uint32_t)((double)opacity * (double)0xffffffff);
 		XChangeProperty(dpy, PLATFORM(state)->window, net_wm_opacity, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&val, 1);
 	}
 	XFlush(dpy);
