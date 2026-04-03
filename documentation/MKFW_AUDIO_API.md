@@ -20,6 +20,7 @@ The MKFW Audio API provides low-latency, real-time audio output for applications
 
 - Linux (ALSA, tries PipeWire first then falls back to default ALSA device)
 - Windows (WASAPI event-driven)
+- Emscripten (AudioWorklet, requires `-sAUDIO_WORKLET=1 -sWASM_WORKERS=1` compiler flags and COOP/COEP server headers -- see [MKFW_RUN_API.md](MKFW_RUN_API.md#web-server-requirements-coopcoep))
 
 ---
 

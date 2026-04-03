@@ -225,13 +225,51 @@ int main(void) {
 
 ```bash
 # Desktop (Linux)
-gcc app.c -lX11 -lXi -lXrandr -lGL -lm -lpthread -o app
+gcc app.c -lX11 -lXi -lXrandr -lGL -lm -lpthread -lasound -o app
 
 # Desktop (Windows)
-gcc app.c -lopengl32 -lgdi32 -lwinmm -o app.exe
+gcc app.c -lopengl32 -lgdi32 -lwinmm -lole32 -lavrt -o app.exe
 
 # Emscripten (code must use mkfw_run)
 emcc app.c -sUSE_WEBGL2=1 -sFULL_ES3=1 -o app.html
+
+# Emscripten with audio
+emcc app.c -sUSE_WEBGL2=1 -sFULL_ES3=1 -sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -o app.html
+```
+
+---
+
+## Web Server Requirements (COOP/COEP)
+
+If your Emscripten build uses audio (`MKFW_AUDIO`), the web server **must** send these HTTP headers:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+The audio subsystem uses AudioWorklet, which runs on a separate thread sharing the wasm memory via `SharedArrayBuffer`. Browsers disable `SharedArrayBuffer` unless the page is served with these headers. Without them, audio will silently fail to initialize.
+
+This is a browser security requirement, not an mkfw limitation. It applies to all Emscripten applications that use shared memory between threads.
+
+**Server configuration examples:**
+
+nginx:
+```
+add_header Cross-Origin-Opener-Policy same-origin;
+add_header Cross-Origin-Embedder-Policy require-corp;
+```
+
+Apache (.htaccess):
+```
+Header set Cross-Origin-Opener-Policy "same-origin"
+Header set Cross-Origin-Embedder-Policy "require-corp"
+```
+
+Local development (Python):
+```bash
+# A serve.sh script is included in mkfw_run_example/
+./serve.sh
 ```
 
 ---
