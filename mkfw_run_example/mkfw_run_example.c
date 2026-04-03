@@ -19,7 +19,32 @@
 #include <math.h>
 
 #include "../mkfw_gl_loader.h"
+#define MKFW_AUDIO
 #include "../mkfw.h"
+
+static float audio_phase = 0.0f;
+static volatile int32_t audio_beep_remaining = 0;
+
+// [=]===^=[ audio_callback ]====================================================================^===[=]
+static void audio_callback(int16_t *buffer, size_t frames) {
+	float phase_inc = 880.0f / 48000.0f;
+	for(size_t i = 0; i < frames; ++i) {
+		if(audio_beep_remaining > 0) {
+			float envelope = (float)audio_beep_remaining / 4800.0f;
+			if(envelope > 1.0f) {
+				envelope = 1.0f;
+			}
+			int16_t sample = (int16_t)(sinf(audio_phase * 2.0f * 3.14159265f) * 6000.0f * envelope);
+			buffer[i * 2 + 0] = sample;
+			buffer[i * 2 + 1] = sample;
+			audio_phase += phase_inc;
+			if(audio_phase >= 1.0f) {
+				audio_phase -= 1.0f;
+			}
+			--audio_beep_remaining;
+		}
+	}
+}
 
 struct app_state {
 	float time;
@@ -238,11 +263,15 @@ static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uin
 	(void)mods;
 	struct app_state *state = (struct app_state *)mkfw_get_user_data(window);
 
+	if(action == MKS_PRESSED) {
+		audio_beep_remaining = 4800;
+	}
+
 	if(key == MKS_KEY_ESCAPE && action == MKS_PRESSED) {
 		mkfw_set_should_close(window, 1);
 	}
 
-	if(key == MKS_KEY_F11 && action == MKS_PRESSED) {
+	if(key == MKS_KEY_F10 && action == MKS_PRESSED) {
 		state->fullscreen = !state->fullscreen;
 		mkfw_fullscreen(window, state->fullscreen);
 	}
@@ -292,12 +321,16 @@ int main(void) {
 	mkfw_set_framebuffer_size_callback(window, on_resize);
 	mkfw_show_window(window);
 
+	mkfw_audio_callback = audio_callback;
+	mkfw_audio_initialize();
+
 	mkfw_get_framebuffer_size(window, &app.fb_width, &app.fb_height);
 
 	setup_gl(&app);
 
 	mkfw_run(window, frame);
 
+	mkfw_audio_shutdown();
 	mkfw_cleanup(window);
 	return 0;
 }

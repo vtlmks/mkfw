@@ -1,6 +1,6 @@
 # mkfw
 
-A minimal windowing and input library for OpenGL applications on Linux (X11) and Windows (Win32).
+A minimal windowing and input library for OpenGL applications on Linux (X11), Windows (Win32), and Emscripten (WebGL2).
 
 mkfw is what I use in my own projects. It covers similar ground to GLFW — window creation, input handling, OpenGL context management — but it's a solo effort without the test coverage or ecosystem that GLFW has. It works well for me, and you're welcome to use it, but I'd suggest evaluating it with that in mind.
 
@@ -31,6 +31,7 @@ mkfw is what I use in my own projects. It covers similar ground to GLFW — wind
 |----------|---------------|------------|-------|
 | Linux | X11 | GLX | XInput2 (mouse), evdev (joystick) |
 | Windows | Win32 | WGL | Raw Input (mouse), XInput (joystick) |
+| Emscripten | Canvas/DOM | WebGL2 | DOM events (keyboard/mouse), Gamepad API |
 
 ## Quick start
 
@@ -103,12 +104,14 @@ Working examples are included in the repository:
 
 - [joystick_example/](joystick_example/) — gamepad input with terminal visualization
 - [threaded_example/](threaded_example/) — render loop on a separate thread, decoupled from the OS message pump
+- [mkfw_run_example/](mkfw_run_example/) — cross-platform frame callback (works on Linux, Windows, and Emscripten)
 
 Build an example:
 
 ```sh
 cd joystick_example && sh build_joystick.sh
 cd threaded_example && sh build_threaded.sh
+cd mkfw_run_example && sh build_desktop.sh
 ```
 
 ### Threaded rendering
@@ -132,11 +135,45 @@ The key steps:
 
 This pattern is not specific to mkfw — the same approach works with GLFW, SDL, or raw Win32. The [threaded_example/](threaded_example/) shows a complete, minimal implementation.
 
+### Emscripten / mkfw_run()
+
+`mkfw_run()` is an opt-in frame callback that replaces the manual while loop. It exists for users who want their code to compile for Emscripten (WebAssembly) in addition to desktop platforms. The existing manual loop pattern is unchanged and remains the recommended approach for desktop-only applications.
+
+```c
+static void frame(struct mkfw_state *window) {
+    struct game_state *game = (struct game_state *)mkfw_get_user_data(window);
+    // game logic + render
+    mkfw_update_input_state(window);
+}
+
+int main(void) {
+    struct mkfw_state *window = mkfw_init(1280, 720);
+    mkfw_set_user_data(window, &game);
+    mkfw_show_window(window);
+    mkfw_gl_loader();
+
+    mkfw_run(window, frame);
+
+    mkfw_cleanup(window);
+}
+```
+
+On Linux this is a simple while loop. On Windows it automatically handles the threaded rendering pattern. On Emscripten it uses `requestAnimationFrame`.
+
+Compile for Emscripten:
+
+```sh
+emcc main.c -sUSE_WEBGL2=1 -sFULL_ES3=1 -o app.html
+```
+
+See [MKFW_RUN_API.md](documentation/MKFW_RUN_API.md) for the full contract, constraints, and Emscripten-specific details.
+
 ## Documentation
 
 Detailed API documentation for each subsystem is in the [documentation/](documentation/) directory:
 
 - [MKFW_API.md](documentation/MKFW_API.md) — core window, input, and context management
+- [MKFW_RUN_API.md](documentation/MKFW_RUN_API.md) — mkfw_run() and Emscripten support
 - [MKFW_AUDIO_API.md](documentation/MKFW_AUDIO_API.md) — audio output
 - [MKFW_TIMER_API.md](documentation/MKFW_TIMER_API.md) — high-precision timing
 - [MKFW_JOYSTICK_API.md](documentation/MKFW_JOYSTICK_API.md) — gamepad input
@@ -162,6 +199,7 @@ None beyond platform libraries:
 
 - **Linux:** X11, Xi, GL, m (all standard)
 - **Windows:** Windows SDK (standard)
+- **Emscripten:** Emscripten SDK (provides WebGL2, audio, gamepad APIs)
 
 ## License
 

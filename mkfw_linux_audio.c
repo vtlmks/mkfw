@@ -112,6 +112,7 @@ static void mkfw_audio_close_device(void) {
 
 // [=]===^=[ mkfw_audio_thread_func ]=============================================================[=]
 static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
+	(void)arg;
 	while(__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
 		if(!mkfw_pcm) {
 			if(mkfw_audio_open_device() < 0) {

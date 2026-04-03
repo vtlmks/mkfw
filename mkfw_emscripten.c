@@ -11,6 +11,8 @@ struct emscripten_mkfw_state {
 	uint8_t should_close;
 	int32_t canvas_width;
 	int32_t canvas_height;
+	int32_t windowed_width;
+	int32_t windowed_height;
 	float aspect_ratio;
 	double mouse_sensitivity;
 	double accumulated_dx;
@@ -167,9 +169,22 @@ static uint32_t get_modifier_bits(struct mkfw_state *state) {
 // DOM event callbacks
 // ============================================================
 
+// [=]===^=[ mkfw_em_resume_audio ]=============================================================^===[=]
+// Defined in mkfw_emscripten_audio.c when MKFW_AUDIO is enabled
+#ifdef MKFW_AUDIO
+static void mkfw_em_resume_audio_ctx(void);
+#endif
+
+static void mkfw_em_resume_audio(void) {
+#ifdef MKFW_AUDIO
+	mkfw_em_resume_audio_ctx();
+#endif
+}
+
 // [=]===^=[ mkfw_em_on_key ]===================================================================^===[=]
 static EM_BOOL mkfw_em_on_key(int event_type, const EmscriptenKeyboardEvent *e, void *user_data) {
 	struct mkfw_state *state = (struct mkfw_state *)user_data;
+	mkfw_em_resume_audio();
 	uint32_t key = map_dom_keycode(e->code);
 	if(!key) {
 		return EM_FALSE;
@@ -242,6 +257,7 @@ static EM_BOOL mkfw_em_on_mouse_move(int event_type, const EmscriptenMouseEvent 
 // [=]===^=[ mkfw_em_on_mouse_button ]================================================================^===[=]
 static EM_BOOL mkfw_em_on_mouse_button(int event_type, const EmscriptenMouseEvent *e, void *user_data) {
 	struct mkfw_state *state = (struct mkfw_state *)user_data;
+	mkfw_em_resume_audio();
 	uint32_t action = (event_type == EMSCRIPTEN_EVENT_MOUSEDOWN) ? MKS_PRESSED : MKS_RELEASED;
 
 	// DOM: 0=left, 1=middle, 2=right, 3=back, 4=forward (matches mkfw)
@@ -325,6 +341,38 @@ static EM_BOOL mkfw_em_on_focus(int event_type, const EmscriptenFocusEvent *e, v
 	return EM_TRUE;
 }
 
+// [=]===^=[ mkfw_em_on_fullscreen_change ]===================================================^===[=]
+static EM_BOOL mkfw_em_on_fullscreen_change(int event_type, const EmscriptenFullscreenChangeEvent *e, void *user_data) {
+	(void)event_type;
+	struct mkfw_state *state = (struct mkfw_state *)user_data;
+
+	if(e->isFullscreen) {
+		PLATFORM(state)->windowed_width = PLATFORM(state)->canvas_width;
+		PLATFORM(state)->windowed_height = PLATFORM(state)->canvas_height;
+		int32_t w = e->screenWidth;
+		int32_t h = e->screenHeight;
+		emscripten_set_canvas_element_size("#canvas", w, h);
+		PLATFORM(state)->canvas_width = w;
+		PLATFORM(state)->canvas_height = h;
+		state->is_fullscreen = 1;
+		if(state->framebuffer_callback) {
+			state->framebuffer_callback(state, w, h, PLATFORM(state)->aspect_ratio);
+		}
+	} else {
+		int32_t w = PLATFORM(state)->windowed_width;
+		int32_t h = PLATFORM(state)->windowed_height;
+		emscripten_set_canvas_element_size("#canvas", w, h);
+		PLATFORM(state)->canvas_width = w;
+		PLATFORM(state)->canvas_height = h;
+		state->is_fullscreen = 0;
+		if(state->framebuffer_callback) {
+			state->framebuffer_callback(state, w, h, PLATFORM(state)->aspect_ratio);
+		}
+	}
+
+	return EM_TRUE;
+}
+
 // ============================================================
 // Core API
 // ============================================================
@@ -382,6 +430,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, state, EM_TRUE, mkfw_em_on_resize);
 	emscripten_set_focusin_callback("#canvas", state, EM_TRUE, mkfw_em_on_focus);
 	emscripten_set_focusout_callback("#canvas", state, EM_TRUE, mkfw_em_on_focus);
+	emscripten_set_fullscreenchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, state, EM_TRUE, mkfw_em_on_fullscreen_change);
 
 	state->has_focus = 1;
 	state->mouse_in_window = 1;
@@ -473,16 +522,9 @@ static uint64_t mkfw_gettime(struct mkfw_state *state) {
 // [=]===^=[ mkfw_fullscreen ]================================================================^===[=]
 static void mkfw_fullscreen(struct mkfw_state *state, int32_t enable) {
 	if(enable) {
-		EmscriptenFullscreenStrategy strategy;
-		memset(&strategy, 0, sizeof(strategy));
-		strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH;
-		strategy.canvasResolutionScaleMode = EMSCRIPTEN_FULLSCREEN_CANVAS_SCALE_HIDEF;
-		strategy.filteringMode = EMSCRIPTEN_FULLSCREEN_FILTERING_DEFAULT;
-		emscripten_request_fullscreen_strategy("#canvas", EM_TRUE, &strategy);
-		state->is_fullscreen = 1;
+		emscripten_request_fullscreen("#canvas", EM_TRUE);
 	} else {
 		emscripten_exit_fullscreen();
-		state->is_fullscreen = 0;
 	}
 }
 

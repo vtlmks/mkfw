@@ -180,7 +180,6 @@ static void mkfw_audio_initialize(void) {
 		CoUninitialize();
 		return;
 	}
-	mkfw_audio_open_device_win32();
 	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
 	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_proc, 0);
 	if(!mkfw_audio_thread) {
