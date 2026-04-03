@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #define COBJMACROS
-#include <windows.h>
 #include <initguid.h>
+#include <windows.h>
 #include <audioclient.h>
 #include <mmdeviceapi.h>
 #include <avrt.h>
@@ -113,6 +113,7 @@ static void mkfw_audio_close_device_win32(void) {
 
 // [=]===^=[ mkfw_audio_thread_proc ]=============================================================[=]
 static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
+	(void)arg;
 	uint32_t buffer_size = 0;
 	uint32_t padding;
 	uint32_t available;

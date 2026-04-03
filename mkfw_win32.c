@@ -585,6 +585,7 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 
 // [=]===^=[ mkfw_detach_context ]================================================================[=]
 static void mkfw_detach_context(struct mkfw_state *state) {
+	(void)state;
 	wglMakeCurrent(0, 0);
 }
 
@@ -595,6 +596,7 @@ static void mkfw_attach_context(struct mkfw_state *state) {
 
 // [=]===^=[ mkfw_enable_raw_mouse ]==============================================================[=]
 static void mkfw_enable_raw_mouse(struct mkfw_state *state, int32_t enable) {
+	(void)enable;
 	RAWINPUTDEVICE rid;
 	rid.usUsagePage = 0x01;	// Generic desktop
 	rid.usUsage     = 0x02;	// Mouse
@@ -885,6 +887,7 @@ static void mkfw_set_mouse_cursor(struct mkfw_state *state, int32_t visible) {
 
 // [=]===^=[ mkfw_set_swapinterval ]==============================================================[=]
 static void mkfw_set_swapinterval(struct mkfw_state *state, uint32_t interval) {
+	(void)state;
 	typedef BOOL (WINAPI *PFNWGLSWAPINTERVALEXT)(int);
 	PFNWGLSWAPINTERVALEXT wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXT)(void*)wglGetProcAddress("wglSwapIntervalEXT");
 
@@ -1118,6 +1121,8 @@ struct mkfw_monitor_enum_data {
 
 // [=]===^=[ mkfw_monitor_enum_proc ]===========================================================[=]
 static BOOL CALLBACK mkfw_monitor_enum_proc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
+	(void)hdcMonitor;
+	(void)lprcMonitor;
 	struct mkfw_monitor_enum_data *d = (struct mkfw_monitor_enum_data *)dwData;
 	if(d->count >= d->max) {
 		return FALSE;
