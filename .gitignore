@@ -4,3 +4,8 @@ gl.xml
 threaded_example/threaded_example
 monitor_example/monitor_example
 transparency_example/transparency_example
+mkfw_run_example/mkfw_run_example
+mkfw_run_example/mkfw_run_example.exe
+mkfw_run_example/mkfw_run_example.html
+mkfw_run_example/mkfw_run_example.js
+mkfw_run_example/mkfw_run_example.wasm

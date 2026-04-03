@@ -4,12 +4,7 @@
 #pragma once
 
 /* Forward declarations for glXGetProcAddress */
-// GLubyte may already be typedefed by mkfw_gl_loader.h or a user GL loader
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wtypedef-redefinition"
-typedef unsigned char GLubyte;
-#pragma GCC diagnostic pop
-extern void *glXGetProcAddress(const GLubyte *procName);
+extern void *glXGetProcAddress(const unsigned char *procName);
 
 typedef XID GLXDrawable;
 typedef XID GLXContext;
@@ -61,15 +56,15 @@ static PFNGLXGETCLIENTSTRINGPROC glXGetClientString;
 static PFNGLXGETFBCONFIGATTRIBPROC glXGetFBConfigAttrib;
 
 static void load_glx_functions(Display *display __attribute__((unused))) {
-	glXChooseFBConfig = (PFNGLXCHOOSEFBCONFIGPROC)glXGetProcAddress((const GLubyte *)"glXChooseFBConfig");
-	glXGetVisualFromFBConfig = (PFNGLXGETVISUALFROMFBCONFIGPROC)glXGetProcAddress((const GLubyte *)"glXGetVisualFromFBConfig");
-	glXCreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glXGetProcAddress((const GLubyte *)"glXCreateContextAttribsARB");
-	glXMakeCurrent = (PFNGLXMAKECURRENTPROC)glXGetProcAddress((const GLubyte *)"glXMakeCurrent");
-	glXSwapBuffers = (PFNGLXSWAPBUFFERSPROC)glXGetProcAddress((const GLubyte *)"glXSwapBuffers");
-	glXDestroyContext = (PFNGLXDESTROYCONTEXTPROC)glXGetProcAddress((const GLubyte *)"glXDestroyContext");
-	glXGetCurrentDrawable = (PFNGLXGETCURRENTDRAWABLEPROC)glXGetProcAddress((const GLubyte *)"glXGetCurrentDrawable");
-	glXGetClientString = (PFNGLXGETCLIENTSTRINGPROC)glXGetProcAddress((const GLubyte *)"glXGetClientString"); /* Added */
-	glXGetFBConfigAttrib = (PFNGLXGETFBCONFIGATTRIBPROC)glXGetProcAddress((const GLubyte *)"glXGetFBConfigAttrib"); /* Added */
+	glXChooseFBConfig = (PFNGLXCHOOSEFBCONFIGPROC)glXGetProcAddress((const unsigned char *)"glXChooseFBConfig");
+	glXGetVisualFromFBConfig = (PFNGLXGETVISUALFROMFBCONFIGPROC)glXGetProcAddress((const unsigned char *)"glXGetVisualFromFBConfig");
+	glXCreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glXGetProcAddress((const unsigned char *)"glXCreateContextAttribsARB");
+	glXMakeCurrent = (PFNGLXMAKECURRENTPROC)glXGetProcAddress((const unsigned char *)"glXMakeCurrent");
+	glXSwapBuffers = (PFNGLXSWAPBUFFERSPROC)glXGetProcAddress((const unsigned char *)"glXSwapBuffers");
+	glXDestroyContext = (PFNGLXDESTROYCONTEXTPROC)glXGetProcAddress((const unsigned char *)"glXDestroyContext");
+	glXGetCurrentDrawable = (PFNGLXGETCURRENTDRAWABLEPROC)glXGetProcAddress((const unsigned char *)"glXGetCurrentDrawable");
+	glXGetClientString = (PFNGLXGETCLIENTSTRINGPROC)glXGetProcAddress((const unsigned char *)"glXGetClientString"); /* Added */
+	glXGetFBConfigAttrib = (PFNGLXGETFBCONFIGATTRIBPROC)glXGetProcAddress((const unsigned char *)"glXGetFBConfigAttrib"); /* Added */
 
 	if(!glXChooseFBConfig || !glXGetVisualFromFBConfig || !glXCreateContextAttribsARB || !glXMakeCurrent || !glXSwapBuffers || !glXDestroyContext || !glXGetCurrentDrawable || !glXGetClientString || !glXGetFBConfigAttrib) {
 		mkfw_error("failed to load GLX functions");

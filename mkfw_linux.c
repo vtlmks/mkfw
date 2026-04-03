@@ -410,7 +410,7 @@ static int mkfw_query_max_gl_version(int *major, int *minor) {
 	glXMakeCurrent(dpy, win, ctx);
 
 	typedef const unsigned char *(*PFNGLGETSTRINGPROC)(unsigned int);
-	PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const GLubyte *)"glGetString");
+	PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const unsigned char *)"glGetString");
 	int result = 0;
 	if(pglGetString) {
 		const char *version = (const char *)pglGetString(0x1F02); // GL_VERSION
@@ -535,7 +535,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 		if(query_ctx) {
 			glXMakeCurrent(PLATFORM(state)->display, PLATFORM(state)->window, query_ctx);
 			typedef const unsigned char *(*PFNGLGETSTRINGPROC)(unsigned int);
-			PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const GLubyte *)"glGetString");
+			PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const unsigned char *)"glGetString");
 			int max_major = 0, max_minor = 0;
 			if(pglGetString) {
 				const char *ver = (const char *)pglGetString(0x1F02);
@@ -1327,7 +1327,7 @@ static void mkfw_get_framebuffer_size(struct mkfw_state *state, int32_t *width, 
 // [=]===^=[ mkfw_set_swapinterval ]==============================================================[=]
 static void mkfw_set_swapinterval(struct mkfw_state *state, uint32_t interval) {
 	typedef int (*PFNGLXSWAPINTERVALEXTPROC)(Display*, GLXDrawable, int);
-	PFNGLXSWAPINTERVALEXTPROC glXSwapIntervalEXT = (PFNGLXSWAPINTERVALEXTPROC)glXGetProcAddress((const GLubyte *)"glXSwapIntervalEXT");
+	PFNGLXSWAPINTERVALEXTPROC glXSwapIntervalEXT = (PFNGLXSWAPINTERVALEXTPROC)glXGetProcAddress((const unsigned char *)"glXSwapIntervalEXT");
 
 	if(glXSwapIntervalEXT) {
 		glXSwapIntervalEXT(PLATFORM(state)->display, glXGetCurrentDrawable(), interval);
@@ -1337,7 +1337,7 @@ static void mkfw_set_swapinterval(struct mkfw_state *state, uint32_t interval) {
 // [=]===^=[ mkfw_get_swapinterval ]==============================================================[=]
 static int32_t mkfw_get_swapinterval(struct mkfw_state *state) {
 	typedef void (*PFNGLXQUERYDRAWABLEPROC)(Display *, GLXDrawable, int, unsigned int *);
-	PFNGLXQUERYDRAWABLEPROC pglXQueryDrawable = (PFNGLXQUERYDRAWABLEPROC)glXGetProcAddress((const GLubyte *)"glXQueryDrawable");
+	PFNGLXQUERYDRAWABLEPROC pglXQueryDrawable = (PFNGLXQUERYDRAWABLEPROC)glXGetProcAddress((const unsigned char *)"glXQueryDrawable");
 	if(pglXQueryDrawable) {
 		unsigned int interval = 0;
 		pglXQueryDrawable(PLATFORM(state)->display, PLATFORM(state)->window, 0x20f1, &interval);
