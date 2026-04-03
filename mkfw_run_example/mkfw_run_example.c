@@ -275,6 +275,23 @@ static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uin
 		state->fullscreen = !state->fullscreen;
 		mkfw_fullscreen(window, state->fullscreen);
 	}
+
+	if(key == 'a' && action == MKS_PRESSED) {
+		mkfw_request_attention(window);
+		printf("Requested attention\n");
+	}
+}
+
+// [=]===^=[ on_window_state ]===================================================================^===[=]
+static void on_window_state(struct mkfw_state *window, uint8_t maximized, uint8_t minimized) {
+	(void)window;
+	if(maximized) {
+		printf("Window maximized\n");
+	} else if(minimized) {
+		printf("Window minimized\n");
+	} else {
+		printf("Window restored\n");
+	}
 }
 
 // [=]===^=[ on_resize ]=========================================================================^===[=]
@@ -319,7 +336,10 @@ int main(void) {
 	mkfw_set_user_data(window, &app);
 	mkfw_set_key_callback(window, on_key);
 	mkfw_set_framebuffer_size_callback(window, on_resize);
+	mkfw_set_window_state_callback(window, on_window_state);
 	mkfw_show_window(window);
+
+	printf("Content scale: %.2f\n", mkfw_get_content_scale(window));
 
 	mkfw_audio_callback = audio_callback;
 	mkfw_audio_initialize();

@@ -27,7 +27,10 @@ MKFW is a minimal, single-header windowing and input library for OpenGL applicat
 - Per-pixel transparency (composited windows with alpha channel)
 - VSync control and query
 - Cursor position get/set
-- Event callbacks (key, char, scroll, mouse, focus, resize, file drop)
+- Content scale / DPI query
+- Event callbacks (key, char, scroll, mouse, focus, resize, file drop, window state)
+- Blocking event wait (for tool/editor apps)
+- Window attention request (taskbar flash)
 - Clipboard access (get/set UTF-8 text)
 - File drag-and-drop
 - Key name lookup for rebindable controls
@@ -659,6 +662,100 @@ Manually set the close flag.
 **Parameters:**
 - `state` - Window state pointer
 - `value` - Non-zero to request close
+
+---
+
+### `mkfw_get_content_scale`
+
+```c
+float mkfw_get_content_scale(struct mkfw_state *state)
+```
+
+Query the DPI scale factor for the window's display.
+
+**Parameters:**
+- `state` - Window state pointer
+
+**Returns:**
+- Scale factor as a float (1.0 = standard 96 DPI, 2.0 = Retina / 200%)
+
+**Notes:**
+- Use this to scale UI elements, font sizes, and other resolution-dependent content
+- On Linux, reads `Xft.dpi` from the X resource database, falls back to computing from physical display dimensions
+- On Windows, uses `GetDpiForWindow` (Windows 10 1607+) with `GetDeviceCaps` fallback
+- On Emscripten, returns `window.devicePixelRatio`
+- Call after `mkfw_init()`, and again after receiving a framebuffer size callback if DPI may have changed (e.g. dragging window between monitors)
+
+**Example:**
+```c
+float scale = mkfw_get_content_scale(window);
+int font_size = (int)(14.0f * scale);
+printf("DPI scale: %.2f, font size: %d\n", scale, font_size);
+```
+
+---
+
+### `mkfw_request_attention`
+
+```c
+void mkfw_request_attention(struct mkfw_state *state)
+```
+
+Request user attention by flashing the taskbar/dock entry.
+
+**Parameters:**
+- `state` - Window state pointer
+
+**Notes:**
+- On Windows, uses `FlashWindowEx` with `FLASHW_ALL | FLASHW_TIMERNOFG` -- flashes 3 times, stops when window gains focus
+- On Linux, sets `_NET_WM_STATE_DEMANDS_ATTENTION` -- supported by GNOME, KDE, and most X11 window managers
+- On Emscripten, this is a no-op (no taskbar concept in browser)
+- Safe to call when the window already has focus (no effect)
+
+**Example:**
+```c
+// Notify the user that a background task completed
+if(!mkfw_has_focus(window)) {
+    mkfw_request_attention(window);
+}
+```
+
+---
+
+### `mkfw_set_window_state_callback`
+
+```c
+void mkfw_set_window_state_callback(struct mkfw_state *state, window_state_callback_t callback)
+```
+
+Register a callback that fires when the window transitions between normal, maximized, and minimized states.
+
+**Parameters:**
+- `state` - Window state pointer
+- `callback` - Function pointer matching `void (*)(struct mkfw_state *state, uint8_t maximized, uint8_t minimized)`, or NULL to remove
+
+**Callback parameters:**
+- `maximized` - 1 if the window is now maximized, 0 otherwise
+- `minimized` - 1 if the window is now minimized (iconified), 0 otherwise
+- Both 0 means the window was restored to normal size
+
+**Notes:**
+- Only fires on state transitions, not every resize
+- On Emscripten, fires when tab visibility changes (hidden = minimized, visible = restored)
+- Useful for pausing audio/rendering when minimized, or adjusting viewport on maximize
+
+**Example:**
+```c
+void on_window_state(struct mkfw_state *window, uint8_t maximized, uint8_t minimized) {
+    if(minimized) {
+        pause_audio();
+    } else {
+        resume_audio();
+    }
+}
+
+mkfw_set_window_state_callback(window, on_window_state);
+```
 
 ---
 
@@ -1511,6 +1608,65 @@ while (!mkfw_should_close(window)) {
     mkfw_swap_buffers(window);
 
     // Update state tracking (required for edge-detection functions)
+    mkfw_update_input_state(window);
+}
+```
+
+---
+
+### `mkfw_wait_events`
+
+```c
+void mkfw_wait_events(struct mkfw_state *state)
+```
+
+Block until at least one event is available, then process all pending events.
+
+**Parameters:**
+- `state` - Window state pointer
+
+**Notes:**
+- Designed for tool/editor applications that only need to redraw on user input
+- Saves CPU by sleeping instead of spinning in a poll loop
+- On Linux, uses `poll()` on the X11 connection file descriptor
+- On Windows, uses `WaitMessage()`
+- On Emscripten, this is a no-op (browser event loop is always non-blocking)
+
+**Example:**
+```c
+while (!mkfw_should_close(window)) {
+    mkfw_wait_events(window);
+    redraw_ui();
+    mkfw_swap_buffers(window);
+    mkfw_update_input_state(window);
+}
+```
+
+---
+
+### `mkfw_wait_events_timeout`
+
+```c
+void mkfw_wait_events_timeout(struct mkfw_state *state, uint64_t nanoseconds)
+```
+
+Block until an event arrives or the timeout expires, then process all pending events.
+
+**Parameters:**
+- `state` - Window state pointer
+- `nanoseconds` - Maximum time to wait in nanoseconds (consistent with `mkfw_sleep` and `mkfw_gettime`)
+
+**Notes:**
+- Useful for apps that need periodic updates (blinking cursors, animations) even without user input
+- On Emscripten, this is a no-op
+
+**Example:**
+```c
+while (!mkfw_should_close(window)) {
+    // Wait up to 500ms for input, then redraw regardless (for blinking cursor)
+    mkfw_wait_events_timeout(window, 500000000ULL);
+    redraw_editor();
+    mkfw_swap_buffers(window);
     mkfw_update_input_state(window);
 }
 ```

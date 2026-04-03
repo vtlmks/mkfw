@@ -61,6 +61,13 @@ struct win32_mkfw_state {
 	uint32_t current_cursor;
 	uint16_t high_surrogate;
 	uint8_t mouse_tracked;
+
+	// Window state callback tracking
+	uint8_t last_maximized;
+	uint8_t last_minimized;
+
+	// Dynamic DPI function
+	UINT (WINAPI *GetDpiForWindow_)(HWND);
 };
 
 // [=]===^=[ map_vk_to_scancode ]=================================================================[=]
@@ -300,6 +307,16 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 
 			if(state->framebuffer_callback) {
 				state->framebuffer_callback(state, new_width, new_height, PLATFORM(state)->aspect_ratio);
+			}
+
+			if(state->window_state_callback) {
+				uint8_t maximized = (wParam == SIZE_MAXIMIZED) ? 1 : 0;
+				uint8_t minimized = (wParam == SIZE_MINIMIZED) ? 1 : 0;
+				if(maximized != PLATFORM(state)->last_maximized || minimized != PLATFORM(state)->last_minimized) {
+					PLATFORM(state)->last_maximized = maximized;
+					PLATFORM(state)->last_minimized = minimized;
+					state->window_state_callback(state, maximized, minimized);
+				}
 			}
 		} break;
 
@@ -672,6 +689,11 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	}
 
 	SetProcessDPIAware();
+
+	HMODULE user32 = GetModuleHandle("user32.dll");
+	if(user32) {
+		PLATFORM(state)->GetDpiForWindow_ = (UINT (WINAPI *)(HWND))(void *)GetProcAddress(user32, "GetDpiForWindow");
+	}
 
 	PLATFORM(state)->mouse_sensitivity = 1.0;
 	PLATFORM(state)->hinstance = GetModuleHandle(0);
@@ -1183,6 +1205,39 @@ static int32_t mkfw_is_minimized(struct mkfw_state *state) {
 // [=]===^=[ mkfw_is_maximized ]=================================================================[=]
 static int32_t mkfw_is_maximized(struct mkfw_state *state) {
 	return IsZoomed(PLATFORM(state)->hwnd) ? 1 : 0;
+}
+
+// [=]===^=[ mkfw_get_content_scale ]=============================================================[=]
+static float mkfw_get_content_scale(struct mkfw_state *state) {
+	if(PLATFORM(state)->GetDpiForWindow_) {
+		UINT dpi = PLATFORM(state)->GetDpiForWindow_(PLATFORM(state)->hwnd);
+		return (float)dpi / 96.0f;
+	}
+	int dpi = GetDeviceCaps(PLATFORM(state)->hdc, LOGPIXELSX);
+	return (float)dpi / 96.0f;
+}
+
+// [=]===^=[ mkfw_request_attention ]=============================================================[=]
+static void mkfw_request_attention(struct mkfw_state *state) {
+	FLASHWINFO fi;
+	fi.cbSize = sizeof(fi);
+	fi.hwnd = PLATFORM(state)->hwnd;
+	fi.dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG;
+	fi.uCount = 3;
+	fi.dwTimeout = 0;
+	FlashWindowEx(&fi);
+}
+
+// [=]===^=[ mkfw_wait_events ]==================================================================[=]
+static void mkfw_wait_events(struct mkfw_state *state) {
+	WaitMessage();
+	mkfw_pump_messages(state);
+}
+
+// [=]===^=[ mkfw_wait_events_timeout ]===========================================================[=]
+static void mkfw_wait_events_timeout(struct mkfw_state *state, uint64_t nanoseconds) {
+	MsgWaitForMultipleObjectsEx(0, 0, (DWORD)(nanoseconds / 1000000), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+	mkfw_pump_messages(state);
 }
 
 // [=]===^=[ mkfw_cleanup ]=======================================================================[=]

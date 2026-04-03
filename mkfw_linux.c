@@ -11,11 +11,14 @@
 #include <X11/extensions/XIproto.h>
 #include <X11/extensions/Xrandr.h>
 
+#include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include <X11/Xresource.h>
 
 #include "mkfw_glx_mini.h"
 
@@ -85,6 +88,15 @@ struct x11_mkfw_state {
 	Atom text_uri_list;
 	Window xdnd_source;
 	uint8_t xdnd_has_uri_list;
+
+	// Window state callback tracking
+	Atom net_wm_state;
+	Atom net_wm_state_maximized_horz;
+	Atom net_wm_state_maximized_vert;
+	Atom wm_state;
+	Atom net_wm_state_demands_attention;
+	uint8_t last_maximized;
+	uint8_t last_minimized;
 };
 
 // [=]===^=[ map_x11_keysym ]=====================================================================[=]
@@ -483,7 +495,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	Colormap cmap = XCreateColormap(PLATFORM(state)->display, root, vi->visual, AllocNone);
 	XSetWindowAttributes swa;
 	swa.colormap = cmap;
-	swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | EnterWindowMask | LeaveWindowMask | FocusChangeMask;
+	swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | EnterWindowMask | LeaveWindowMask | FocusChangeMask | PropertyChangeMask;
 	swa.border_pixel = 0;
 	swa.background_pixmap = None;
 
@@ -595,6 +607,15 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	PLATFORM(state)->xdnd_selection = XInternAtom(PLATFORM(state)->display, "XdndSelection", False);
 	PLATFORM(state)->xdnd_type_list = XInternAtom(PLATFORM(state)->display, "XdndTypeList", False);
 	PLATFORM(state)->text_uri_list  = XInternAtom(PLATFORM(state)->display, "text/uri-list", False);
+
+	// Window state atoms
+	PLATFORM(state)->net_wm_state                = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE", False);
+	PLATFORM(state)->net_wm_state_maximized_horz = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+	PLATFORM(state)->net_wm_state_maximized_vert = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+	PLATFORM(state)->wm_state                    = XInternAtom(PLATFORM(state)->display, "WM_STATE", False);
+	PLATFORM(state)->net_wm_state_demands_attention = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
+
+	XrmInitialize();
 
 	state->has_focus = 1;
 
@@ -804,6 +825,50 @@ static void xdnd_parse_uri_list(struct mkfw_state *state, const char *data, uint
 		free(paths[i]);
 	}
 	free(paths);
+}
+
+// [=]===^=[ mkfw_is_minimized ]=================================================================[=]
+static int32_t mkfw_is_minimized(struct mkfw_state *state) {
+	Atom actual_type;
+	int actual_format;
+	unsigned long nitems, bytes_after;
+	unsigned char *data = 0;
+	XGetWindowProperty(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->wm_state, 0, 2, False, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &data);
+	int32_t result = 0;
+	if(data && nitems >= 1) {
+		long state_val = *(long *)data;
+		result = (state_val == 3) ? 1 : 0;
+	}
+	if(data) {
+		XFree(data);
+	}
+	return result;
+}
+
+// [=]===^=[ mkfw_is_maximized ]=================================================================[=]
+static int32_t mkfw_is_maximized(struct mkfw_state *state) {
+	Display *dpy = PLATFORM(state)->display;
+	Atom actual_type;
+	int actual_format;
+	unsigned long nitems, bytes_after;
+	unsigned char *data = 0;
+	XGetWindowProperty(dpy, PLATFORM(state)->window, PLATFORM(state)->net_wm_state, 0, 1024, False, XA_ATOM, &actual_type, &actual_format, &nitems, &bytes_after, &data);
+	int32_t result = 0;
+	if(data) {
+		Atom *atoms = (Atom *)data;
+		uint8_t has_h = 0, has_v = 0;
+		for(unsigned long i = 0; i < nitems; ++i) {
+			if(atoms[i] == PLATFORM(state)->net_wm_state_maximized_horz) {
+				has_h = 1;
+			}
+			if(atoms[i] == PLATFORM(state)->net_wm_state_maximized_vert) {
+				has_v = 1;
+			}
+		}
+		result = (has_h && has_v) ? 1 : 0;
+		XFree(data);
+	}
+	return result;
 }
 
 // [=]===^=[ mkfw_pump_messages ]=================================================================[=]
@@ -1185,6 +1250,22 @@ static void mkfw_pump_messages(struct mkfw_state *state) {
 					PLATFORM(state)->xdnd_has_uri_list = 0;
 				}
 			} break;
+
+			case PropertyNotify: {
+				if(!state->window_state_callback) {
+					break;
+				}
+				Atom prop = event.xproperty.atom;
+				if(prop == PLATFORM(state)->net_wm_state || prop == PLATFORM(state)->wm_state) {
+					uint8_t maximized = (uint8_t)mkfw_is_maximized(state);
+					uint8_t minimized = (uint8_t)mkfw_is_minimized(state);
+					if(maximized != PLATFORM(state)->last_maximized || minimized != PLATFORM(state)->last_minimized) {
+						PLATFORM(state)->last_maximized = maximized;
+						PLATFORM(state)->last_minimized = minimized;
+						state->window_state_callback(state, maximized, minimized);
+					}
+				}
+			} break;
 		}
 	}
 }
@@ -1473,17 +1554,14 @@ static void mkfw_get_window_position(struct mkfw_state *state, int32_t *x, int32
 // [=]===^=[ mkfw_maximize_window ]===============================================================[=]
 static void mkfw_maximize_window(struct mkfw_state *state) {
 	Display *dpy = PLATFORM(state)->display;
-	Atom wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
-	Atom max_h = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-	Atom max_v = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
 	XEvent ev = {0};
 	ev.xclient.type = ClientMessage;
 	ev.xclient.window = PLATFORM(state)->window;
-	ev.xclient.message_type = wm_state;
+	ev.xclient.message_type = PLATFORM(state)->net_wm_state;
 	ev.xclient.format = 32;
 	ev.xclient.data.l[0] = 1; // _NET_WM_STATE_ADD
-	ev.xclient.data.l[1] = max_h;
-	ev.xclient.data.l[2] = max_v;
+	ev.xclient.data.l[1] = PLATFORM(state)->net_wm_state_maximized_horz;
+	ev.xclient.data.l[2] = PLATFORM(state)->net_wm_state_maximized_vert;
 	ev.xclient.data.l[3] = 1; // source: application
 	XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 	XFlush(dpy);
@@ -1494,81 +1572,90 @@ static void mkfw_minimize_window(struct mkfw_state *state) {
 	XIconifyWindow(PLATFORM(state)->display, PLATFORM(state)->window, DefaultScreen(PLATFORM(state)->display));
 }
 
-// [=]===^=[ mkfw_is_minimized ]=================================================================[=]
-static int32_t mkfw_is_minimized(struct mkfw_state *state) {
-	Atom wm_state = XInternAtom(PLATFORM(state)->display, "WM_STATE", True);
-	if(!wm_state) {
-		return 0;
-	}
-	Atom actual_type;
-	int actual_format;
-	unsigned long nitems, bytes_after;
-	unsigned char *data = 0;
-	XGetWindowProperty(PLATFORM(state)->display, PLATFORM(state)->window, wm_state, 0, 2, False, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &data);
-	int32_t result = 0;
-	if(data && nitems >= 1) {
-		long state_val = *(long *)data;
-		result = (state_val == 3) ? 1 : 0;
-	}
-	if(data) {
-		XFree(data);
-	}
-	return result;
-}
-
-// [=]===^=[ mkfw_is_maximized ]=================================================================[=]
-static int32_t mkfw_is_maximized(struct mkfw_state *state) {
-	Display *dpy = PLATFORM(state)->display;
-	Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", True);
-	if(!net_wm_state) {
-		return 0;
-	}
-	Atom max_h = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", True);
-	Atom max_v = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", True);
-	if(!max_h || !max_v) {
-		return 0;
-	}
-	Atom actual_type;
-	int actual_format;
-	unsigned long nitems, bytes_after;
-	unsigned char *data = 0;
-	XGetWindowProperty(dpy, PLATFORM(state)->window, net_wm_state, 0, 1024, False, XA_ATOM, &actual_type, &actual_format, &nitems, &bytes_after, &data);
-	int32_t result = 0;
-	if(data) {
-		Atom *atoms = (Atom *)data;
-		uint8_t has_h = 0, has_v = 0;
-		for(unsigned long i = 0; i < nitems; ++i) {
-			if(atoms[i] == max_h) {
-				has_h = 1;
-			}
-			if(atoms[i] == max_v) {
-				has_v = 1;
-			}
-		}
-		result = (has_h && has_v) ? 1 : 0;
-		XFree(data);
-	}
-	return result;
-}
-
 // [=]===^=[ mkfw_restore_window ]================================================================[=]
 static void mkfw_restore_window(struct mkfw_state *state) {
 	Display *dpy = PLATFORM(state)->display;
-	Atom wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
-	Atom max_h = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-	Atom max_v = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
 	XEvent ev = {0};
 	ev.xclient.type = ClientMessage;
 	ev.xclient.window = PLATFORM(state)->window;
-	ev.xclient.message_type = wm_state;
+	ev.xclient.message_type = PLATFORM(state)->net_wm_state;
 	ev.xclient.format = 32;
 	ev.xclient.data.l[0] = 0; // _NET_WM_STATE_REMOVE
-	ev.xclient.data.l[1] = max_h;
-	ev.xclient.data.l[2] = max_v;
+	ev.xclient.data.l[1] = PLATFORM(state)->net_wm_state_maximized_horz;
+	ev.xclient.data.l[2] = PLATFORM(state)->net_wm_state_maximized_vert;
 	ev.xclient.data.l[3] = 1;
 	XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 	XMapWindow(dpy, PLATFORM(state)->window);
 	XFlush(dpy);
+}
+
+// [=]===^=[ mkfw_get_content_scale ]=============================================================[=]
+static float mkfw_get_content_scale(struct mkfw_state *state) {
+	Display *dpy = PLATFORM(state)->display;
+	char *rms = XResourceManagerString(dpy);
+	if(rms) {
+		XrmDatabase db = XrmGetStringDatabase(rms);
+		if(db) {
+			char *type = 0;
+			XrmValue value;
+			if(XrmGetResource(db, "Xft.dpi", "Xft.Dpi", &type, &value)) {
+				if(type && strcmp(type, "String") == 0) {
+					float dpi = (float)atof(value.addr);
+					XrmDestroyDatabase(db);
+					if(dpi > 0.0f) {
+						return dpi / 96.0f;
+					}
+				}
+			}
+			XrmDestroyDatabase(db);
+		}
+	}
+	int screen = DefaultScreen(dpy);
+	float width_px = (float)DisplayWidth(dpy, screen);
+	float width_mm = (float)DisplayWidthMM(dpy, screen);
+	if(width_mm > 0.0f) {
+		float dpi = width_px / (width_mm / 25.4f);
+		return dpi / 96.0f;
+	}
+	return 1.0f;
+}
+
+// [=]===^=[ mkfw_request_attention ]=============================================================[=]
+static void mkfw_request_attention(struct mkfw_state *state) {
+	Display *dpy = PLATFORM(state)->display;
+	XEvent ev = {0};
+	ev.xclient.type = ClientMessage;
+	ev.xclient.window = PLATFORM(state)->window;
+	ev.xclient.message_type = PLATFORM(state)->net_wm_state;
+	ev.xclient.format = 32;
+	ev.xclient.data.l[0] = 1; // _NET_WM_STATE_ADD
+	ev.xclient.data.l[1] = PLATFORM(state)->net_wm_state_demands_attention;
+	ev.xclient.data.l[2] = 0;
+	ev.xclient.data.l[3] = 1; // source: application
+	XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+	XFlush(dpy);
+}
+
+// [=]===^=[ mkfw_wait_events ]==================================================================[=]
+static void mkfw_wait_events(struct mkfw_state *state) {
+	if(!XPending(PLATFORM(state)->display)) {
+		struct pollfd pfd;
+		pfd.fd = ConnectionNumber(PLATFORM(state)->display);
+		pfd.events = POLLIN;
+		poll(&pfd, 1, -1);
+	}
+	mkfw_pump_messages(state);
+}
+
+// [=]===^=[ mkfw_wait_events_timeout ]===========================================================[=]
+static void mkfw_wait_events_timeout(struct mkfw_state *state, uint64_t nanoseconds) {
+	if(!XPending(PLATFORM(state)->display)) {
+		struct pollfd pfd;
+		pfd.fd = ConnectionNumber(PLATFORM(state)->display);
+		pfd.events = POLLIN;
+		poll(&pfd, 1, (int)(nanoseconds / 1000000));
+	}
+	mkfw_pump_messages(state);
 }
 
 // [=]===^=[ mkfw_cleanup ]=======================================================================[=]

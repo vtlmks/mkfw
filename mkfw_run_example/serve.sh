@@ -9,5 +9,6 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         super().end_headers()
 
+print("Visit this link to run the example: http://localhost:8080/mkfw_run_example.html")
 http.server.HTTPServer(("", 8080), H).serve_forever()
 '

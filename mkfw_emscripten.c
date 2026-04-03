@@ -377,6 +377,17 @@ static EM_BOOL mkfw_em_on_fullscreen_change(int event_type, const EmscriptenFull
 // Core API
 // ============================================================
 
+// [=]===^=[ mkfw_em_on_visibility_change ]===================================================^===[=]
+static EM_BOOL mkfw_em_on_visibility_change(int event_type, const EmscriptenVisibilityChangeEvent *e, void *user_data) {
+	(void)event_type;
+	struct mkfw_state *state = (struct mkfw_state *)user_data;
+	if(state->window_state_callback) {
+		uint8_t minimized = e->hidden ? 1 : 0;
+		state->window_state_callback(state, 0, minimized);
+	}
+	return EM_TRUE;
+}
+
 // [=]===^=[ mkfw_init ]=====================================================================^===[=]
 static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	struct mkfw_state *state = (struct mkfw_state *)calloc(1, sizeof(struct mkfw_state));
@@ -431,6 +442,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 	emscripten_set_focusin_callback("#canvas", state, EM_TRUE, mkfw_em_on_focus);
 	emscripten_set_focusout_callback("#canvas", state, EM_TRUE, mkfw_em_on_focus);
 	emscripten_set_fullscreenchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, state, EM_TRUE, mkfw_em_on_fullscreen_change);
+	emscripten_set_visibilitychange_callback(state, EM_TRUE, mkfw_em_on_visibility_change);
 
 	state->has_focus = 1;
 	state->mouse_in_window = 1;
@@ -684,6 +696,28 @@ static int32_t mkfw_is_maximized(struct mkfw_state *state) {
 // [=]===^=[ mkfw_restore_window ]===========================================================^===[=]
 static void mkfw_restore_window(struct mkfw_state *state) {
 	(void)state;
+}
+
+// [=]===^=[ mkfw_get_content_scale ]========================================================^===[=]
+static float mkfw_get_content_scale(struct mkfw_state *state) {
+	(void)state;
+	return (float)emscripten_get_device_pixel_ratio();
+}
+
+// [=]===^=[ mkfw_request_attention ]========================================================^===[=]
+static void mkfw_request_attention(struct mkfw_state *state) {
+	(void)state;
+}
+
+// [=]===^=[ mkfw_wait_events ]=============================================================^===[=]
+static void mkfw_wait_events(struct mkfw_state *state) {
+	(void)state;
+}
+
+// [=]===^=[ mkfw_wait_events_timeout ]=====================================================^===[=]
+static void mkfw_wait_events_timeout(struct mkfw_state *state, uint64_t nanoseconds) {
+	(void)state;
+	(void)nanoseconds;
 }
 
 // [=]===^=[ mkfw_set_window_decorated ]=====================================================^===[=]
