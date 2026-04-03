@@ -6,14 +6,11 @@ on:
   pull_request:
     branches: [master]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   linux-gcc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libxrandr-dev libgl-dev libasound2-dev
       - name: Build example
@@ -24,7 +21,7 @@ jobs:
   windows-clang-cl:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build example
         shell: cmd
         run: |
@@ -35,11 +32,16 @@ jobs:
   emscripten:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git --depth 1
+          cd emsdk
+          ./emsdk install latest
+          ./emsdk activate latest
       - name: Build example
         run: |
+          source emsdk/emsdk_env.sh
           cd mkfw_run_example
           emcc mkfw_run_example.c -I.. -sUSE_WEBGL2=1 -sFULL_ES3=1 -sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -o mkfw_run_example.html -O2 -Wall -Wextra -Wno-unused-parameter
 
