@@ -12,7 +12,7 @@ The existing manual loop pattern (threads, timers, full control) is unchanged an
 
 ### Path 1: Desktop only (existing pattern, no mkfw_run)
 
-Full control over threads, timers, frame pacing, and the pump loop. Exactly like the threaded example and platform.c. Linux and Windows only.
+Full control over threads, timers, frame pacing, and the pump loop. Exactly like the threaded example. Linux and Windows only.
 
 ```c
 mkfw_thread render_thread = mkfw_thread_create(render_thread_func, &state);
