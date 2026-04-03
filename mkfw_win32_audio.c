@@ -2,12 +2,28 @@
 // SPDX-License-Identifier: MIT
 
 #define COBJMACROS
-#include <initguid.h>
 #include <windows.h>
 #include <audioclient.h>
 #include <mmdeviceapi.h>
 #include <avrt.h>
 #include <timeapi.h>
+
+// WASAPI GUIDs -- defined explicitly so we don't depend on uuid.lib (MSVC/clang-cl)
+// or initguid.h ordering. Works on MinGW, MSVC, and clang-cl.
+#ifdef __cplusplus
+#define MKFW_GUID_DEF(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
+	static const GUID name = { l, w1, w2, { b1, b2, b3, b4, b5, b6, b7, b8 } }
+#else
+#define MKFW_GUID_DEF(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
+	static const GUID name = { l, w1, w2, { b1, b2, b3, b4, b5, b6, b7, b8 } }
+#endif
+
+MKFW_GUID_DEF(mkfw_CLSID_MMDeviceEnumerator, 0xbcde0395, 0xe52f, 0x467c, 0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e);
+MKFW_GUID_DEF(mkfw_IID_IMMDeviceEnumerator,   0xa95664d2, 0x9614, 0x4f35, 0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6);
+MKFW_GUID_DEF(mkfw_IID_IAudioClient,          0x1cb9ad4c, 0xdbfa, 0x4c32, 0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2);
+MKFW_GUID_DEF(mkfw_IID_IAudioRenderClient,    0xf294acfc, 0x3146, 0x4483, 0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2);
+
+#undef MKFW_GUID_DEF
 
 #define MKFW_SAMPLE_RATE     48000
 #define MKFW_NUM_CHANNELS    2
@@ -50,7 +66,7 @@ static int32_t mkfw_audio_open_device_win32(void) {
 	if(FAILED(IMMDeviceEnumerator_GetDefaultAudioEndpoint(mkfw_enumerator, eRender, eConsole, &mkfw_device_out))) {
 		return -1;
 	}
-	if(FAILED(IMMDevice_Activate(mkfw_device_out, &IID_IAudioClient, CLSCTX_ALL, 0, (void**)&mkfw_audio_client_out))) {
+	if(FAILED(IMMDevice_Activate(mkfw_device_out, &mkfw_IID_IAudioClient, CLSCTX_ALL, 0, (void**)&mkfw_audio_client_out))) {
 		IMMDevice_Release(mkfw_device_out);
 		mkfw_device_out = 0;
 		return -1;
@@ -73,7 +89,7 @@ static int32_t mkfw_audio_open_device_win32(void) {
 	if(FAILED(IAudioClient_SetEventHandle(mkfw_audio_client_out, mkfw_audio_event))) {
 		goto fail;
 	}
-	if(FAILED(IAudioClient_GetService(mkfw_audio_client_out, &IID_IAudioRenderClient, (void**)&mkfw_render_client))) {
+	if(FAILED(IAudioClient_GetService(mkfw_audio_client_out, &mkfw_IID_IAudioRenderClient, (void**)&mkfw_render_client))) {
 		goto fail;
 	}
 	if(FAILED(IAudioClient_Start(mkfw_audio_client_out))) {
@@ -170,7 +186,7 @@ static void mkfw_audio_initialize(void) {
 	if(FAILED(CoInitializeEx(0, COINIT_MULTITHREADED))) {
 		return;
 	}
-	if(FAILED(CoCreateInstance(&CLSID_MMDeviceEnumerator, 0, CLSCTX_ALL, &IID_IMMDeviceEnumerator, (void**)&mkfw_enumerator))) {
+	if(FAILED(CoCreateInstance(&mkfw_CLSID_MMDeviceEnumerator, 0, CLSCTX_ALL, &mkfw_IID_IMMDeviceEnumerator, (void**)&mkfw_enumerator))) {
 		CoUninitialize();
 		return;
 	}
