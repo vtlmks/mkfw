@@ -1466,7 +1466,7 @@ static int32_t mkfw_get_monitors(struct mkfw_state *state, struct mkfw_monitor *
 	}
 	Display *dpy = PLATFORM(state)->display;
 	Window root = DefaultRootWindow(dpy);
-	XRRScreenResources *sr = XRRGetScreenResources(dpy, root);
+	XRRScreenResources *sr = XRRGetScreenResourcesCurrent(dpy, root);
 	if(!sr) {
 		return 0;
 	}
