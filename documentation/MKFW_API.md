@@ -1868,10 +1868,17 @@ gcc -o app main.c -lX11 -lGL -lXi -lXrandr -ldl -lpthread
 - Uses `GWLP_USERDATA` to associate window handles with state
 - Implementation in `mkfw_win32.c`
 
-**Linking:**
+**Linking (MinGW):**
 ```bash
 gcc -o app.exe main.c -lopengl32 -lgdi32 -lwinmm
 ```
+
+**Linking (clang-cl):**
+```bash
+clang-cl main.c opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib
+```
+
+MinGW implicitly links `user32` (Win32 windowing functions) and `shell32` (file drag-and-drop). clang-cl requires them explicitly.
 
 ---
 

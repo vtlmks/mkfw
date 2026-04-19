@@ -227,8 +227,11 @@ int main(void) {
 # Desktop (Linux)
 gcc app.c -lX11 -lXi -lXrandr -lGL -lm -lpthread -lasound -o app
 
-# Desktop (Windows)
+# Desktop (Windows, MinGW)
 gcc app.c -lopengl32 -lgdi32 -lwinmm -lole32 -lavrt -o app.exe
+
+# Desktop (Windows, clang-cl)
+clang-cl app.c opengl32.lib gdi32.lib winmm.lib ole32.lib avrt.lib user32.lib shell32.lib uuid.lib
 
 # Emscripten (code must use mkfw_run)
 emcc app.c -sUSE_WEBGL2=1 -sFULL_ES3=1 -o app.html

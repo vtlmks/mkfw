@@ -70,6 +70,20 @@ Compile on Linux:
 gcc main.c -lX11 -lXi -lXrandr -lGL -lm -o app
 ```
 
+Compile on Windows (MinGW):
+
+```sh
+gcc main.c -lopengl32 -lgdi32 -lwinmm -o app.exe
+```
+
+Compile on Windows (clang-cl):
+
+```sh
+clang-cl main.c opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib
+```
+
+MinGW implicitly links `user32` and `shell32`. clang-cl requires them explicitly. When using optional subsystems, additional libraries are needed -- see the subsystem documentation for details.
+
 ## Optional subsystems
 
 Enable subsystems by defining the corresponding flag before including the header:
@@ -198,7 +212,7 @@ mkfw_gl_loader();
 None beyond platform libraries:
 
 - **Linux:** X11, Xi, GL, m (all standard)
-- **Windows:** Windows SDK (standard)
+- **Windows:** opengl32, gdi32, winmm (all standard). clang-cl additionally requires explicit linking of user32 and shell32, which MinGW links implicitly. Audio subsystem adds ole32, avrt, and uuid.
 - **Emscripten:** Emscripten SDK (provides WebGL2, audio, gamepad APIs)
 
 ## License

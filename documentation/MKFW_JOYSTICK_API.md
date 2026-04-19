@@ -564,10 +564,17 @@ gcc -o app main.c -lX11 -lGL -lXi -ldl -lpthread
 - Deadzones applied automatically using XInput recommended values
 - Hotplug detected via polling return codes
 
-**Linking:**
+**Linking (MinGW):**
 ```bash
 gcc -o app.exe main.c -lopengl32 -lgdi32 -lwinmm -lxinput
 ```
+
+**Linking (clang-cl):**
+```bash
+clang-cl main.c opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib xinput.lib
+```
+
+MinGW implicitly links `user32` and `shell32`. clang-cl requires them explicitly.
 
 ---
 

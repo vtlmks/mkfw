@@ -407,7 +407,10 @@ int main(int argc, char **argv) {
 
 **Dependencies:**
 - audioclient.h, mmdeviceapi.h, avrt.h, timeapi.h
-- Links: `-lole32 -lavrt -lwinmm`
+- Links (MinGW): `-lole32 -lavrt -lwinmm`
+- Links (clang-cl): `ole32.lib avrt.lib winmm.lib uuid.lib`
+
+WASAPI GUIDs are defined inline in the source to avoid depending on `uuid.lib` for those specific identifiers, but clang-cl may still require `uuid.lib` for other COM GUIDs. MinGW provides these implicitly.
 
 **Buffer size:**
 - Determined by device default period in shared mode (typically 10ms = 480 frames at 48kHz)
