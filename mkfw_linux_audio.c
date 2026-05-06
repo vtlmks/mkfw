@@ -80,11 +80,9 @@ static int32_t mkfw_set_hw_params(snd_pcm_t *handle) {
 
 // [=]===^=[ mkfw_audio_open_device ]=============================================================[=]
 static int32_t mkfw_audio_open_device(void) {
-	if(snd_pcm_open(&mkfw_pcm, "plug:pipewire", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-		if(snd_pcm_open(&mkfw_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-			mkfw_pcm = 0;
-			return -1;
-		}
+	if(snd_pcm_open(&mkfw_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
+		mkfw_pcm = 0;
+		return -1;
 	}
 	if(mkfw_set_hw_params(mkfw_pcm) < 0) {
 		snd_pcm_close(mkfw_pcm);
