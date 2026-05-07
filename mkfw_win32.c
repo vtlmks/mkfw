@@ -656,7 +656,7 @@ static int mkfw_query_max_gl_version(int *major, int *minor) {
 		const char *version = (const char *)pglGetString(0x1F02); // GL_VERSION
 		if(version) {
 			int tmp_major, tmp_minor;
-			result = (sscanf(version, "%d.%d", &tmp_major, &tmp_minor) == 2);
+			result = mkfw_parse_version(version, &tmp_major, &tmp_minor);
 			if(result) {
 				if(major) {
 					*major = tmp_major;
@@ -762,7 +762,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 			if(pglGetString) {
 				const char *ver = (const char *)pglGetString(0x1F02);
 				if(ver) {
-					sscanf(ver, "%d.%d", &max_major, &max_minor);
+					mkfw_parse_version(ver, &max_major, &max_minor);
 				}
 			}
 			wglMakeCurrent(0, 0);

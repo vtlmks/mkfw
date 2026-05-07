@@ -97,6 +97,30 @@ static int mkfw_transparent = 0;
 static inline void mkfw_set_transparent(int enable) { mkfw_transparent = enable; }
 #endif
 
+// sscanf("%d.%d") pulls in __isoc23_sscanf on GCC 13+, requiring glibc 2.38
+static inline int mkfw_parse_version(const char *str, int *major, int *minor) {
+	const char *p = str;
+	int maj = 0, min = 0;
+	if(*p < '0' || *p > '9') {
+		return 0;
+	}
+	while(*p >= '0' && *p <= '9') {
+		maj = maj * 10 + (*p++ - '0');
+	}
+	if(*p++ != '.') {
+		return 0;
+	}
+	if(*p < '0' || *p > '9') {
+		return 0;
+	}
+	while(*p >= '0' && *p <= '9') {
+		min = min * 10 + (*p++ - '0');
+	}
+	*major = maj;
+	*minor = min;
+	return 1;
+}
+
 /* Monitor information */
 #define MKFW_MAX_MONITORS 16
 
