@@ -430,8 +430,9 @@ WASAPI GUIDs are defined inline in the source to avoid depending on `uuid.lib` f
 - Blocking I/O with `snd_pcm_wait()`
 
 **Dependencies:**
-- alsa/asoundlib.h, pthread.h
-- Links: `-lasound -lpthread`
+- alsa/asoundlib.h (compile-time header), pthread.h
+- libasound is loaded at runtime via dlopen (no link-time dependency)
+- Links: `-lpthread -ldl`
 
 **Buffer configuration:**
 - Period size: 256 frames (5.3ms at 48kHz)

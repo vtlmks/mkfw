@@ -1968,351 +1968,7 @@ static void mkfw_gl_loader(void) {
 #else /* !__EMSCRIPTEN__ */
 
 // ============================================================
-// Legacy function declarations (GL 1.0/1.1 -- linked, not loaded)
-// ============================================================
-
-// --- OpenGL 1.0 ---
-void glCullFace(GLenum mode);
-void glFrontFace(GLenum mode);
-void glHint(GLenum target, GLenum mode);
-void glLineWidth(GLfloat width);
-void glPointSize(GLfloat size);
-void glPolygonMode(GLenum face, GLenum mode);
-void glScissor(GLint x, GLint y, GLsizei width, GLsizei height);
-void glTexParameterf(GLenum target, GLenum pname, GLfloat param);
-void glTexParameterfv(GLenum target, GLenum pname, const GLfloat * params);
-void glTexParameteri(GLenum target, GLenum pname, GLint param);
-void glTexParameteriv(GLenum target, GLenum pname, const GLint * params);
-void glTexImage1D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const void * pixels);
-void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void * pixels);
-void glDrawBuffer(GLenum buf);
-void glClear(GLbitfield mask);
-void glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
-void glClearStencil(GLint s);
-void glClearDepth(GLdouble depth);
-void glStencilMask(GLuint mask);
-void glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha);
-void glDepthMask(GLboolean flag);
-void glDisable(GLenum cap);
-void glEnable(GLenum cap);
-void glFinish(void);
-void glFlush(void);
-void glBlendFunc(GLenum sfactor, GLenum dfactor);
-void glLogicOp(GLenum opcode);
-void glStencilFunc(GLenum func, GLint ref, GLuint mask);
-void glStencilOp(GLenum fail, GLenum zfail, GLenum zpass);
-void glDepthFunc(GLenum func);
-void glPixelStoref(GLenum pname, GLfloat param);
-void glPixelStorei(GLenum pname, GLint param);
-void glReadBuffer(GLenum src);
-void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void * pixels);
-void glGetBooleanv(GLenum pname, GLboolean * data);
-void glGetDoublev(GLenum pname, GLdouble * data);
-GLenum glGetError(void);
-void glGetFloatv(GLenum pname, GLfloat * data);
-void glGetIntegerv(GLenum pname, GLint * data);
-const GLubyte * glGetString(GLenum name);
-void glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, void * pixels);
-void glGetTexParameterfv(GLenum target, GLenum pname, GLfloat * params);
-void glGetTexParameteriv(GLenum target, GLenum pname, GLint * params);
-void glGetTexLevelParameterfv(GLenum target, GLint level, GLenum pname, GLfloat * params);
-void glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint * params);
-GLboolean glIsEnabled(GLenum cap);
-void glDepthRange(GLdouble n, GLdouble f);
-void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
-void glNewList(GLuint list, GLenum mode);
-void glEndList(void);
-void glCallList(GLuint list);
-void glCallLists(GLsizei n, GLenum type, const void * lists);
-void glDeleteLists(GLuint list, GLsizei range);
-GLuint glGenLists(GLsizei range);
-void glListBase(GLuint base);
-void glBegin(GLenum mode);
-void glBitmap(GLsizei width, GLsizei height, GLfloat xorig, GLfloat yorig, GLfloat xmove, GLfloat ymove, const GLubyte * bitmap);
-void glColor3b(GLbyte red, GLbyte green, GLbyte blue);
-void glColor3bv(const GLbyte * v);
-void glColor3d(GLdouble red, GLdouble green, GLdouble blue);
-void glColor3dv(const GLdouble * v);
-void glColor3f(GLfloat red, GLfloat green, GLfloat blue);
-void glColor3fv(const GLfloat * v);
-void glColor3i(GLint red, GLint green, GLint blue);
-void glColor3iv(const GLint * v);
-void glColor3s(GLshort red, GLshort green, GLshort blue);
-void glColor3sv(const GLshort * v);
-void glColor3ub(GLubyte red, GLubyte green, GLubyte blue);
-void glColor3ubv(const GLubyte * v);
-void glColor3ui(GLuint red, GLuint green, GLuint blue);
-void glColor3uiv(const GLuint * v);
-void glColor3us(GLushort red, GLushort green, GLushort blue);
-void glColor3usv(const GLushort * v);
-void glColor4b(GLbyte red, GLbyte green, GLbyte blue, GLbyte alpha);
-void glColor4bv(const GLbyte * v);
-void glColor4d(GLdouble red, GLdouble green, GLdouble blue, GLdouble alpha);
-void glColor4dv(const GLdouble * v);
-void glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
-void glColor4fv(const GLfloat * v);
-void glColor4i(GLint red, GLint green, GLint blue, GLint alpha);
-void glColor4iv(const GLint * v);
-void glColor4s(GLshort red, GLshort green, GLshort blue, GLshort alpha);
-void glColor4sv(const GLshort * v);
-void glColor4ub(GLubyte red, GLubyte green, GLubyte blue, GLubyte alpha);
-void glColor4ubv(const GLubyte * v);
-void glColor4ui(GLuint red, GLuint green, GLuint blue, GLuint alpha);
-void glColor4uiv(const GLuint * v);
-void glColor4us(GLushort red, GLushort green, GLushort blue, GLushort alpha);
-void glColor4usv(const GLushort * v);
-void glEdgeFlag(GLboolean flag);
-void glEdgeFlagv(const GLboolean * flag);
-void glEnd(void);
-void glIndexd(GLdouble c);
-void glIndexdv(const GLdouble * c);
-void glIndexf(GLfloat c);
-void glIndexfv(const GLfloat * c);
-void glIndexi(GLint c);
-void glIndexiv(const GLint * c);
-void glIndexs(GLshort c);
-void glIndexsv(const GLshort * c);
-void glNormal3b(GLbyte nx, GLbyte ny, GLbyte nz);
-void glNormal3bv(const GLbyte * v);
-void glNormal3d(GLdouble nx, GLdouble ny, GLdouble nz);
-void glNormal3dv(const GLdouble * v);
-void glNormal3f(GLfloat nx, GLfloat ny, GLfloat nz);
-void glNormal3fv(const GLfloat * v);
-void glNormal3i(GLint nx, GLint ny, GLint nz);
-void glNormal3iv(const GLint * v);
-void glNormal3s(GLshort nx, GLshort ny, GLshort nz);
-void glNormal3sv(const GLshort * v);
-void glRasterPos2d(GLdouble x, GLdouble y);
-void glRasterPos2dv(const GLdouble * v);
-void glRasterPos2f(GLfloat x, GLfloat y);
-void glRasterPos2fv(const GLfloat * v);
-void glRasterPos2i(GLint x, GLint y);
-void glRasterPos2iv(const GLint * v);
-void glRasterPos2s(GLshort x, GLshort y);
-void glRasterPos2sv(const GLshort * v);
-void glRasterPos3d(GLdouble x, GLdouble y, GLdouble z);
-void glRasterPos3dv(const GLdouble * v);
-void glRasterPos3f(GLfloat x, GLfloat y, GLfloat z);
-void glRasterPos3fv(const GLfloat * v);
-void glRasterPos3i(GLint x, GLint y, GLint z);
-void glRasterPos3iv(const GLint * v);
-void glRasterPos3s(GLshort x, GLshort y, GLshort z);
-void glRasterPos3sv(const GLshort * v);
-void glRasterPos4d(GLdouble x, GLdouble y, GLdouble z, GLdouble w);
-void glRasterPos4dv(const GLdouble * v);
-void glRasterPos4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w);
-void glRasterPos4fv(const GLfloat * v);
-void glRasterPos4i(GLint x, GLint y, GLint z, GLint w);
-void glRasterPos4iv(const GLint * v);
-void glRasterPos4s(GLshort x, GLshort y, GLshort z, GLshort w);
-void glRasterPos4sv(const GLshort * v);
-void glRectd(GLdouble x1, GLdouble y1, GLdouble x2, GLdouble y2);
-void glRectdv(const GLdouble * v1, const GLdouble * v2);
-void glRectf(GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2);
-void glRectfv(const GLfloat * v1, const GLfloat * v2);
-void glRecti(GLint x1, GLint y1, GLint x2, GLint y2);
-void glRectiv(const GLint * v1, const GLint * v2);
-void glRects(GLshort x1, GLshort y1, GLshort x2, GLshort y2);
-void glRectsv(const GLshort * v1, const GLshort * v2);
-void glTexCoord1d(GLdouble s);
-void glTexCoord1dv(const GLdouble * v);
-void glTexCoord1f(GLfloat s);
-void glTexCoord1fv(const GLfloat * v);
-void glTexCoord1i(GLint s);
-void glTexCoord1iv(const GLint * v);
-void glTexCoord1s(GLshort s);
-void glTexCoord1sv(const GLshort * v);
-void glTexCoord2d(GLdouble s, GLdouble t);
-void glTexCoord2dv(const GLdouble * v);
-void glTexCoord2f(GLfloat s, GLfloat t);
-void glTexCoord2fv(const GLfloat * v);
-void glTexCoord2i(GLint s, GLint t);
-void glTexCoord2iv(const GLint * v);
-void glTexCoord2s(GLshort s, GLshort t);
-void glTexCoord2sv(const GLshort * v);
-void glTexCoord3d(GLdouble s, GLdouble t, GLdouble r);
-void glTexCoord3dv(const GLdouble * v);
-void glTexCoord3f(GLfloat s, GLfloat t, GLfloat r);
-void glTexCoord3fv(const GLfloat * v);
-void glTexCoord3i(GLint s, GLint t, GLint r);
-void glTexCoord3iv(const GLint * v);
-void glTexCoord3s(GLshort s, GLshort t, GLshort r);
-void glTexCoord3sv(const GLshort * v);
-void glTexCoord4d(GLdouble s, GLdouble t, GLdouble r, GLdouble q);
-void glTexCoord4dv(const GLdouble * v);
-void glTexCoord4f(GLfloat s, GLfloat t, GLfloat r, GLfloat q);
-void glTexCoord4fv(const GLfloat * v);
-void glTexCoord4i(GLint s, GLint t, GLint r, GLint q);
-void glTexCoord4iv(const GLint * v);
-void glTexCoord4s(GLshort s, GLshort t, GLshort r, GLshort q);
-void glTexCoord4sv(const GLshort * v);
-void glVertex2d(GLdouble x, GLdouble y);
-void glVertex2dv(const GLdouble * v);
-void glVertex2f(GLfloat x, GLfloat y);
-void glVertex2fv(const GLfloat * v);
-void glVertex2i(GLint x, GLint y);
-void glVertex2iv(const GLint * v);
-void glVertex2s(GLshort x, GLshort y);
-void glVertex2sv(const GLshort * v);
-void glVertex3d(GLdouble x, GLdouble y, GLdouble z);
-void glVertex3dv(const GLdouble * v);
-void glVertex3f(GLfloat x, GLfloat y, GLfloat z);
-void glVertex3fv(const GLfloat * v);
-void glVertex3i(GLint x, GLint y, GLint z);
-void glVertex3iv(const GLint * v);
-void glVertex3s(GLshort x, GLshort y, GLshort z);
-void glVertex3sv(const GLshort * v);
-void glVertex4d(GLdouble x, GLdouble y, GLdouble z, GLdouble w);
-void glVertex4dv(const GLdouble * v);
-void glVertex4f(GLfloat x, GLfloat y, GLfloat z, GLfloat w);
-void glVertex4fv(const GLfloat * v);
-void glVertex4i(GLint x, GLint y, GLint z, GLint w);
-void glVertex4iv(const GLint * v);
-void glVertex4s(GLshort x, GLshort y, GLshort z, GLshort w);
-void glVertex4sv(const GLshort * v);
-void glClipPlane(GLenum plane, const GLdouble * equation);
-void glColorMaterial(GLenum face, GLenum mode);
-void glFogf(GLenum pname, GLfloat param);
-void glFogfv(GLenum pname, const GLfloat * params);
-void glFogi(GLenum pname, GLint param);
-void glFogiv(GLenum pname, const GLint * params);
-void glLightf(GLenum light, GLenum pname, GLfloat param);
-void glLightfv(GLenum light, GLenum pname, const GLfloat * params);
-void glLighti(GLenum light, GLenum pname, GLint param);
-void glLightiv(GLenum light, GLenum pname, const GLint * params);
-void glLightModelf(GLenum pname, GLfloat param);
-void glLightModelfv(GLenum pname, const GLfloat * params);
-void glLightModeli(GLenum pname, GLint param);
-void glLightModeliv(GLenum pname, const GLint * params);
-void glLineStipple(GLint factor, GLushort pattern);
-void glMaterialf(GLenum face, GLenum pname, GLfloat param);
-void glMaterialfv(GLenum face, GLenum pname, const GLfloat * params);
-void glMateriali(GLenum face, GLenum pname, GLint param);
-void glMaterialiv(GLenum face, GLenum pname, const GLint * params);
-void glPolygonStipple(const GLubyte * mask);
-void glShadeModel(GLenum mode);
-void glTexEnvf(GLenum target, GLenum pname, GLfloat param);
-void glTexEnvfv(GLenum target, GLenum pname, const GLfloat * params);
-void glTexEnvi(GLenum target, GLenum pname, GLint param);
-void glTexEnviv(GLenum target, GLenum pname, const GLint * params);
-void glTexGend(GLenum coord, GLenum pname, GLdouble param);
-void glTexGendv(GLenum coord, GLenum pname, const GLdouble * params);
-void glTexGenf(GLenum coord, GLenum pname, GLfloat param);
-void glTexGenfv(GLenum coord, GLenum pname, const GLfloat * params);
-void glTexGeni(GLenum coord, GLenum pname, GLint param);
-void glTexGeniv(GLenum coord, GLenum pname, const GLint * params);
-void glFeedbackBuffer(GLsizei size, GLenum type, GLfloat * buffer);
-void glSelectBuffer(GLsizei size, GLuint * buffer);
-GLint glRenderMode(GLenum mode);
-void glInitNames(void);
-void glLoadName(GLuint name);
-void glPassThrough(GLfloat token);
-void glPopName(void);
-void glPushName(GLuint name);
-void glClearAccum(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
-void glClearIndex(GLfloat c);
-void glIndexMask(GLuint mask);
-void glAccum(GLenum op, GLfloat value);
-void glPopAttrib(void);
-void glPushAttrib(GLbitfield mask);
-void glMap1d(GLenum target, GLdouble u1, GLdouble u2, GLint stride, GLint order, const GLdouble * points);
-void glMap1f(GLenum target, GLfloat u1, GLfloat u2, GLint stride, GLint order, const GLfloat * points);
-void glMap2d(GLenum target, GLdouble u1, GLdouble u2, GLint ustride, GLint uorder, GLdouble v1, GLdouble v2, GLint vstride, GLint vorder, const GLdouble * points);
-void glMap2f(GLenum target, GLfloat u1, GLfloat u2, GLint ustride, GLint uorder, GLfloat v1, GLfloat v2, GLint vstride, GLint vorder, const GLfloat * points);
-void glMapGrid1d(GLint un, GLdouble u1, GLdouble u2);
-void glMapGrid1f(GLint un, GLfloat u1, GLfloat u2);
-void glMapGrid2d(GLint un, GLdouble u1, GLdouble u2, GLint vn, GLdouble v1, GLdouble v2);
-void glMapGrid2f(GLint un, GLfloat u1, GLfloat u2, GLint vn, GLfloat v1, GLfloat v2);
-void glEvalCoord1d(GLdouble u);
-void glEvalCoord1dv(const GLdouble * u);
-void glEvalCoord1f(GLfloat u);
-void glEvalCoord1fv(const GLfloat * u);
-void glEvalCoord2d(GLdouble u, GLdouble v);
-void glEvalCoord2dv(const GLdouble * u);
-void glEvalCoord2f(GLfloat u, GLfloat v);
-void glEvalCoord2fv(const GLfloat * u);
-void glEvalMesh1(GLenum mode, GLint i1, GLint i2);
-void glEvalPoint1(GLint i);
-void glEvalMesh2(GLenum mode, GLint i1, GLint i2, GLint j1, GLint j2);
-void glEvalPoint2(GLint i, GLint j);
-void glAlphaFunc(GLenum func, GLfloat ref);
-void glPixelZoom(GLfloat xfactor, GLfloat yfactor);
-void glPixelTransferf(GLenum pname, GLfloat param);
-void glPixelTransferi(GLenum pname, GLint param);
-void glPixelMapfv(GLenum map, GLsizei mapsize, const GLfloat * values);
-void glPixelMapuiv(GLenum map, GLsizei mapsize, const GLuint * values);
-void glPixelMapusv(GLenum map, GLsizei mapsize, const GLushort * values);
-void glCopyPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum type);
-void glDrawPixels(GLsizei width, GLsizei height, GLenum format, GLenum type, const void * pixels);
-void glGetClipPlane(GLenum plane, GLdouble * equation);
-void glGetLightfv(GLenum light, GLenum pname, GLfloat * params);
-void glGetLightiv(GLenum light, GLenum pname, GLint * params);
-void glGetMapdv(GLenum target, GLenum query, GLdouble * v);
-void glGetMapfv(GLenum target, GLenum query, GLfloat * v);
-void glGetMapiv(GLenum target, GLenum query, GLint * v);
-void glGetMaterialfv(GLenum face, GLenum pname, GLfloat * params);
-void glGetMaterialiv(GLenum face, GLenum pname, GLint * params);
-void glGetPixelMapfv(GLenum map, GLfloat * values);
-void glGetPixelMapuiv(GLenum map, GLuint * values);
-void glGetPixelMapusv(GLenum map, GLushort * values);
-void glGetPolygonStipple(GLubyte * mask);
-void glGetTexEnvfv(GLenum target, GLenum pname, GLfloat * params);
-void glGetTexEnviv(GLenum target, GLenum pname, GLint * params);
-void glGetTexGendv(GLenum coord, GLenum pname, GLdouble * params);
-void glGetTexGenfv(GLenum coord, GLenum pname, GLfloat * params);
-void glGetTexGeniv(GLenum coord, GLenum pname, GLint * params);
-GLboolean glIsList(GLuint list);
-void glFrustum(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar);
-void glLoadIdentity(void);
-void glLoadMatrixf(const GLfloat * m);
-void glLoadMatrixd(const GLdouble * m);
-void glMatrixMode(GLenum mode);
-void glMultMatrixf(const GLfloat * m);
-void glMultMatrixd(const GLdouble * m);
-void glOrtho(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar);
-void glPopMatrix(void);
-void glPushMatrix(void);
-void glRotated(GLdouble angle, GLdouble x, GLdouble y, GLdouble z);
-void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z);
-void glScaled(GLdouble x, GLdouble y, GLdouble z);
-void glScalef(GLfloat x, GLfloat y, GLfloat z);
-void glTranslated(GLdouble x, GLdouble y, GLdouble z);
-void glTranslatef(GLfloat x, GLfloat y, GLfloat z);
-
-// --- OpenGL 1.1 ---
-void glDrawArrays(GLenum mode, GLint first, GLsizei count);
-void glDrawElements(GLenum mode, GLsizei count, GLenum type, const void * indices);
-void glGetPointerv(GLenum pname, void ** params);
-void glPolygonOffset(GLfloat factor, GLfloat units);
-void glCopyTexImage1D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLint border);
-void glCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border);
-void glCopyTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLint x, GLint y, GLsizei width);
-void glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height);
-void glTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLenum type, const void * pixels);
-void glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void * pixels);
-void glBindTexture(GLenum target, GLuint texture);
-void glDeleteTextures(GLsizei n, const GLuint * textures);
-void glGenTextures(GLsizei n, GLuint * textures);
-GLboolean glIsTexture(GLuint texture);
-void glArrayElement(GLint i);
-void glColorPointer(GLint size, GLenum type, GLsizei stride, const void * pointer);
-void glDisableClientState(GLenum array);
-void glEdgeFlagPointer(GLsizei stride, const void * pointer);
-void glEnableClientState(GLenum array);
-void glIndexPointer(GLenum type, GLsizei stride, const void * pointer);
-void glInterleavedArrays(GLenum format, GLsizei stride, const void * pointer);
-void glNormalPointer(GLenum type, GLsizei stride, const void * pointer);
-void glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const void * pointer);
-void glVertexPointer(GLint size, GLenum type, GLsizei stride, const void * pointer);
-GLboolean glAreTexturesResident(GLsizei n, const GLuint * textures, GLboolean * residences);
-void glPrioritizeTextures(GLsizei n, const GLuint * textures, const GLfloat * priorities);
-void glIndexub(GLubyte c);
-void glIndexubv(const GLubyte * c);
-void glPopClientAttrib(void);
-void glPushClientAttrib(GLbitfield mask);
-
-// ============================================================
-// Function pointer types and globals (GL 1.2+ -- loaded at runtime)
+// Function pointer types and globals (loaded at runtime)
 // ============================================================
 
 #define MKFW_GL_DECLARE_TYPE(Name, ReturnType, ...) \
@@ -2321,6 +1977,344 @@ void glPushClientAttrib(GLbitfield mask);
 	static mkfw_type_##Name Name;
 
 #define MKFW_GL_FUNCTIONS(X) \
+	/* OpenGL 1.0 */ \
+	MKFW_GL_VER(10, X(glCullFace, void, GLenum)) \
+	MKFW_GL_VER(10, X(glFrontFace, void, GLenum)) \
+	MKFW_GL_VER(10, X(glHint, void, GLenum, GLenum)) \
+	MKFW_GL_VER(10, X(glLineWidth, void, GLfloat)) \
+	MKFW_GL_VER(10, X(glPointSize, void, GLfloat)) \
+	MKFW_GL_VER(10, X(glPolygonMode, void, GLenum, GLenum)) \
+	MKFW_GL_VER(10, X(glScissor, void, GLint, GLint, GLsizei, GLsizei)) \
+	MKFW_GL_VER(10, X(glTexParameterf, void, GLenum, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glTexParameterfv, void, GLenum, GLenum, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glTexParameteri, void, GLenum, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glTexParameteriv, void, GLenum, GLenum, const GLint *)) \
+	MKFW_GL_VER(10, X(glTexImage1D, void, GLenum, GLint, GLint, GLsizei, GLint, GLenum, GLenum, const void *)) \
+	MKFW_GL_VER(10, X(glTexImage2D, void, GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *)) \
+	MKFW_GL_VER(10, X(glDrawBuffer, void, GLenum)) \
+	MKFW_GL_VER(10, X(glClear, void, GLbitfield)) \
+	MKFW_GL_VER(10, X(glClearColor, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glClearStencil, void, GLint)) \
+	MKFW_GL_VER(10, X(glClearDepth, void, GLdouble)) \
+	MKFW_GL_VER(10, X(glStencilMask, void, GLuint)) \
+	MKFW_GL_VER(10, X(glColorMask, void, GLboolean, GLboolean, GLboolean, GLboolean)) \
+	MKFW_GL_VER(10, X(glDepthMask, void, GLboolean)) \
+	MKFW_GL_VER(10, X(glDisable, void, GLenum)) \
+	MKFW_GL_VER(10, X(glEnable, void, GLenum)) \
+	MKFW_GL_VER(10, X(glFinish, void)) \
+	MKFW_GL_VER(10, X(glFlush, void)) \
+	MKFW_GL_VER(10, X(glBlendFunc, void, GLenum, GLenum)) \
+	MKFW_GL_VER(10, X(glLogicOp, void, GLenum)) \
+	MKFW_GL_VER(10, X(glStencilFunc, void, GLenum, GLint, GLuint)) \
+	MKFW_GL_VER(10, X(glStencilOp, void, GLenum, GLenum, GLenum)) \
+	MKFW_GL_VER(10, X(glDepthFunc, void, GLenum)) \
+	MKFW_GL_VER(10, X(glPixelStoref, void, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glPixelStorei, void, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glReadBuffer, void, GLenum)) \
+	MKFW_GL_VER(10, X(glReadPixels, void, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *)) \
+	MKFW_GL_VER(10, X(glGetBooleanv, void, GLenum, GLboolean *)) \
+	MKFW_GL_VER(10, X(glGetDoublev, void, GLenum, GLdouble *)) \
+	MKFW_GL_VER(10, X(glGetError, GLenum)) \
+	MKFW_GL_VER(10, X(glGetFloatv, void, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetIntegerv, void, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glGetString, const GLubyte *, GLenum)) \
+	MKFW_GL_VER(10, X(glGetTexImage, void, GLenum, GLint, GLenum, GLenum, void *)) \
+	MKFW_GL_VER(10, X(glGetTexParameterfv, void, GLenum, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetTexParameteriv, void, GLenum, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glGetTexLevelParameterfv, void, GLenum, GLint, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetTexLevelParameteriv, void, GLenum, GLint, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glIsEnabled, GLboolean, GLenum)) \
+	MKFW_GL_VER(10, X(glDepthRange, void, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glViewport, void, GLint, GLint, GLsizei, GLsizei)) \
+	MKFW_GL_VER(10, X(glNewList, void, GLuint, GLenum)) \
+	MKFW_GL_VER(10, X(glEndList, void)) \
+	MKFW_GL_VER(10, X(glCallList, void, GLuint)) \
+	MKFW_GL_VER(10, X(glCallLists, void, GLsizei, GLenum, const void *)) \
+	MKFW_GL_VER(10, X(glDeleteLists, void, GLuint, GLsizei)) \
+	MKFW_GL_VER(10, X(glGenLists, GLuint, GLsizei)) \
+	MKFW_GL_VER(10, X(glListBase, void, GLuint)) \
+	MKFW_GL_VER(10, X(glBegin, void, GLenum)) \
+	MKFW_GL_VER(10, X(glBitmap, void, GLsizei, GLsizei, GLfloat, GLfloat, GLfloat, GLfloat, const GLubyte *)) \
+	MKFW_GL_VER(10, X(glColor3b, void, GLbyte, GLbyte, GLbyte)) \
+	MKFW_GL_VER(10, X(glColor3bv, void, const GLbyte *)) \
+	MKFW_GL_VER(10, X(glColor3d, void, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glColor3dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glColor3f, void, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glColor3fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glColor3i, void, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glColor3iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glColor3s, void, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glColor3sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glColor3ub, void, GLubyte, GLubyte, GLubyte)) \
+	MKFW_GL_VER(10, X(glColor3ubv, void, const GLubyte *)) \
+	MKFW_GL_VER(10, X(glColor3ui, void, GLuint, GLuint, GLuint)) \
+	MKFW_GL_VER(10, X(glColor3uiv, void, const GLuint *)) \
+	MKFW_GL_VER(10, X(glColor3us, void, GLushort, GLushort, GLushort)) \
+	MKFW_GL_VER(10, X(glColor3usv, void, const GLushort *)) \
+	MKFW_GL_VER(10, X(glColor4b, void, GLbyte, GLbyte, GLbyte, GLbyte)) \
+	MKFW_GL_VER(10, X(glColor4bv, void, const GLbyte *)) \
+	MKFW_GL_VER(10, X(glColor4d, void, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glColor4dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glColor4f, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glColor4fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glColor4i, void, GLint, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glColor4iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glColor4s, void, GLshort, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glColor4sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glColor4ub, void, GLubyte, GLubyte, GLubyte, GLubyte)) \
+	MKFW_GL_VER(10, X(glColor4ubv, void, const GLubyte *)) \
+	MKFW_GL_VER(10, X(glColor4ui, void, GLuint, GLuint, GLuint, GLuint)) \
+	MKFW_GL_VER(10, X(glColor4uiv, void, const GLuint *)) \
+	MKFW_GL_VER(10, X(glColor4us, void, GLushort, GLushort, GLushort, GLushort)) \
+	MKFW_GL_VER(10, X(glColor4usv, void, const GLushort *)) \
+	MKFW_GL_VER(10, X(glEdgeFlag, void, GLboolean)) \
+	MKFW_GL_VER(10, X(glEdgeFlagv, void, const GLboolean *)) \
+	MKFW_GL_VER(10, X(glEnd, void)) \
+	MKFW_GL_VER(10, X(glIndexd, void, GLdouble)) \
+	MKFW_GL_VER(10, X(glIndexdv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glIndexf, void, GLfloat)) \
+	MKFW_GL_VER(10, X(glIndexfv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glIndexi, void, GLint)) \
+	MKFW_GL_VER(10, X(glIndexiv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glIndexs, void, GLshort)) \
+	MKFW_GL_VER(10, X(glIndexsv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glNormal3b, void, GLbyte, GLbyte, GLbyte)) \
+	MKFW_GL_VER(10, X(glNormal3bv, void, const GLbyte *)) \
+	MKFW_GL_VER(10, X(glNormal3d, void, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glNormal3dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glNormal3f, void, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glNormal3fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glNormal3i, void, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glNormal3iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glNormal3s, void, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glNormal3sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glRasterPos2d, void, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glRasterPos2dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glRasterPos2f, void, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glRasterPos2fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glRasterPos2i, void, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glRasterPos2iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glRasterPos2s, void, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glRasterPos2sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glRasterPos3d, void, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glRasterPos3dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glRasterPos3f, void, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glRasterPos3fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glRasterPos3i, void, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glRasterPos3iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glRasterPos3s, void, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glRasterPos3sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glRasterPos4d, void, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glRasterPos4dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glRasterPos4f, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glRasterPos4fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glRasterPos4i, void, GLint, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glRasterPos4iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glRasterPos4s, void, GLshort, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glRasterPos4sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glRectd, void, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glRectdv, void, const GLdouble *, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glRectf, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glRectfv, void, const GLfloat *, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glRecti, void, GLint, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glRectiv, void, const GLint *, const GLint *)) \
+	MKFW_GL_VER(10, X(glRects, void, GLshort, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glRectsv, void, const GLshort *, const GLshort *)) \
+	MKFW_GL_VER(10, X(glTexCoord1d, void, GLdouble)) \
+	MKFW_GL_VER(10, X(glTexCoord1dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glTexCoord1f, void, GLfloat)) \
+	MKFW_GL_VER(10, X(glTexCoord1fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glTexCoord1i, void, GLint)) \
+	MKFW_GL_VER(10, X(glTexCoord1iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glTexCoord1s, void, GLshort)) \
+	MKFW_GL_VER(10, X(glTexCoord1sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glTexCoord2d, void, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glTexCoord2dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glTexCoord2f, void, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glTexCoord2fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glTexCoord2i, void, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glTexCoord2iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glTexCoord2s, void, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glTexCoord2sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glTexCoord3d, void, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glTexCoord3dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glTexCoord3f, void, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glTexCoord3fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glTexCoord3i, void, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glTexCoord3iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glTexCoord3s, void, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glTexCoord3sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glTexCoord4d, void, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glTexCoord4dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glTexCoord4f, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glTexCoord4fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glTexCoord4i, void, GLint, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glTexCoord4iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glTexCoord4s, void, GLshort, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glTexCoord4sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glVertex2d, void, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glVertex2dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glVertex2f, void, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glVertex2fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glVertex2i, void, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glVertex2iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glVertex2s, void, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glVertex2sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glVertex3d, void, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glVertex3dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glVertex3f, void, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glVertex3fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glVertex3i, void, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glVertex3iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glVertex3s, void, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glVertex3sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glVertex4d, void, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glVertex4dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glVertex4f, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glVertex4fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glVertex4i, void, GLint, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glVertex4iv, void, const GLint *)) \
+	MKFW_GL_VER(10, X(glVertex4s, void, GLshort, GLshort, GLshort, GLshort)) \
+	MKFW_GL_VER(10, X(glVertex4sv, void, const GLshort *)) \
+	MKFW_GL_VER(10, X(glClipPlane, void, GLenum, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glColorMaterial, void, GLenum, GLenum)) \
+	MKFW_GL_VER(10, X(glFogf, void, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glFogfv, void, GLenum, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glFogi, void, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glFogiv, void, GLenum, const GLint *)) \
+	MKFW_GL_VER(10, X(glLightf, void, GLenum, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glLightfv, void, GLenum, GLenum, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glLighti, void, GLenum, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glLightiv, void, GLenum, GLenum, const GLint *)) \
+	MKFW_GL_VER(10, X(glLightModelf, void, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glLightModelfv, void, GLenum, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glLightModeli, void, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glLightModeliv, void, GLenum, const GLint *)) \
+	MKFW_GL_VER(10, X(glLineStipple, void, GLint, GLushort)) \
+	MKFW_GL_VER(10, X(glMaterialf, void, GLenum, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glMaterialfv, void, GLenum, GLenum, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glMateriali, void, GLenum, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glMaterialiv, void, GLenum, GLenum, const GLint *)) \
+	MKFW_GL_VER(10, X(glPolygonStipple, void, const GLubyte *)) \
+	MKFW_GL_VER(10, X(glShadeModel, void, GLenum)) \
+	MKFW_GL_VER(10, X(glTexEnvf, void, GLenum, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glTexEnvfv, void, GLenum, GLenum, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glTexEnvi, void, GLenum, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glTexEnviv, void, GLenum, GLenum, const GLint *)) \
+	MKFW_GL_VER(10, X(glTexGend, void, GLenum, GLenum, GLdouble)) \
+	MKFW_GL_VER(10, X(glTexGendv, void, GLenum, GLenum, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glTexGenf, void, GLenum, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glTexGenfv, void, GLenum, GLenum, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glTexGeni, void, GLenum, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glTexGeniv, void, GLenum, GLenum, const GLint *)) \
+	MKFW_GL_VER(10, X(glFeedbackBuffer, void, GLsizei, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glSelectBuffer, void, GLsizei, GLuint *)) \
+	MKFW_GL_VER(10, X(glRenderMode, GLint, GLenum)) \
+	MKFW_GL_VER(10, X(glInitNames, void)) \
+	MKFW_GL_VER(10, X(glLoadName, void, GLuint)) \
+	MKFW_GL_VER(10, X(glPassThrough, void, GLfloat)) \
+	MKFW_GL_VER(10, X(glPopName, void)) \
+	MKFW_GL_VER(10, X(glPushName, void, GLuint)) \
+	MKFW_GL_VER(10, X(glClearAccum, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glClearIndex, void, GLfloat)) \
+	MKFW_GL_VER(10, X(glIndexMask, void, GLuint)) \
+	MKFW_GL_VER(10, X(glAccum, void, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glPopAttrib, void)) \
+	MKFW_GL_VER(10, X(glPushAttrib, void, GLbitfield)) \
+	MKFW_GL_VER(10, X(glMap1d, void, GLenum, GLdouble, GLdouble, GLint, GLint, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glMap1f, void, GLenum, GLfloat, GLfloat, GLint, GLint, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glMap2d, void, GLenum, GLdouble, GLdouble, GLint, GLint, GLdouble, GLdouble, GLint, GLint, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glMap2f, void, GLenum, GLfloat, GLfloat, GLint, GLint, GLfloat, GLfloat, GLint, GLint, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glMapGrid1d, void, GLint, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glMapGrid1f, void, GLint, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glMapGrid2d, void, GLint, GLdouble, GLdouble, GLint, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glMapGrid2f, void, GLint, GLfloat, GLfloat, GLint, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glEvalCoord1d, void, GLdouble)) \
+	MKFW_GL_VER(10, X(glEvalCoord1dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glEvalCoord1f, void, GLfloat)) \
+	MKFW_GL_VER(10, X(glEvalCoord1fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glEvalCoord2d, void, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glEvalCoord2dv, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glEvalCoord2f, void, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glEvalCoord2fv, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glEvalMesh1, void, GLenum, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glEvalPoint1, void, GLint)) \
+	MKFW_GL_VER(10, X(glEvalMesh2, void, GLenum, GLint, GLint, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glEvalPoint2, void, GLint, GLint)) \
+	MKFW_GL_VER(10, X(glAlphaFunc, void, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glPixelZoom, void, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glPixelTransferf, void, GLenum, GLfloat)) \
+	MKFW_GL_VER(10, X(glPixelTransferi, void, GLenum, GLint)) \
+	MKFW_GL_VER(10, X(glPixelMapfv, void, GLenum, GLsizei, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glPixelMapuiv, void, GLenum, GLsizei, const GLuint *)) \
+	MKFW_GL_VER(10, X(glPixelMapusv, void, GLenum, GLsizei, const GLushort *)) \
+	MKFW_GL_VER(10, X(glCopyPixels, void, GLint, GLint, GLsizei, GLsizei, GLenum)) \
+	MKFW_GL_VER(10, X(glDrawPixels, void, GLsizei, GLsizei, GLenum, GLenum, const void *)) \
+	MKFW_GL_VER(10, X(glGetClipPlane, void, GLenum, GLdouble *)) \
+	MKFW_GL_VER(10, X(glGetLightfv, void, GLenum, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetLightiv, void, GLenum, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glGetMapdv, void, GLenum, GLenum, GLdouble *)) \
+	MKFW_GL_VER(10, X(glGetMapfv, void, GLenum, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetMapiv, void, GLenum, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glGetMaterialfv, void, GLenum, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetMaterialiv, void, GLenum, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glGetPixelMapfv, void, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetPixelMapuiv, void, GLenum, GLuint *)) \
+	MKFW_GL_VER(10, X(glGetPixelMapusv, void, GLenum, GLushort *)) \
+	MKFW_GL_VER(10, X(glGetPolygonStipple, void, GLubyte *)) \
+	MKFW_GL_VER(10, X(glGetTexEnvfv, void, GLenum, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetTexEnviv, void, GLenum, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glGetTexGendv, void, GLenum, GLenum, GLdouble *)) \
+	MKFW_GL_VER(10, X(glGetTexGenfv, void, GLenum, GLenum, GLfloat *)) \
+	MKFW_GL_VER(10, X(glGetTexGeniv, void, GLenum, GLenum, GLint *)) \
+	MKFW_GL_VER(10, X(glIsList, GLboolean, GLuint)) \
+	MKFW_GL_VER(10, X(glFrustum, void, GLdouble, GLdouble, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glLoadIdentity, void)) \
+	MKFW_GL_VER(10, X(glLoadMatrixf, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glLoadMatrixd, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glMatrixMode, void, GLenum)) \
+	MKFW_GL_VER(10, X(glMultMatrixf, void, const GLfloat *)) \
+	MKFW_GL_VER(10, X(glMultMatrixd, void, const GLdouble *)) \
+	MKFW_GL_VER(10, X(glOrtho, void, GLdouble, GLdouble, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glPopMatrix, void)) \
+	MKFW_GL_VER(10, X(glPushMatrix, void)) \
+	MKFW_GL_VER(10, X(glRotated, void, GLdouble, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glRotatef, void, GLfloat, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glScaled, void, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glScalef, void, GLfloat, GLfloat, GLfloat)) \
+	MKFW_GL_VER(10, X(glTranslated, void, GLdouble, GLdouble, GLdouble)) \
+	MKFW_GL_VER(10, X(glTranslatef, void, GLfloat, GLfloat, GLfloat)) \
+	/* OpenGL 1.1 */ \
+	MKFW_GL_VER(11, X(glDrawArrays, void, GLenum, GLint, GLsizei)) \
+	MKFW_GL_VER(11, X(glDrawElements, void, GLenum, GLsizei, GLenum, const void *)) \
+	MKFW_GL_VER(11, X(glGetPointerv, void, GLenum, void **)) \
+	MKFW_GL_VER(11, X(glPolygonOffset, void, GLfloat, GLfloat)) \
+	MKFW_GL_VER(11, X(glCopyTexImage1D, void, GLenum, GLint, GLenum, GLint, GLint, GLsizei, GLint)) \
+	MKFW_GL_VER(11, X(glCopyTexImage2D, void, GLenum, GLint, GLenum, GLint, GLint, GLsizei, GLsizei, GLint)) \
+	MKFW_GL_VER(11, X(glCopyTexSubImage1D, void, GLenum, GLint, GLint, GLint, GLint, GLsizei)) \
+	MKFW_GL_VER(11, X(glCopyTexSubImage2D, void, GLenum, GLint, GLint, GLint, GLint, GLint, GLsizei, GLsizei)) \
+	MKFW_GL_VER(11, X(glTexSubImage1D, void, GLenum, GLint, GLint, GLsizei, GLenum, GLenum, const void *)) \
+	MKFW_GL_VER(11, X(glTexSubImage2D, void, GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void *)) \
+	MKFW_GL_VER(11, X(glBindTexture, void, GLenum, GLuint)) \
+	MKFW_GL_VER(11, X(glDeleteTextures, void, GLsizei, const GLuint *)) \
+	MKFW_GL_VER(11, X(glGenTextures, void, GLsizei, GLuint *)) \
+	MKFW_GL_VER(11, X(glIsTexture, GLboolean, GLuint)) \
+	MKFW_GL_VER(11, X(glArrayElement, void, GLint)) \
+	MKFW_GL_VER(11, X(glColorPointer, void, GLint, GLenum, GLsizei, const void *)) \
+	MKFW_GL_VER(11, X(glDisableClientState, void, GLenum)) \
+	MKFW_GL_VER(11, X(glEdgeFlagPointer, void, GLsizei, const void *)) \
+	MKFW_GL_VER(11, X(glEnableClientState, void, GLenum)) \
+	MKFW_GL_VER(11, X(glIndexPointer, void, GLenum, GLsizei, const void *)) \
+	MKFW_GL_VER(11, X(glInterleavedArrays, void, GLenum, GLsizei, const void *)) \
+	MKFW_GL_VER(11, X(glNormalPointer, void, GLenum, GLsizei, const void *)) \
+	MKFW_GL_VER(11, X(glTexCoordPointer, void, GLint, GLenum, GLsizei, const void *)) \
+	MKFW_GL_VER(11, X(glVertexPointer, void, GLint, GLenum, GLsizei, const void *)) \
+	MKFW_GL_VER(11, X(glAreTexturesResident, GLboolean, GLsizei, const GLuint *, GLboolean *)) \
+	MKFW_GL_VER(11, X(glPrioritizeTextures, void, GLsizei, const GLuint *, const GLfloat *)) \
+	MKFW_GL_VER(11, X(glIndexub, void, GLubyte)) \
+	MKFW_GL_VER(11, X(glIndexubv, void, const GLubyte *)) \
+	MKFW_GL_VER(11, X(glPopClientAttrib, void)) \
+	MKFW_GL_VER(11, X(glPushClientAttrib, void, GLbitfield)) \
 	/* OpenGL 1.2 */ \
 	MKFW_GL_VER(12, X(glDrawRangeElements, void, GLenum, GLuint, GLuint, GLsizei, GLenum, const void *)) \
 	MKFW_GL_VER(12, X(glTexImage3D, void, GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *)) \
@@ -3056,6 +3050,16 @@ void glPushClientAttrib(GLbitfield mask);
 #define MKFW_GL_VER_EXPAND(x) x
 #define MKFW_GL_VER_NOTHING(...)
 // Version check: expands body if MKFW_GL_VERSION >= threshold
+#if MKFW_GL_VERSION >= 10
+#define MKFW_GL_VER_10(x) x
+#else
+#define MKFW_GL_VER_10(x)
+#endif
+#if MKFW_GL_VERSION >= 11
+#define MKFW_GL_VER_11(x) x
+#else
+#define MKFW_GL_VER_11(x)
+#endif
 #if MKFW_GL_VERSION >= 12
 #define MKFW_GL_VER_12(x) x
 #else

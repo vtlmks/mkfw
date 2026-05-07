@@ -225,7 +225,7 @@ int main(void) {
 
 ```bash
 # Desktop (Linux)
-gcc app.c -lX11 -lXi -lXrandr -lGL -lm -lpthread -lasound -o app
+gcc app.c -lm -lpthread -ldl -o app
 
 # Desktop (Windows, MinGW)
 gcc app.c -lopengl32 -lgdi32 -lwinmm -lole32 -lavrt -o app.exe

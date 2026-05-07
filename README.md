@@ -67,7 +67,7 @@ int main() {
 Compile on Linux:
 
 ```sh
-gcc main.c -lX11 -lXi -lXrandr -lGL -lm -o app
+gcc main.c -lm -ldl -o app
 ```
 
 Compile on Windows (MinGW):
@@ -211,7 +211,7 @@ mkfw_gl_loader();
 
 None beyond platform libraries:
 
-- **Linux:** X11, Xi, GL, m (all standard)
+- **Linux:** m, dl (all standard). Platform libraries (X11, GL, Xi, Xrandr, ALSA) are loaded at runtime via dlopen, so they are not link-time dependencies. X11/GL/ALSA development headers are still needed at compile time.
 - **Windows:** opengl32, gdi32, winmm (all standard). clang-cl additionally requires explicit linking of user32 and shell32, which MinGW links implicitly. Audio subsystem adds ole32, avrt, and uuid.
 - **Emscripten:** Emscripten SDK (provides WebGL2, audio, gamepad APIs)
 

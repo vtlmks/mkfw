@@ -551,7 +551,7 @@ mkfw_joystick_set_callback(on_gamepad);
 
 **Linking:**
 ```bash
-gcc -o app main.c -lX11 -lGL -lXi -ldl -lpthread
+gcc -o app main.c -lm -ldl -lpthread
 ```
 
 ### Windows (XInput)

@@ -21,6 +21,9 @@
 #include <X11/Xresource.h>
 
 #include "mkfw_glx_mini.h"
+#include "mkfw_linux_xlib_loader.h"
+#include "mkfw_linux_xrandr_loader.h"
+#include "mkfw_linux_xinput2_loader.h"
 
 /* Platform casting macro */
 #define PLATFORM(state) ((struct x11_mkfw_state *)(state)->platform)
@@ -380,6 +383,7 @@ static void mkfw_hide_window(struct mkfw_state *state) {
 
 // [=]===^=[ mkfw_query_max_gl_version ]==========================================================[=]
 static int mkfw_query_max_gl_version(int *major, int *minor) {
+	load_x11_functions();
 	Display *dpy = XOpenDisplay(0);
 	if(!dpy) {
 		return 0;
@@ -465,6 +469,10 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 
 	PLATFORM(state)->mouse_sensitivity = 1.0;
 	PLATFORM(state)->xi_opcode = -1;
+
+	load_x11_functions();
+	load_xrandr_functions();
+	load_xinput2_functions();
 
 	XInitThreads();
 	setup_signal_handlers(state);

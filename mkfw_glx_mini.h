@@ -3,8 +3,11 @@
 
 #pragma once
 
-/* Forward declarations for glXGetProcAddress */
-extern void *glXGetProcAddress(const unsigned char *procName);
+#include <dlfcn.h>
+
+typedef void *(*PFN_glXGetProcAddress)(const unsigned char *);
+static PFN_glXGetProcAddress mkfw_glXGetProcAddress;
+#define glXGetProcAddress mkfw_glXGetProcAddress
 
 typedef XID GLXDrawable;
 typedef XID GLXContext;
@@ -56,6 +59,19 @@ static PFNGLXGETCLIENTSTRINGPROC glXGetClientString;
 static PFNGLXGETFBCONFIGATTRIBPROC glXGetFBConfigAttrib;
 
 static void load_glx_functions(Display *display __attribute__((unused))) {
+	if(!mkfw_glXGetProcAddress) {
+		void *libGL = dlopen("libGL.so.1", RTLD_LAZY | RTLD_GLOBAL);
+		if(!libGL) {
+			mkfw_error("failed to load libGL.so.1");
+			exit(EXIT_FAILURE);
+		}
+		*(void **)&mkfw_glXGetProcAddress = dlsym(libGL, "glXGetProcAddress");
+		if(!mkfw_glXGetProcAddress) {
+			mkfw_error("failed to find glXGetProcAddress");
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	glXChooseFBConfig = (PFNGLXCHOOSEFBCONFIGPROC)glXGetProcAddress((const unsigned char *)"glXChooseFBConfig");
 	glXGetVisualFromFBConfig = (PFNGLXGETVISUALFROMFBCONFIGPROC)glXGetProcAddress((const unsigned char *)"glXGetVisualFromFBConfig");
 	glXCreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glXGetProcAddress((const unsigned char *)"glXCreateContextAttribsARB");

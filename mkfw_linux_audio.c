@@ -31,6 +31,93 @@ static void mkfw_audio_callback_thread(int16_t *audio_buffer, size_t frames) {
 }
 
 #include <alsa/asoundlib.h>
+#include <dlfcn.h>
+
+typedef int (*PFN_snd_pcm_open)(snd_pcm_t **, const char *, snd_pcm_stream_t, int);
+typedef int (*PFN_snd_pcm_close)(snd_pcm_t *);
+typedef int (*PFN_snd_pcm_hw_params_any)(snd_pcm_t *, snd_pcm_hw_params_t *);
+typedef int (*PFN_snd_pcm_hw_params_set_access)(snd_pcm_t *, snd_pcm_hw_params_t *, snd_pcm_access_t);
+typedef int (*PFN_snd_pcm_hw_params_set_format)(snd_pcm_t *, snd_pcm_hw_params_t *, snd_pcm_format_t);
+typedef int (*PFN_snd_pcm_hw_params_set_channels)(snd_pcm_t *, snd_pcm_hw_params_t *, unsigned int);
+typedef int (*PFN_snd_pcm_hw_params_set_rate_near)(snd_pcm_t *, snd_pcm_hw_params_t *, unsigned int *, int *);
+typedef int (*PFN_snd_pcm_hw_params_set_period_size_near)(snd_pcm_t *, snd_pcm_hw_params_t *, snd_pcm_uframes_t *, int *);
+typedef int (*PFN_snd_pcm_hw_params_set_buffer_size_near)(snd_pcm_t *, snd_pcm_hw_params_t *, snd_pcm_uframes_t *);
+typedef int (*PFN_snd_pcm_hw_params)(snd_pcm_t *, snd_pcm_hw_params_t *);
+typedef int (*PFN_snd_pcm_hw_params_get_period_size)(const snd_pcm_hw_params_t *, snd_pcm_uframes_t *, int *);
+typedef size_t (*PFN_snd_pcm_hw_params_sizeof)(void);
+typedef int (*PFN_snd_pcm_start)(snd_pcm_t *);
+typedef int (*PFN_snd_pcm_wait)(snd_pcm_t *, int);
+typedef snd_pcm_sframes_t (*PFN_snd_pcm_writei)(snd_pcm_t *, const void *, snd_pcm_uframes_t);
+typedef int (*PFN_snd_pcm_drop)(snd_pcm_t *);
+typedef int (*PFN_snd_pcm_recover)(snd_pcm_t *, int, int);
+
+static PFN_snd_pcm_open mkfw_snd_pcm_open;
+static PFN_snd_pcm_close mkfw_snd_pcm_close;
+static PFN_snd_pcm_hw_params_any mkfw_snd_pcm_hw_params_any;
+static PFN_snd_pcm_hw_params_set_access mkfw_snd_pcm_hw_params_set_access;
+static PFN_snd_pcm_hw_params_set_format mkfw_snd_pcm_hw_params_set_format;
+static PFN_snd_pcm_hw_params_set_channels mkfw_snd_pcm_hw_params_set_channels;
+static PFN_snd_pcm_hw_params_set_rate_near mkfw_snd_pcm_hw_params_set_rate_near;
+static PFN_snd_pcm_hw_params_set_period_size_near mkfw_snd_pcm_hw_params_set_period_size_near;
+static PFN_snd_pcm_hw_params_set_buffer_size_near mkfw_snd_pcm_hw_params_set_buffer_size_near;
+static PFN_snd_pcm_hw_params mkfw_snd_pcm_hw_params;
+static PFN_snd_pcm_hw_params_get_period_size mkfw_snd_pcm_hw_params_get_period_size;
+static PFN_snd_pcm_hw_params_sizeof mkfw_snd_pcm_hw_params_sizeof;
+static PFN_snd_pcm_start mkfw_snd_pcm_start;
+static PFN_snd_pcm_wait mkfw_snd_pcm_wait;
+static PFN_snd_pcm_writei mkfw_snd_pcm_writei;
+static PFN_snd_pcm_drop mkfw_snd_pcm_drop;
+static PFN_snd_pcm_recover mkfw_snd_pcm_recover;
+
+#define snd_pcm_open mkfw_snd_pcm_open
+#define snd_pcm_close mkfw_snd_pcm_close
+#define snd_pcm_hw_params_any mkfw_snd_pcm_hw_params_any
+#define snd_pcm_hw_params_set_access mkfw_snd_pcm_hw_params_set_access
+#define snd_pcm_hw_params_set_format mkfw_snd_pcm_hw_params_set_format
+#define snd_pcm_hw_params_set_channels mkfw_snd_pcm_hw_params_set_channels
+#define snd_pcm_hw_params_set_rate_near mkfw_snd_pcm_hw_params_set_rate_near
+#define snd_pcm_hw_params_set_period_size_near mkfw_snd_pcm_hw_params_set_period_size_near
+#define snd_pcm_hw_params_set_buffer_size_near mkfw_snd_pcm_hw_params_set_buffer_size_near
+#define snd_pcm_hw_params mkfw_snd_pcm_hw_params
+#define snd_pcm_hw_params_get_period_size mkfw_snd_pcm_hw_params_get_period_size
+#define snd_pcm_hw_params_sizeof mkfw_snd_pcm_hw_params_sizeof
+#define snd_pcm_start mkfw_snd_pcm_start
+#define snd_pcm_wait mkfw_snd_pcm_wait
+#define snd_pcm_writei mkfw_snd_pcm_writei
+#define snd_pcm_drop mkfw_snd_pcm_drop
+#define snd_pcm_recover mkfw_snd_pcm_recover
+
+static int32_t load_alsa_functions(void) {
+	void *lib = dlopen("libasound.so.2", RTLD_LAZY | RTLD_GLOBAL);
+	if(!lib) {
+		return -1;
+	}
+
+	#define LOAD(name) *(void **)&mkfw_##name = dlsym(lib, #name)
+	LOAD(snd_pcm_open);
+	LOAD(snd_pcm_close);
+	LOAD(snd_pcm_hw_params_any);
+	LOAD(snd_pcm_hw_params_set_access);
+	LOAD(snd_pcm_hw_params_set_format);
+	LOAD(snd_pcm_hw_params_set_channels);
+	LOAD(snd_pcm_hw_params_set_rate_near);
+	LOAD(snd_pcm_hw_params_set_period_size_near);
+	LOAD(snd_pcm_hw_params_set_buffer_size_near);
+	LOAD(snd_pcm_hw_params);
+	LOAD(snd_pcm_hw_params_get_period_size);
+	LOAD(snd_pcm_hw_params_sizeof);
+	LOAD(snd_pcm_start);
+	LOAD(snd_pcm_wait);
+	LOAD(snd_pcm_writei);
+	LOAD(snd_pcm_drop);
+	LOAD(snd_pcm_recover);
+	#undef LOAD
+
+	if(!mkfw_snd_pcm_open || !mkfw_snd_pcm_close || !mkfw_snd_pcm_hw_params_sizeof) {
+		return -1;
+	}
+	return 0;
+}
 
 static snd_pcm_t *mkfw_pcm;
 static mkfw_thread mkfw_audio_thread;
@@ -148,6 +235,10 @@ static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
 
 // [=]===^=[ mkfw_audio_initialize ]==============================================================[=]
 static void mkfw_audio_initialize(void) {
+	if(load_alsa_functions() < 0) {
+		mkfw_error("ALSA not available");
+		return;
+	}
 	mkfw_audio_open_device();
 	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
 	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_func, 0);

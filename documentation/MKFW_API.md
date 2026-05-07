@@ -1851,7 +1851,8 @@ mkfw_cleanup(window);
 
 ### Linux (X11)
 
-- Requires X11, GLX, XInput2, and Xrandr development libraries
+- Requires X11, GLX, XInput2, and Xrandr development headers at compile time
+- All platform libraries (libX11, libGL, libXi, libXrandr, libasound) are loaded at runtime via dlopen
 - Uses XInput2 for raw mouse motion
 - Uses Xrandr for monitor enumeration
 - Creates OpenGL Compatibility Profile context via `glXCreateContextAttribsARB`
@@ -1859,7 +1860,7 @@ mkfw_cleanup(window);
 
 **Linking:**
 ```bash
-gcc -o app main.c -lX11 -lGL -lXi -lXrandr -ldl -lpthread
+gcc -o app main.c -lm -ldl -lpthread
 ```
 
 ### Windows

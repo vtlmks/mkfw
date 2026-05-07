@@ -1,2 +1,2 @@
 #!/bin/bash
-gcc mkfw_threaded_example.c -I../.. -lX11 -lXi -lGL -lm -lpthread -o threaded_example -O2
+gcc mkfw_threaded_example.c -I../.. -lm -lpthread -ldl -o threaded_example -O2
