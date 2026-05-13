@@ -115,16 +115,15 @@ See [MKFW_API.md](documentation/MKFW_API.md#opengl-version-configuration) for de
 
 Working examples are included in the repository:
 
-- [joystick_example/](joystick_example/) — gamepad input with terminal visualization
-- [threaded_example/](threaded_example/) — render loop on a separate thread, decoupled from the OS message pump
-- [monitor_example/](monitor_example/) — monitor enumeration
-- [transparency_example/](transparency_example/) — per-pixel transparency
+- [examples/joystick.c](examples/joystick.c) — gamepad input with terminal visualization
+- [examples/threaded.c](examples/threaded.c) — render loop on a separate thread, decoupled from the OS message pump
+- [examples/monitor.c](examples/monitor.c) — monitor enumeration
+- [examples/transparency.c](examples/transparency.c) — per-pixel transparency
 
-Build an example:
+Build all examples:
 
 ```sh
-cd joystick_example && sh build_joystick.sh
-cd threaded_example && sh build_threaded.sh
+cd examples && bash build_examples.sh
 ```
 
 ### Threaded rendering
@@ -146,7 +145,7 @@ The key steps:
 4. The main thread loops on `mkfw_poll_events()` + `mkfw_sleep()` — nothing else
 5. On shutdown, set a shared flag, join the render thread, then clean up
 
-This pattern is not specific to mkfw — the same approach works with GLFW, SDL, or raw Win32. The [threaded_example/](threaded_example/) shows a complete, minimal implementation.
+This pattern is not specific to mkfw — the same approach works with GLFW, SDL, or raw Win32. [examples/threaded.c](examples/threaded.c) shows a complete, minimal implementation.
 
 ## Documentation
 

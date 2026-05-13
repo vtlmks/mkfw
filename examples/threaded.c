@@ -34,6 +34,7 @@ struct app_state {
 
 // [=]===^=[ on_key ]=========================================================================^===[=]
 static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uint32_t mods) {
+	(void)mods;
 	struct app_state *app = (struct app_state *)mkfw_window_get_user_data(window);
 
 	if(key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
@@ -43,6 +44,8 @@ static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uin
 
 // [=]===^=[ on_resize ]======================================================================^===[=]
 static void on_resize(struct mkfw_state *window, int32_t w, int32_t h, float aspect) {
+	(void)window;
+	(void)aspect;
 	glViewport(0, 0, w, h);
 }
 
