@@ -122,7 +122,7 @@ struct mkfw_window {
 typedef void (*mkfw_error_callback_t)(const char *message);
 MKFW_VAR mkfw_error_callback_t mkfw_error_callback;
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 	#define MKFW_THREAD_LOCAL __declspec(thread)
 #else
 	#define MKFW_THREAD_LOCAL __thread
