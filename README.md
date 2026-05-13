@@ -124,16 +124,32 @@ See [MKFW_API.md](documentation/MKFW_API.md#opengl-version-configuration) for de
 
 Working examples are included in the repository:
 
-- [examples/joystick.c](examples/joystick.c) — gamepad input with terminal visualization
-- [examples/threaded.c](examples/threaded.c) — render loop on a separate thread, decoupled from the OS message pump
-- [examples/monitor.c](examples/monitor.c) — monitor enumeration
-- [examples/transparency.c](examples/transparency.c) — per-pixel transparency
+- [examples/joystick.c](examples/joystick.c) - gamepad input with terminal visualization
+- [examples/threaded.c](examples/threaded.c) - render loop on a separate thread, decoupled from the OS message pump
+- [examples/monitor.c](examples/monitor.c) - monitor enumeration
+- [examples/transparency.c](examples/transparency.c) - per-pixel transparency
+- [examples/audio_beep.c](examples/audio_beep.c) - 440 Hz sine for one second
+- [examples/multi_window.c](examples/multi_window.c) - two windows on one context, one event pump
 
 Build all examples:
 
 ```sh
 cd examples && bash build_examples.sh
 ```
+
+## Tests
+
+A small smoke-test suite lives under [tests/](tests/) and exercises
+every subsystem (window, monitor query, audio, timer, joystick,
+multi-window event dispatch).  Build and run:
+
+```sh
+cd tests && bash build_tests.sh
+./smoke
+./multi_window
+```
+
+Each test exits `0` on success.
 
 ### Threaded rendering
 

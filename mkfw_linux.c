@@ -645,10 +645,10 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 			return 0;
 		}
 	} else {
-		if(!transparent || !XMatchVisualInfo(display, screen, 32, TrueColor, &vi_storage)) {
-			vi_storage.visual = DefaultVisual(display, screen);
-			vi_storage.depth  = DefaultDepth(display, screen);
-		}
+		// Non-GL windows get the screen default visual; transparency hint
+		// is the caller's responsibility (they own the rendering surface).
+		vi_storage.visual = DefaultVisual(display, screen);
+		vi_storage.depth  = DefaultDepth(display, screen);
 		vi = &vi_storage;
 	}
 
