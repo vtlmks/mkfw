@@ -30,7 +30,7 @@ static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uin
 	(void)mods;
 	struct app_state *app = (struct app_state *)mkfw_get_user_data(window);
 
-	if(key == MKS_KEY_ESCAPE && action == MKS_PRESSED) {
+	if(key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
 		app->running = 0;
 	}
 }

@@ -307,7 +307,7 @@ void *render_thread_func(void *arg) {
 
     while (state.running) {
         // Handle input
-        if (mkfw_is_key_pressed(window, MKS_KEY_ESCAPE)) {
+        if (mkfw_is_key_pressed(window, MKFW_KEY_ESCAPE)) {
             state.running = 0;
         }
 

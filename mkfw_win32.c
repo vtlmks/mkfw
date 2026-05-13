@@ -102,44 +102,44 @@ static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPAR
 	// Track modifier state
 	switch(wParam) {
 		case VK_LSHIFT:
-			state->keyboard_state[MKS_KEY_LSHIFT] = key_down;
+			state->keyboard_state[MKFW_KEY_LSHIFT] = key_down;
 			break;
 		case VK_RSHIFT:
-			state->keyboard_state[MKS_KEY_RSHIFT] = key_down;
+			state->keyboard_state[MKFW_KEY_RSHIFT] = key_down;
 			break;
 		case VK_LCONTROL:
-			state->keyboard_state[MKS_KEY_LCTRL] = key_down;
+			state->keyboard_state[MKFW_KEY_LCTRL] = key_down;
 			break;
 		case VK_RCONTROL:
-			state->keyboard_state[MKS_KEY_RCTRL] = key_down;
+			state->keyboard_state[MKFW_KEY_RCTRL] = key_down;
 			break;
 		case VK_LMENU:
-			state->keyboard_state[MKS_KEY_LALT] = key_down;
+			state->keyboard_state[MKFW_KEY_LALT] = key_down;
 			break;
 		case VK_RMENU:
-			state->keyboard_state[MKS_KEY_RALT] = key_down;
+			state->keyboard_state[MKFW_KEY_RALT] = key_down;
 			break;
 		case VK_LWIN:
-			state->keyboard_state[MKS_KEY_LSUPER] = key_down;
+			state->keyboard_state[MKFW_KEY_LSUPER] = key_down;
 			break;
 		case VK_RWIN:
-			state->keyboard_state[MKS_KEY_RSUPER] = key_down;
+			state->keyboard_state[MKFW_KEY_RSUPER] = key_down;
 			break;
 	}
 
 	// Update combined modifier states from keyboard_state
-	state->keyboard_state[MKS_KEY_SHIFT] = state->keyboard_state[MKS_KEY_LSHIFT] || state->keyboard_state[MKS_KEY_RSHIFT];
-	state->keyboard_state[MKS_KEY_CTRL]  = state->keyboard_state[MKS_KEY_LCTRL] || state->keyboard_state[MKS_KEY_RCTRL];
-	state->keyboard_state[MKS_KEY_ALT]   = state->keyboard_state[MKS_KEY_LALT] || state->keyboard_state[MKS_KEY_RALT];
+	state->keyboard_state[MKFW_KEY_SHIFT] = state->keyboard_state[MKFW_KEY_LSHIFT] || state->keyboard_state[MKFW_KEY_RSHIFT];
+	state->keyboard_state[MKFW_KEY_CTRL]  = state->keyboard_state[MKFW_KEY_LCTRL] || state->keyboard_state[MKFW_KEY_RCTRL];
+	state->keyboard_state[MKFW_KEY_ALT]   = state->keyboard_state[MKFW_KEY_LALT] || state->keyboard_state[MKFW_KEY_RALT];
 
 	// Update modifier_state array for compatibility
-	state->modifier_state[MKS_MODIFIER_SHIFT] = state->keyboard_state[MKS_KEY_SHIFT];
-	state->modifier_state[MKS_MODIFIER_CTRL] = state->keyboard_state[MKS_KEY_CTRL];
-	state->modifier_state[MKS_MODIFIER_ALT] = state->keyboard_state[MKS_KEY_ALT];
+	state->modifier_state[MKFW_MODIFIER_SHIFT] = state->keyboard_state[MKFW_KEY_SHIFT];
+	state->modifier_state[MKFW_MODIFIER_CTRL] = state->keyboard_state[MKFW_KEY_CTRL];
+	state->modifier_state[MKFW_MODIFIER_ALT] = state->keyboard_state[MKFW_KEY_ALT];
 
 	// Handle number keys (VK_0 - VK_9)
 	if(wParam >= 0x30 && wParam <= 0x39) {
-		keycode = MKS_KEY_0 + (wParam - 0x30);
+		keycode = MKFW_KEY_0 + (wParam - 0x30);
 	} else if(wParam >= 0x41 && wParam <= 0x5A) {  // A-Z range
 		keycode = wParam + 32;  // Convert to lowercase (a-z)
 	} else if(wParam >= 0x20 && wParam <= 0x7E) {
@@ -148,64 +148,64 @@ static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPAR
 
 	// Handle non-extended special keys
 	switch(wParam) {
-		case VK_ESCAPE:    keycode = MKS_KEY_ESCAPE; break;
-		case VK_BACK:      keycode = MKS_KEY_BACKSPACE; break;
-		case VK_TAB:       keycode = MKS_KEY_TAB; break;
-		case VK_RETURN:    keycode = MKS_KEY_RETURN; break;
-		case VK_CAPITAL:   keycode = MKS_KEY_CAPSLOCK; break;
-		case VK_F1:        keycode = MKS_KEY_F1; break;
-		case VK_F2:        keycode = MKS_KEY_F2; break;
-		case VK_F3:        keycode = MKS_KEY_F3; break;
-		case VK_F4:        keycode = MKS_KEY_F4; break;
-		case VK_F5:        keycode = MKS_KEY_F5; break;
-		case VK_F6:        keycode = MKS_KEY_F6; break;
-		case VK_F7:        keycode = MKS_KEY_F7; break;
-		case VK_F8:        keycode = MKS_KEY_F8; break;
-		case VK_F9:        keycode = MKS_KEY_F9; break;
-		case VK_F10:       keycode = MKS_KEY_F10; break;
-		case VK_F11:       keycode = MKS_KEY_F11; break;
-		case VK_F12:       keycode = MKS_KEY_F12; break;
+		case VK_ESCAPE:    keycode = MKFW_KEY_ESCAPE; break;
+		case VK_BACK:      keycode = MKFW_KEY_BACKSPACE; break;
+		case VK_TAB:       keycode = MKFW_KEY_TAB; break;
+		case VK_RETURN:    keycode = MKFW_KEY_RETURN; break;
+		case VK_CAPITAL:   keycode = MKFW_KEY_CAPSLOCK; break;
+		case VK_F1:        keycode = MKFW_KEY_F1; break;
+		case VK_F2:        keycode = MKFW_KEY_F2; break;
+		case VK_F3:        keycode = MKFW_KEY_F3; break;
+		case VK_F4:        keycode = MKFW_KEY_F4; break;
+		case VK_F5:        keycode = MKFW_KEY_F5; break;
+		case VK_F6:        keycode = MKFW_KEY_F6; break;
+		case VK_F7:        keycode = MKFW_KEY_F7; break;
+		case VK_F8:        keycode = MKFW_KEY_F8; break;
+		case VK_F9:        keycode = MKFW_KEY_F9; break;
+		case VK_F10:       keycode = MKFW_KEY_F10; break;
+		case VK_F11:       keycode = MKFW_KEY_F11; break;
+		case VK_F12:       keycode = MKFW_KEY_F12; break;
 	}
 
 	// Handle extended keys (lParam & 0x01000000)
 	if(lParam & 0x01000000) {
 		switch(wParam) {
-			case VK_LEFT:      keycode = MKS_KEY_LEFT; break;
-			case VK_RIGHT:     keycode = MKS_KEY_RIGHT; break;
-			case VK_UP:        keycode = MKS_KEY_UP; break;
-			case VK_DOWN:      keycode = MKS_KEY_DOWN; break;
-			case VK_RETURN:    keycode = MKS_KEY_NUMPAD_ENTER; break;
-			case VK_INSERT:    keycode = MKS_KEY_INSERT; break;
-			case VK_DELETE:    keycode = MKS_KEY_DELETE; break;
-			case VK_HOME:      keycode = MKS_KEY_HOME; break;
-			case VK_END:       keycode = MKS_KEY_END; break;
-			case VK_PRIOR:     keycode = MKS_KEY_PAGEUP; break;
-			case VK_NEXT:      keycode = MKS_KEY_PAGEDOWN; break;
-			case VK_NUMLOCK:   keycode = MKS_KEY_NUMLOCK; break;
-			case VK_SCROLL:    keycode = MKS_KEY_SCROLLLOCK; break;
-			case VK_PRINT:     keycode = MKS_KEY_PRINTSCREEN; break;
-			case VK_PAUSE:     keycode = MKS_KEY_PAUSE; break;
-			case VK_APPS:      keycode = MKS_KEY_MENU; break;
-			case VK_DIVIDE:    keycode = MKS_KEY_NUMPAD_DIVIDE; break;
+			case VK_LEFT:      keycode = MKFW_KEY_LEFT; break;
+			case VK_RIGHT:     keycode = MKFW_KEY_RIGHT; break;
+			case VK_UP:        keycode = MKFW_KEY_UP; break;
+			case VK_DOWN:      keycode = MKFW_KEY_DOWN; break;
+			case VK_RETURN:    keycode = MKFW_KEY_NUMPAD_ENTER; break;
+			case VK_INSERT:    keycode = MKFW_KEY_INSERT; break;
+			case VK_DELETE:    keycode = MKFW_KEY_DELETE; break;
+			case VK_HOME:      keycode = MKFW_KEY_HOME; break;
+			case VK_END:       keycode = MKFW_KEY_END; break;
+			case VK_PRIOR:     keycode = MKFW_KEY_PAGEUP; break;
+			case VK_NEXT:      keycode = MKFW_KEY_PAGEDOWN; break;
+			case VK_NUMLOCK:   keycode = MKFW_KEY_NUMLOCK; break;
+			case VK_SCROLL:    keycode = MKFW_KEY_SCROLLLOCK; break;
+			case VK_PRINT:     keycode = MKFW_KEY_PRINTSCREEN; break;
+			case VK_PAUSE:     keycode = MKFW_KEY_PAUSE; break;
+			case VK_APPS:      keycode = MKFW_KEY_MENU; break;
+			case VK_DIVIDE:    keycode = MKFW_KEY_NUMPAD_DIVIDE; break;
 		}
 	} else {
 		// Handle numpad keys
 		switch(wParam) {
-			case VK_NUMPAD0:   keycode = MKS_KEY_NUMPAD_0; break;
-			case VK_NUMPAD1:   keycode = MKS_KEY_NUMPAD_1; break;
-			case VK_NUMPAD2:   keycode = MKS_KEY_NUMPAD_2; break;
-			case VK_NUMPAD3:   keycode = MKS_KEY_NUMPAD_3; break;
-			case VK_NUMPAD4:   keycode = MKS_KEY_NUMPAD_4; break;
-			case VK_NUMPAD5:   keycode = MKS_KEY_NUMPAD_5; break;
-			case VK_NUMPAD6:   keycode = MKS_KEY_NUMPAD_6; break;
-			case VK_NUMPAD7:   keycode = MKS_KEY_NUMPAD_7; break;
-			case VK_NUMPAD8:   keycode = MKS_KEY_NUMPAD_8; break;
-			case VK_NUMPAD9:   keycode = MKS_KEY_NUMPAD_9; break;
-			case VK_DECIMAL:   keycode = MKS_KEY_NUMPAD_DECIMAL; break;
-			case VK_MULTIPLY:  keycode = MKS_KEY_NUMPAD_MULTIPLY; break;
-			case VK_SUBTRACT:  keycode = MKS_KEY_NUMPAD_SUBTRACT; break;
-			case VK_ADD:       keycode = MKS_KEY_NUMPAD_ADD; break;
-			case VK_SEPARATOR: keycode = MKS_KEY_NUMPAD_ENTER; break;
+			case VK_NUMPAD0:   keycode = MKFW_KEY_NUMPAD_0; break;
+			case VK_NUMPAD1:   keycode = MKFW_KEY_NUMPAD_1; break;
+			case VK_NUMPAD2:   keycode = MKFW_KEY_NUMPAD_2; break;
+			case VK_NUMPAD3:   keycode = MKFW_KEY_NUMPAD_3; break;
+			case VK_NUMPAD4:   keycode = MKFW_KEY_NUMPAD_4; break;
+			case VK_NUMPAD5:   keycode = MKFW_KEY_NUMPAD_5; break;
+			case VK_NUMPAD6:   keycode = MKFW_KEY_NUMPAD_6; break;
+			case VK_NUMPAD7:   keycode = MKFW_KEY_NUMPAD_7; break;
+			case VK_NUMPAD8:   keycode = MKFW_KEY_NUMPAD_8; break;
+			case VK_NUMPAD9:   keycode = MKFW_KEY_NUMPAD_9; break;
+			case VK_DECIMAL:   keycode = MKFW_KEY_NUMPAD_DECIMAL; break;
+			case VK_MULTIPLY:  keycode = MKFW_KEY_NUMPAD_MULTIPLY; break;
+			case VK_SUBTRACT:  keycode = MKFW_KEY_NUMPAD_SUBTRACT; break;
+			case VK_ADD:       keycode = MKFW_KEY_NUMPAD_ADD; break;
+			case VK_SEPARATOR: keycode = MKFW_KEY_NUMPAD_ENTER; break;
 		}
 	}
 
@@ -216,12 +216,12 @@ static uint32_t map_vk_to_scancode(struct mkfw_state *state, WPARAM wParam, LPAR
 
 	// Call the key callback
 	if(keycode && state->key_callback) {
-		state->key_callback(state, keycode, key_down ? MKS_PRESSED : MKS_RELEASED,
-			(state->keyboard_state[MKS_KEY_SHIFT] ? MKS_MOD_SHIFT : 0) |
-			(state->keyboard_state[MKS_KEY_CTRL] ? MKS_MOD_CTRL : 0) |
-			(state->keyboard_state[MKS_KEY_ALT] ? MKS_MOD_ALT : 0) |
-			(state->keyboard_state[MKS_KEY_LSUPER] ? MKS_MOD_LSUPER : 0) |
-			(state->keyboard_state[MKS_KEY_RSUPER] ? MKS_MOD_RSUPER : 0));
+		state->key_callback(state, keycode, key_down ? MKFW_PRESSED : MKFW_RELEASED,
+			(state->keyboard_state[MKFW_KEY_SHIFT] ? MKFW_MOD_SHIFT : 0) |
+			(state->keyboard_state[MKFW_KEY_CTRL] ? MKFW_MOD_CTRL : 0) |
+			(state->keyboard_state[MKFW_KEY_ALT] ? MKFW_MOD_ALT : 0) |
+			(state->keyboard_state[MKFW_KEY_LSUPER] ? MKFW_MOD_LSUPER : 0) |
+			(state->keyboard_state[MKFW_KEY_RSUPER] ? MKFW_MOD_RSUPER : 0));
 	}
 
 	return keycode;
@@ -435,76 +435,76 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 
 		case WM_LBUTTONDOWN: {
 			SetCapture(hwnd);
-			state->mouse_buttons[MOUSE_BUTTON_LEFT] = 1;
+			state->mouse_buttons[MKFW_MOUSE_LEFT] = 1;
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, MOUSE_BUTTON_LEFT, MKS_PRESSED);
+				state->mouse_button_callback(state, MKFW_MOUSE_LEFT, MKFW_PRESSED);
 			}
 		} break;
 
 		case WM_LBUTTONUP: {
-			state->mouse_buttons[MOUSE_BUTTON_LEFT] = 0;
-			if(!state->mouse_buttons[MOUSE_BUTTON_RIGHT] && !state->mouse_buttons[MOUSE_BUTTON_MIDDLE]) {
+			state->mouse_buttons[MKFW_MOUSE_LEFT] = 0;
+			if(!state->mouse_buttons[MKFW_MOUSE_RIGHT] && !state->mouse_buttons[MKFW_MOUSE_MIDDLE]) {
 				ReleaseCapture();
 			}
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, MOUSE_BUTTON_LEFT, MKS_RELEASED);
+				state->mouse_button_callback(state, MKFW_MOUSE_LEFT, MKFW_RELEASED);
 			}
 		} break;
 
 		case WM_MBUTTONDOWN: {
 			SetCapture(hwnd);
-			state->mouse_buttons[MOUSE_BUTTON_MIDDLE] = 1;
+			state->mouse_buttons[MKFW_MOUSE_MIDDLE] = 1;
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, MOUSE_BUTTON_MIDDLE, MKS_PRESSED);
+				state->mouse_button_callback(state, MKFW_MOUSE_MIDDLE, MKFW_PRESSED);
 			}
 		} break;
 
 		case WM_MBUTTONUP: {
-			state->mouse_buttons[MOUSE_BUTTON_MIDDLE] = 0;
-			if(!state->mouse_buttons[MOUSE_BUTTON_LEFT] && !state->mouse_buttons[MOUSE_BUTTON_RIGHT]) {
+			state->mouse_buttons[MKFW_MOUSE_MIDDLE] = 0;
+			if(!state->mouse_buttons[MKFW_MOUSE_LEFT] && !state->mouse_buttons[MKFW_MOUSE_RIGHT]) {
 				ReleaseCapture();
 			}
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, MOUSE_BUTTON_MIDDLE, MKS_RELEASED);
+				state->mouse_button_callback(state, MKFW_MOUSE_MIDDLE, MKFW_RELEASED);
 			}
 		} break;
 
 		case WM_RBUTTONDOWN: {
 			SetCapture(hwnd);
-			state->mouse_buttons[MOUSE_BUTTON_RIGHT] = 1;
+			state->mouse_buttons[MKFW_MOUSE_RIGHT] = 1;
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, MOUSE_BUTTON_RIGHT, MKS_PRESSED);
+				state->mouse_button_callback(state, MKFW_MOUSE_RIGHT, MKFW_PRESSED);
 			}
 		} break;
 
 		case WM_RBUTTONUP: {
-			state->mouse_buttons[MOUSE_BUTTON_RIGHT] = 0;
-			if(!state->mouse_buttons[MOUSE_BUTTON_LEFT] && !state->mouse_buttons[MOUSE_BUTTON_MIDDLE]) {
+			state->mouse_buttons[MKFW_MOUSE_RIGHT] = 0;
+			if(!state->mouse_buttons[MKFW_MOUSE_LEFT] && !state->mouse_buttons[MKFW_MOUSE_MIDDLE]) {
 				ReleaseCapture();
 			}
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, MOUSE_BUTTON_RIGHT, MKS_RELEASED);
+				state->mouse_button_callback(state, MKFW_MOUSE_RIGHT, MKFW_RELEASED);
 			}
 		} break;
 
 		case WM_XBUTTONDOWN: {
 			SetCapture(hwnd);
-			uint8_t mapped = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? MOUSE_BUTTON_EXTRA1 : MOUSE_BUTTON_EXTRA2;
+			uint8_t mapped = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? MKFW_MOUSE_EXTRA1 : MKFW_MOUSE_EXTRA2;
 			state->mouse_buttons[mapped] = 1;
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, mapped, MKS_PRESSED);
+				state->mouse_button_callback(state, mapped, MKFW_PRESSED);
 			}
 			return TRUE;
 		}
 
 		case WM_XBUTTONUP: {
-			uint8_t mapped = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? MOUSE_BUTTON_EXTRA1 : MOUSE_BUTTON_EXTRA2;
+			uint8_t mapped = (GET_XBUTTON_WPARAM(wParam) == XBUTTON1) ? MKFW_MOUSE_EXTRA1 : MKFW_MOUSE_EXTRA2;
 			state->mouse_buttons[mapped] = 0;
-			if(!state->mouse_buttons[MOUSE_BUTTON_LEFT] && !state->mouse_buttons[MOUSE_BUTTON_RIGHT] && !state->mouse_buttons[MOUSE_BUTTON_MIDDLE]) {
+			if(!state->mouse_buttons[MKFW_MOUSE_LEFT] && !state->mouse_buttons[MKFW_MOUSE_RIGHT] && !state->mouse_buttons[MKFW_MOUSE_MIDDLE]) {
 				ReleaseCapture();
 			}
 			if(state->mouse_button_callback) {
-				state->mouse_button_callback(state, mapped, MKS_RELEASED);
+				state->mouse_button_callback(state, mapped, MKFW_RELEASED);
 			}
 			return TRUE;
 		}

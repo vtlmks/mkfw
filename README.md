@@ -50,7 +50,7 @@ int main() {
     while (!mkfw_should_close(mkfw)) {
         mkfw_pump_messages(mkfw);
 
-        if (mkfw->keyboard_state[MKS_KEY_ESCAPE])
+        if (mkfw->keyboard_state[MKFW_KEY_ESCAPE])
             mkfw_set_should_close(mkfw, 1);
 
         // render ...

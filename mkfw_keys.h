@@ -4,153 +4,153 @@
 #pragma once
 
 enum {
-	MKS_KEY_SPACE = ' ',				// 0x20
-	MKS_KEY_EXCLAMATION = '!',		// 0x21
-	MKS_KEY_QUOTE = '"',				// 0x22
-	MKS_KEY_HASH = '#',				// 0x23
-	MKS_KEY_DOLLAR = '$',			// 0x24
-	MKS_KEY_PERCENT = '%',			// 0x25
-	MKS_KEY_AMPERSAND = '&',		// 0x26
-	MKS_KEY_APOSTROPHE = '\'',		// 0x27
-	MKS_KEY_LEFT_PAREN = '(',		// 0x28
-	MKS_KEY_RIGHT_PAREN = ')',		// 0x29
-	MKS_KEY_ASTERISK = '*',			// 0x2A
-	MKS_KEY_PLUS = '+',				// 0x2B
-	MKS_KEY_COMMA = ',',				// 0x2C
-	MKS_KEY_MINUS = '-',				// 0x2D
-	MKS_KEY_PERIOD = '.',			// 0x2E
-	MKS_KEY_SLASH = '/',				// 0x2F
-	MKS_KEY_0 = '0',					// 0x30
-	MKS_KEY_1 = '1',					// 0x31
-	MKS_KEY_2 = '2',					// 0x32
-	MKS_KEY_3 = '3',					// 0x33
-	MKS_KEY_4 = '4',					// 0x34
-	MKS_KEY_5 = '5',					// 0x35
-	MKS_KEY_6 = '6',					// 0x36
-	MKS_KEY_7 = '7',					// 0x37
-	MKS_KEY_8 = '8',					// 0x38
-	MKS_KEY_9 = '9',					// 0x39
-	MKS_KEY_COLON = ':',				// 0x3A
-	MKS_KEY_SEMICOLON = ';',		// 0x3B
-	MKS_KEY_LESS = '<',				// 0x3C
-	MKS_KEY_EQUAL = '=',				// 0x3D
-	MKS_KEY_GREATER = '>',			// 0x3E
-	MKS_KEY_QUESTION = '?',			// 0x3F
-	MKS_KEY_AT = '@',					// 0x40
-	MKS_KEY_A = 'a',					// 0x61
-	MKS_KEY_B = 'b',					// 0x62
-	MKS_KEY_C = 'c',					// 0x63
-	MKS_KEY_D = 'd',					// 0x64
-	MKS_KEY_E = 'e',					// 0x65
-	MKS_KEY_F = 'f',					// 0x66
-	MKS_KEY_G = 'g',					// 0x67
-	MKS_KEY_H = 'h',					// 0x68
-	MKS_KEY_I = 'i',					// 0x69
-	MKS_KEY_J = 'j',					// 0x6A
-	MKS_KEY_K = 'k',					// 0x6B
-	MKS_KEY_L = 'l',					// 0x6C
-	MKS_KEY_M = 'm',					// 0x6D
-	MKS_KEY_N = 'n',					// 0x6E
-	MKS_KEY_O = 'o',					// 0x6F
-	MKS_KEY_P = 'p',					// 0x70
-	MKS_KEY_Q = 'q',					// 0x71
-	MKS_KEY_R = 'r',					// 0x72
-	MKS_KEY_S = 's',					// 0x73
-	MKS_KEY_T = 't',					// 0x74
-	MKS_KEY_U = 'u',					// 0x75
-	MKS_KEY_V = 'v',					// 0x76
-	MKS_KEY_W = 'w',					// 0x77
-	MKS_KEY_X = 'x',					// 0x78
-	MKS_KEY_Y = 'y',					// 0x79
-	MKS_KEY_Z = 'z',					// 0x7A
-	MKS_KEY_LEFT_BRACKET = '[',	// 0x5B
-	MKS_KEY_BACKSLASH = '\\',		// 0x5C
-	MKS_KEY_RIGHT_BRACKET = ']',	// 0x5D
-	MKS_KEY_CARET = '^',				// 0x5E
-	MKS_KEY_UNDERSCORE = '_',		// 0x5F
-	MKS_KEY_GRAVE = '`',				// 0x60
-	MKS_KEY_LEFT_BRACE = '{',		// 0x7B
-	MKS_KEY_PIPE = '|',				// 0x7C
-	MKS_KEY_RIGHT_BRACE = '}',		// 0x7D
-	MKS_KEY_TILDE = '~',				// 0x7E
+	MKFW_KEY_SPACE = ' ',				// 0x20
+	MKFW_KEY_EXCLAMATION = '!',		// 0x21
+	MKFW_KEY_QUOTE = '"',				// 0x22
+	MKFW_KEY_HASH = '#',				// 0x23
+	MKFW_KEY_DOLLAR = '$',			// 0x24
+	MKFW_KEY_PERCENT = '%',			// 0x25
+	MKFW_KEY_AMPERSAND = '&',		// 0x26
+	MKFW_KEY_APOSTROPHE = '\'',		// 0x27
+	MKFW_KEY_LEFT_PAREN = '(',		// 0x28
+	MKFW_KEY_RIGHT_PAREN = ')',		// 0x29
+	MKFW_KEY_ASTERISK = '*',			// 0x2A
+	MKFW_KEY_PLUS = '+',				// 0x2B
+	MKFW_KEY_COMMA = ',',				// 0x2C
+	MKFW_KEY_MINUS = '-',				// 0x2D
+	MKFW_KEY_PERIOD = '.',			// 0x2E
+	MKFW_KEY_SLASH = '/',				// 0x2F
+	MKFW_KEY_0 = '0',					// 0x30
+	MKFW_KEY_1 = '1',					// 0x31
+	MKFW_KEY_2 = '2',					// 0x32
+	MKFW_KEY_3 = '3',					// 0x33
+	MKFW_KEY_4 = '4',					// 0x34
+	MKFW_KEY_5 = '5',					// 0x35
+	MKFW_KEY_6 = '6',					// 0x36
+	MKFW_KEY_7 = '7',					// 0x37
+	MKFW_KEY_8 = '8',					// 0x38
+	MKFW_KEY_9 = '9',					// 0x39
+	MKFW_KEY_COLON = ':',				// 0x3A
+	MKFW_KEY_SEMICOLON = ';',		// 0x3B
+	MKFW_KEY_LESS = '<',				// 0x3C
+	MKFW_KEY_EQUAL = '=',				// 0x3D
+	MKFW_KEY_GREATER = '>',			// 0x3E
+	MKFW_KEY_QUESTION = '?',			// 0x3F
+	MKFW_KEY_AT = '@',					// 0x40
+	MKFW_KEY_A = 'a',					// 0x61
+	MKFW_KEY_B = 'b',					// 0x62
+	MKFW_KEY_C = 'c',					// 0x63
+	MKFW_KEY_D = 'd',					// 0x64
+	MKFW_KEY_E = 'e',					// 0x65
+	MKFW_KEY_F = 'f',					// 0x66
+	MKFW_KEY_G = 'g',					// 0x67
+	MKFW_KEY_H = 'h',					// 0x68
+	MKFW_KEY_I = 'i',					// 0x69
+	MKFW_KEY_J = 'j',					// 0x6A
+	MKFW_KEY_K = 'k',					// 0x6B
+	MKFW_KEY_L = 'l',					// 0x6C
+	MKFW_KEY_M = 'm',					// 0x6D
+	MKFW_KEY_N = 'n',					// 0x6E
+	MKFW_KEY_O = 'o',					// 0x6F
+	MKFW_KEY_P = 'p',					// 0x70
+	MKFW_KEY_Q = 'q',					// 0x71
+	MKFW_KEY_R = 'r',					// 0x72
+	MKFW_KEY_S = 's',					// 0x73
+	MKFW_KEY_T = 't',					// 0x74
+	MKFW_KEY_U = 'u',					// 0x75
+	MKFW_KEY_V = 'v',					// 0x76
+	MKFW_KEY_W = 'w',					// 0x77
+	MKFW_KEY_X = 'x',					// 0x78
+	MKFW_KEY_Y = 'y',					// 0x79
+	MKFW_KEY_Z = 'z',					// 0x7A
+	MKFW_KEY_LEFT_BRACKET = '[',	// 0x5B
+	MKFW_KEY_BACKSLASH = '\\',		// 0x5C
+	MKFW_KEY_RIGHT_BRACKET = ']',	// 0x5D
+	MKFW_KEY_CARET = '^',				// 0x5E
+	MKFW_KEY_UNDERSCORE = '_',		// 0x5F
+	MKFW_KEY_GRAVE = '`',				// 0x60
+	MKFW_KEY_LEFT_BRACE = '{',		// 0x7B
+	MKFW_KEY_PIPE = '|',				// 0x7C
+	MKFW_KEY_RIGHT_BRACE = '}',		// 0x7D
+	MKFW_KEY_TILDE = '~',				// 0x7E
 
-	MKS_KEY_ESCAPE = 190,
-	MKS_KEY_LEFT,
-	MKS_KEY_RIGHT,
-	MKS_KEY_UP,
-	MKS_KEY_DOWN,
-	MKS_KEY_RETURN,
-	MKS_KEY_TAB,
-	MKS_KEY_BACKSPACE,
-	MKS_KEY_SHIFT,
-	MKS_KEY_LSHIFT,
-	MKS_KEY_RSHIFT,
-	MKS_KEY_LCTRL,
-	MKS_KEY_RCTRL,
-	MKS_KEY_LALT,
-	MKS_KEY_RALT,
-	MKS_KEY_CTRL,
-	MKS_KEY_ALT,
-	MKS_KEY_CAPSLOCK,
-	MKS_KEY_F1,
-	MKS_KEY_F2,
-	MKS_KEY_F3,
-	MKS_KEY_F4,
-	MKS_KEY_F5,
-	MKS_KEY_F6,
-	MKS_KEY_F7,
-	MKS_KEY_F8,
-	MKS_KEY_F9,
-	MKS_KEY_F10,
-	MKS_KEY_F11,
-	MKS_KEY_F12,
+	MKFW_KEY_ESCAPE = 190,
+	MKFW_KEY_LEFT,
+	MKFW_KEY_RIGHT,
+	MKFW_KEY_UP,
+	MKFW_KEY_DOWN,
+	MKFW_KEY_RETURN,
+	MKFW_KEY_TAB,
+	MKFW_KEY_BACKSPACE,
+	MKFW_KEY_SHIFT,
+	MKFW_KEY_LSHIFT,
+	MKFW_KEY_RSHIFT,
+	MKFW_KEY_LCTRL,
+	MKFW_KEY_RCTRL,
+	MKFW_KEY_LALT,
+	MKFW_KEY_RALT,
+	MKFW_KEY_CTRL,
+	MKFW_KEY_ALT,
+	MKFW_KEY_CAPSLOCK,
+	MKFW_KEY_F1,
+	MKFW_KEY_F2,
+	MKFW_KEY_F3,
+	MKFW_KEY_F4,
+	MKFW_KEY_F5,
+	MKFW_KEY_F6,
+	MKFW_KEY_F7,
+	MKFW_KEY_F8,
+	MKFW_KEY_F9,
+	MKFW_KEY_F10,
+	MKFW_KEY_F11,
+	MKFW_KEY_F12,
 
 	// Additional Keys (Sequentially After F12)
-	MKS_KEY_DELETE,
-	MKS_KEY_INSERT,
-	MKS_KEY_HOME,
-	MKS_KEY_END,
-	MKS_KEY_PAGEUP,
-	MKS_KEY_PAGEDOWN,
-	MKS_KEY_NUMLOCK,
-	MKS_KEY_SCROLLLOCK,
-	MKS_KEY_PRINTSCREEN,
-	MKS_KEY_PAUSE,
-	MKS_KEY_MENU,
+	MKFW_KEY_DELETE,
+	MKFW_KEY_INSERT,
+	MKFW_KEY_HOME,
+	MKFW_KEY_END,
+	MKFW_KEY_PAGEUP,
+	MKFW_KEY_PAGEDOWN,
+	MKFW_KEY_NUMLOCK,
+	MKFW_KEY_SCROLLLOCK,
+	MKFW_KEY_PRINTSCREEN,
+	MKFW_KEY_PAUSE,
+	MKFW_KEY_MENU,
 
 	// Numpad Keys (When Distinct from Top Row Numbers)
-	MKS_KEY_NUMPAD_0,
-	MKS_KEY_NUMPAD_1,
-	MKS_KEY_NUMPAD_2,
-	MKS_KEY_NUMPAD_3,
-	MKS_KEY_NUMPAD_4,
-	MKS_KEY_NUMPAD_5,
-	MKS_KEY_NUMPAD_6,
-	MKS_KEY_NUMPAD_7,
-	MKS_KEY_NUMPAD_8,
-	MKS_KEY_NUMPAD_9,
-	MKS_KEY_NUMPAD_DECIMAL,
-	MKS_KEY_NUMPAD_DIVIDE,
-	MKS_KEY_NUMPAD_MULTIPLY,
-	MKS_KEY_NUMPAD_SUBTRACT,
-	MKS_KEY_NUMPAD_ADD,
-	MKS_KEY_NUMPAD_ENTER,
-	MKS_KEY_LSUPER,
-	MKS_KEY_RSUPER,
-	MKS_KEY_LAST,					// NOTE(peter): Make sure this is <= 256
+	MKFW_KEY_NUMPAD_0,
+	MKFW_KEY_NUMPAD_1,
+	MKFW_KEY_NUMPAD_2,
+	MKFW_KEY_NUMPAD_3,
+	MKFW_KEY_NUMPAD_4,
+	MKFW_KEY_NUMPAD_5,
+	MKFW_KEY_NUMPAD_6,
+	MKFW_KEY_NUMPAD_7,
+	MKFW_KEY_NUMPAD_8,
+	MKFW_KEY_NUMPAD_9,
+	MKFW_KEY_NUMPAD_DECIMAL,
+	MKFW_KEY_NUMPAD_DIVIDE,
+	MKFW_KEY_NUMPAD_MULTIPLY,
+	MKFW_KEY_NUMPAD_SUBTRACT,
+	MKFW_KEY_NUMPAD_ADD,
+	MKFW_KEY_NUMPAD_ENTER,
+	MKFW_KEY_LSUPER,
+	MKFW_KEY_RSUPER,
+	MKFW_KEY_LAST,					// NOTE(peter): Make sure this is <= 256
 };
 
 enum {
-	MKS_RELEASED = 0,
-	MKS_PRESSED
+	MKFW_RELEASED = 0,
+	MKFW_PRESSED
 };
 
 enum {
-	MOUSE_BUTTON_LEFT = 0,
-	MOUSE_BUTTON_MIDDLE,
-	MOUSE_BUTTON_RIGHT,
-	MOUSE_BUTTON_EXTRA1,
-	MOUSE_BUTTON_EXTRA2,
+	MKFW_MOUSE_LEFT = 0,
+	MKFW_MOUSE_MIDDLE,
+	MKFW_MOUSE_RIGHT,
+	MKFW_MOUSE_EXTRA1,
+	MKFW_MOUSE_EXTRA2,
 };
 
 enum {
@@ -167,23 +167,23 @@ enum {
 };
 
 enum {
-	MKS_MODIFIER_SHIFT = 0,
-	MKS_MODIFIER_CTRL,
-	MKS_MODIFIER_ALT,
-	MKS_MODIFIER_LAST
+	MKFW_MODIFIER_SHIFT = 0,
+	MKFW_MODIFIER_CTRL,
+	MKFW_MODIFIER_ALT,
+	MKFW_MODIFIER_LAST
 };
 
-#define MKS_MOD_LSHIFT  0x01
-#define MKS_MOD_RSHIFT  0x02
-#define MKS_MOD_LCTRL   0x04
-#define MKS_MOD_RCTRL   0x08
-#define MKS_MOD_LALT    0x10
-#define MKS_MOD_RALT    0x20
-#define MKS_MOD_LSUPER  0x40
-#define MKS_MOD_RSUPER  0x80
+#define MKFW_MOD_LSHIFT  0x01
+#define MKFW_MOD_RSHIFT  0x02
+#define MKFW_MOD_LCTRL   0x04
+#define MKFW_MOD_RCTRL   0x08
+#define MKFW_MOD_LALT    0x10
+#define MKFW_MOD_RALT    0x20
+#define MKFW_MOD_LSUPER  0x40
+#define MKFW_MOD_RSUPER  0x80
 
-#define MKS_MOD_SHIFT   (MKS_MOD_LSHIFT | MKS_MOD_RSHIFT)
-#define MKS_MOD_CTRL    (MKS_MOD_LCTRL | MKS_MOD_RCTRL)
-#define MKS_MOD_ALT     (MKS_MOD_LALT | MKS_MOD_RALT)
-#define MKS_MOD_SUPER   (MKS_MOD_LSUPER | MKS_MOD_RSUPER)
+#define MKFW_MOD_SHIFT   (MKFW_MOD_LSHIFT | MKFW_MOD_RSHIFT)
+#define MKFW_MOD_CTRL    (MKFW_MOD_LCTRL | MKFW_MOD_RCTRL)
+#define MKFW_MOD_ALT     (MKFW_MOD_LALT | MKFW_MOD_RALT)
+#define MKFW_MOD_SUPER   (MKFW_MOD_LSUPER | MKFW_MOD_RSUPER)
 

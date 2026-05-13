@@ -765,50 +765,50 @@ mkfw_set_window_state_callback(window, on_window_state);
 
 #### Keyboard State Access
 
-Each window state contains a `keyboard_state` array tracking current key states. Access directly via `state->keyboard_state[MKS_KEY_*]`.
+Each window state contains a `keyboard_state` array tracking current key states. Access directly via `state->keyboard_state[MKFW_KEY_*]`.
 
 #### Key Codes
 
 **ASCII Printable Characters:**
-- `MKS_KEY_SPACE` (0x20) through `MKS_KEY_TILDE` (0x7E)
-- Letters: `MKS_KEY_A` through `MKS_KEY_Z` (lowercase 'a'-'z')
-- Numbers: `MKS_KEY_0` through `MKS_KEY_9`
+- `MKFW_KEY_SPACE` (0x20) through `MKFW_KEY_TILDE` (0x7E)
+- Letters: `MKFW_KEY_A` through `MKFW_KEY_Z` (lowercase 'a'-'z')
+- Numbers: `MKFW_KEY_0` through `MKFW_KEY_9`
 
 **Special Keys:**
-- `MKS_KEY_ESCAPE`, `MKS_KEY_RETURN`, `MKS_KEY_TAB`, `MKS_KEY_BACKSPACE`
-- `MKS_KEY_LEFT`, `MKS_KEY_RIGHT`, `MKS_KEY_UP`, `MKS_KEY_DOWN`
-- `MKS_KEY_INSERT`, `MKS_KEY_DELETE`, `MKS_KEY_HOME`, `MKS_KEY_END`
-- `MKS_KEY_PAGEUP`, `MKS_KEY_PAGEDOWN`
-- `MKS_KEY_CAPSLOCK`, `MKS_KEY_NUMLOCK`, `MKS_KEY_SCROLLLOCK`
-- `MKS_KEY_PRINTSCREEN`, `MKS_KEY_PAUSE`, `MKS_KEY_MENU`
+- `MKFW_KEY_ESCAPE`, `MKFW_KEY_RETURN`, `MKFW_KEY_TAB`, `MKFW_KEY_BACKSPACE`
+- `MKFW_KEY_LEFT`, `MKFW_KEY_RIGHT`, `MKFW_KEY_UP`, `MKFW_KEY_DOWN`
+- `MKFW_KEY_INSERT`, `MKFW_KEY_DELETE`, `MKFW_KEY_HOME`, `MKFW_KEY_END`
+- `MKFW_KEY_PAGEUP`, `MKFW_KEY_PAGEDOWN`
+- `MKFW_KEY_CAPSLOCK`, `MKFW_KEY_NUMLOCK`, `MKFW_KEY_SCROLLLOCK`
+- `MKFW_KEY_PRINTSCREEN`, `MKFW_KEY_PAUSE`, `MKFW_KEY_MENU`
 
 **Modifiers:**
-- `MKS_KEY_SHIFT`, `MKS_KEY_LSHIFT`, `MKS_KEY_RSHIFT`
-- `MKS_KEY_CTRL`, `MKS_KEY_LCTRL`, `MKS_KEY_RCTRL`
-- `MKS_KEY_ALT`, `MKS_KEY_LALT`, `MKS_KEY_RALT`
-- `MKS_KEY_LSUPER`, `MKS_KEY_RSUPER` (Windows/Super key)
+- `MKFW_KEY_SHIFT`, `MKFW_KEY_LSHIFT`, `MKFW_KEY_RSHIFT`
+- `MKFW_KEY_CTRL`, `MKFW_KEY_LCTRL`, `MKFW_KEY_RCTRL`
+- `MKFW_KEY_ALT`, `MKFW_KEY_LALT`, `MKFW_KEY_RALT`
+- `MKFW_KEY_LSUPER`, `MKFW_KEY_RSUPER` (Windows/Super key)
 
 **Function Keys:**
-- `MKS_KEY_F1` through `MKS_KEY_F12`
+- `MKFW_KEY_F1` through `MKFW_KEY_F12`
 
 **Numpad:**
-- `MKS_KEY_NUMPAD_0` through `MKS_KEY_NUMPAD_9`
-- `MKS_KEY_NUMPAD_DECIMAL`, `MKS_KEY_NUMPAD_DIVIDE`
-- `MKS_KEY_NUMPAD_MULTIPLY`, `MKS_KEY_NUMPAD_SUBTRACT`
-- `MKS_KEY_NUMPAD_ADD`, `MKS_KEY_NUMPAD_ENTER`
+- `MKFW_KEY_NUMPAD_0` through `MKFW_KEY_NUMPAD_9`
+- `MKFW_KEY_NUMPAD_DECIMAL`, `MKFW_KEY_NUMPAD_DIVIDE`
+- `MKFW_KEY_NUMPAD_MULTIPLY`, `MKFW_KEY_NUMPAD_SUBTRACT`
+- `MKFW_KEY_NUMPAD_ADD`, `MKFW_KEY_NUMPAD_ENTER`
 
 #### Key Actions
 
-- `MKS_PRESSED` - Key was pressed
-- `MKS_RELEASED` - Key was released
+- `MKFW_PRESSED` - Key was pressed
+- `MKFW_RELEASED` - Key was released
 
 #### Modifier Bits
 
-- `MKS_MOD_SHIFT` - Either shift key
-- `MKS_MOD_CTRL` - Either control key
-- `MKS_MOD_ALT` - Either alt key
-- `MKS_MOD_SUPER` - Either super/Windows key
-- Individual bits: `MKS_MOD_LSHIFT`, `MKS_MOD_RSHIFT`, `MKS_MOD_LCTRL`, `MKS_MOD_RCTRL`, `MKS_MOD_LALT`, `MKS_MOD_RALT`, `MKS_MOD_LSUPER`, `MKS_MOD_RSUPER`
+- `MKFW_MOD_SHIFT` - Either shift key
+- `MKFW_MOD_CTRL` - Either control key
+- `MKFW_MOD_ALT` - Either alt key
+- `MKFW_MOD_SUPER` - Either super/Windows key
+- Individual bits: `MKFW_MOD_LSHIFT`, `MKFW_MOD_RSHIFT`, `MKFW_MOD_LCTRL`, `MKFW_MOD_RCTRL`, `MKFW_MOD_LALT`, `MKFW_MOD_RALT`, `MKFW_MOD_LSUPER`, `MKFW_MOD_RSUPER`
 
 ---
 
@@ -822,14 +822,14 @@ Check if a key was just pressed (edge detection).
 
 **Parameters:**
 - `state` - Window state pointer
-- `key` - Key code from `MKS_KEY_*` constants
+- `key` - Key code from `MKFW_KEY_*` constants
 
 **Returns:**
 - Non-zero if key was pressed this frame
 
 **Example:**
 ```c
-if (mkfw_is_key_pressed(window, MKS_KEY_SPACE)) {
+if (mkfw_is_key_pressed(window, MKFW_KEY_SPACE)) {
     player_jump();
 }
 ```
@@ -846,7 +846,7 @@ Check if a key was just released (edge detection).
 
 **Parameters:**
 - `state` - Window state pointer
-- `key` - Key code from `MKS_KEY_*` constants
+- `key` - Key code from `MKFW_KEY_*` constants
 
 **Returns:**
 - Non-zero if key was released this frame
@@ -882,7 +882,7 @@ const char *mkfw_get_key_name(uint32_t key)
 Get a human-readable name for a key code.
 
 **Parameters:**
-- `key` - Key code from `MKS_KEY_*` constants
+- `key` - Key code from `MKFW_KEY_*` constants
 
 **Returns:**
 - Pointer to a string literal with the key name (e.g. "A", "Space", "Left Ctrl", "F1")
@@ -896,7 +896,7 @@ Get a human-readable name for a key code.
 **Example:**
 ```c
 void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
-    if(action == MKS_PRESSED) {
+    if(action == MKFW_PRESSED) {
         printf("Pressed: %s\n", mkfw_get_key_name(key));
     }
 }
@@ -918,20 +918,20 @@ Register a callback for keyboard events.
 
 **Callback Parameters:**
 - `state` - Window state pointer (access window-specific data in callback)
-- `key` - Key code (`MKS_KEY_*`)
-- `action` - `MKS_PRESSED` or `MKS_RELEASED`
-- `mods` - Bitfield of active modifiers (`MKS_MOD_*`)
+- `key` - Key code (`MKFW_KEY_*`)
+- `action` - `MKFW_PRESSED` or `MKFW_RELEASED`
+- `mods` - Bitfield of active modifiers (`MKFW_MOD_*`)
 
 **Example:**
 ```c
 void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
-    if (key == MKS_KEY_W && action == MKS_PRESSED) {
-        if (mods & MKS_MOD_CTRL) {
+    if (key == MKFW_KEY_W && action == MKFW_PRESSED) {
+        if (mods & MKFW_MOD_CTRL) {
             close_file();
         }
     }
 
-    if (key == MKS_KEY_ESCAPE && action == MKS_PRESSED) {
+    if (key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
         mkfw_set_should_close(state, 1);
     }
 }
@@ -949,16 +949,16 @@ Each window state contains a mouse button state array.
 
 #### Mouse Buttons
 
-- `MOUSE_BUTTON_LEFT` (0)
-- `MOUSE_BUTTON_MIDDLE` (1)
-- `MOUSE_BUTTON_RIGHT` (2)
-- `MOUSE_BUTTON_EXTRA1` (3) - Side button (back)
-- `MOUSE_BUTTON_EXTRA2` (4) - Side button (forward)
+- `MKFW_MOUSE_LEFT` (0)
+- `MKFW_MOUSE_MIDDLE` (1)
+- `MKFW_MOUSE_RIGHT` (2)
+- `MKFW_MOUSE_EXTRA1` (3) - Side button (back)
+- `MKFW_MOUSE_EXTRA2` (4) - Side button (forward)
 
 #### Mouse Actions
 
-- `MKS_PRESSED`
-- `MKS_RELEASED`
+- `MKFW_PRESSED`
+- `MKFW_RELEASED`
 
 ---
 
@@ -972,7 +972,7 @@ Check if a mouse button was just pressed.
 
 **Parameters:**
 - `state` - Window state pointer
-- `button` - Button index (0-4, `MOUSE_BUTTON_*`)
+- `button` - Button index (0-4, `MKFW_MOUSE_*`)
 
 **Returns:**
 - Non-zero if button was pressed this frame
@@ -989,7 +989,7 @@ Check if a mouse button was just released.
 
 **Parameters:**
 - `state` - Window state pointer
-- `button` - Button index (0-4, `MOUSE_BUTTON_*`)
+- `button` - Button index (0-4, `MKFW_MOUSE_*`)
 
 **Returns:**
 - Non-zero if button was released this frame
@@ -1079,13 +1079,13 @@ Register a callback for mouse button events.
 
 **Callback Parameters:**
 - `state` - Window state pointer
-- `button` - Button index (`MOUSE_BUTTON_*`)
-- `action` - `MKS_PRESSED` or `MKS_RELEASED`
+- `button` - Button index (`MKFW_MOUSE_*`)
+- `action` - `MKFW_PRESSED` or `MKFW_RELEASED`
 
 **Example:**
 ```c
 void on_mouse_button(struct mkfw_state *state, uint8_t button, int action) {
-    if (button == MOUSE_BUTTON_LEFT && action == MKS_PRESSED) {
+    if (button == MKFW_MOUSE_LEFT && action == MKFW_PRESSED) {
         handle_click();
     }
 }
@@ -1596,7 +1596,7 @@ while (!mkfw_should_close(window)) {
     mkfw_pump_messages(window);
 
     // Handle input
-    if (mkfw_is_key_pressed(window, MKS_KEY_ESCAPE)) {
+    if (mkfw_is_key_pressed(window, MKFW_KEY_ESCAPE)) {
         break;
     }
 
@@ -1682,7 +1682,7 @@ while (!mkfw_should_close(window)) {
 #include "mkfw.h"
 
 void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
-    if (key == MKS_KEY_ESCAPE && action == MKS_PRESSED) {
+    if (key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
         mkfw_set_should_close(state, 1);
     }
 }
@@ -1721,7 +1721,7 @@ int main(void) {
         mkfw_pump_messages(window);
 
         // Input handling
-        if (mkfw_is_key_pressed(window, MKS_KEY_F11)) {
+        if (mkfw_is_key_pressed(window, MKFW_KEY_F11)) {
             static int fullscreen = 0;
             fullscreen = !fullscreen;
             mkfw_fullscreen(window, fullscreen);
@@ -1749,7 +1749,7 @@ int main(void) {
 #include "mkfw.h"
 
 void on_key_main(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
-    if (key == MKS_KEY_ESCAPE && action == MKS_PRESSED) {
+    if (key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
         mkfw_set_should_close(state, 1);
     }
 }

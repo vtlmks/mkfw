@@ -108,7 +108,7 @@ static uint32_t map_x11_keysym(struct mkfw_state *state, KeySym keysym, int key_
 
 	// Handle number keys (XK_0 - XK_9)
 	if(keysym >= XK_0 && keysym <= XK_9) {
-		keycode = MKS_KEY_0 + (keysym - XK_0);
+		keycode = MKFW_KEY_0 + (keysym - XK_0);
 	} else if(keysym >= 0x20 && keysym <= 0x7E) {
 		keycode = keysym;
 	}
@@ -116,99 +116,99 @@ static uint32_t map_x11_keysym(struct mkfw_state *state, KeySym keysym, int key_
 	// Track modifier state
 	switch(keysym) {
 		case XK_Shift_L:
-			state->keyboard_state[MKS_KEY_LSHIFT] = key_down;
+			state->keyboard_state[MKFW_KEY_LSHIFT] = key_down;
 			break;
 		case XK_Shift_R:
-			state->keyboard_state[MKS_KEY_RSHIFT] = key_down;
+			state->keyboard_state[MKFW_KEY_RSHIFT] = key_down;
 			break;
 		case XK_Control_L:
-			state->keyboard_state[MKS_KEY_LCTRL] = key_down;
+			state->keyboard_state[MKFW_KEY_LCTRL] = key_down;
 			break;
 		case XK_Control_R:
-			state->keyboard_state[MKS_KEY_RCTRL] = key_down;
+			state->keyboard_state[MKFW_KEY_RCTRL] = key_down;
 			break;
 		case XK_Alt_L:
-			state->keyboard_state[MKS_KEY_LALT] = key_down;
+			state->keyboard_state[MKFW_KEY_LALT] = key_down;
 			break;
 		case XK_Alt_R:
-			state->keyboard_state[MKS_KEY_RALT] = key_down;
+			state->keyboard_state[MKFW_KEY_RALT] = key_down;
 			break;
 		case XK_Super_L:
-			state->keyboard_state[MKS_KEY_LSUPER] = key_down;
+			state->keyboard_state[MKFW_KEY_LSUPER] = key_down;
 			break;
 		case XK_Super_R:
-			state->keyboard_state[MKS_KEY_RSUPER] = key_down;
+			state->keyboard_state[MKFW_KEY_RSUPER] = key_down;
 			break;
 	}
 
 	// Update combined modifier states from keyboard_state
-	state->keyboard_state[MKS_KEY_SHIFT] = state->keyboard_state[MKS_KEY_LSHIFT] || state->keyboard_state[MKS_KEY_RSHIFT];
-	state->keyboard_state[MKS_KEY_CTRL]  = state->keyboard_state[MKS_KEY_LCTRL] || state->keyboard_state[MKS_KEY_RCTRL];
-	state->keyboard_state[MKS_KEY_ALT]   = state->keyboard_state[MKS_KEY_LALT] || state->keyboard_state[MKS_KEY_RALT];
+	state->keyboard_state[MKFW_KEY_SHIFT] = state->keyboard_state[MKFW_KEY_LSHIFT] || state->keyboard_state[MKFW_KEY_RSHIFT];
+	state->keyboard_state[MKFW_KEY_CTRL]  = state->keyboard_state[MKFW_KEY_LCTRL] || state->keyboard_state[MKFW_KEY_RCTRL];
+	state->keyboard_state[MKFW_KEY_ALT]   = state->keyboard_state[MKFW_KEY_LALT] || state->keyboard_state[MKFW_KEY_RALT];
 
 	// Update modifier_state array for compatibility
-	state->modifier_state[MKS_MODIFIER_SHIFT] = state->keyboard_state[MKS_KEY_SHIFT];
-	state->modifier_state[MKS_MODIFIER_CTRL] = state->keyboard_state[MKS_KEY_CTRL];
-	state->modifier_state[MKS_MODIFIER_ALT] = state->keyboard_state[MKS_KEY_ALT];
+	state->modifier_state[MKFW_MODIFIER_SHIFT] = state->keyboard_state[MKFW_KEY_SHIFT];
+	state->modifier_state[MKFW_MODIFIER_CTRL] = state->keyboard_state[MKFW_KEY_CTRL];
+	state->modifier_state[MKFW_MODIFIER_ALT] = state->keyboard_state[MKFW_KEY_ALT];
 
 	// Handle non-extended special keys
 	switch(keysym) {
-		case XK_Escape:    keycode = MKS_KEY_ESCAPE; break;
-		case XK_BackSpace: keycode = MKS_KEY_BACKSPACE; break;
-		case XK_Tab:       keycode = MKS_KEY_TAB; break;
-		case XK_Return:    keycode = MKS_KEY_RETURN; break;
-		case XK_Caps_Lock: keycode = MKS_KEY_CAPSLOCK; break;
-		case XK_F1:        keycode = MKS_KEY_F1; break;
-		case XK_F2:        keycode = MKS_KEY_F2; break;
-		case XK_F3:        keycode = MKS_KEY_F3; break;
-		case XK_F4:        keycode = MKS_KEY_F4; break;
-		case XK_F5:        keycode = MKS_KEY_F5; break;
-		case XK_F6:        keycode = MKS_KEY_F6; break;
-		case XK_F7:        keycode = MKS_KEY_F7; break;
-		case XK_F8:        keycode = MKS_KEY_F8; break;
-		case XK_F9:        keycode = MKS_KEY_F9; break;
-		case XK_F10:       keycode = MKS_KEY_F10; break;
-		case XK_F11:       keycode = MKS_KEY_F11; break;
-		case XK_F12:       keycode = MKS_KEY_F12; break;
+		case XK_Escape:    keycode = MKFW_KEY_ESCAPE; break;
+		case XK_BackSpace: keycode = MKFW_KEY_BACKSPACE; break;
+		case XK_Tab:       keycode = MKFW_KEY_TAB; break;
+		case XK_Return:    keycode = MKFW_KEY_RETURN; break;
+		case XK_Caps_Lock: keycode = MKFW_KEY_CAPSLOCK; break;
+		case XK_F1:        keycode = MKFW_KEY_F1; break;
+		case XK_F2:        keycode = MKFW_KEY_F2; break;
+		case XK_F3:        keycode = MKFW_KEY_F3; break;
+		case XK_F4:        keycode = MKFW_KEY_F4; break;
+		case XK_F5:        keycode = MKFW_KEY_F5; break;
+		case XK_F6:        keycode = MKFW_KEY_F6; break;
+		case XK_F7:        keycode = MKFW_KEY_F7; break;
+		case XK_F8:        keycode = MKFW_KEY_F8; break;
+		case XK_F9:        keycode = MKFW_KEY_F9; break;
+		case XK_F10:       keycode = MKFW_KEY_F10; break;
+		case XK_F11:       keycode = MKFW_KEY_F11; break;
+		case XK_F12:       keycode = MKFW_KEY_F12; break;
 	}
 
 	// Handle extended keys
 	switch(keysym) {
-		case XK_Left:      keycode = MKS_KEY_LEFT; break;
-		case XK_Right:     keycode = MKS_KEY_RIGHT; break;
-		case XK_Up:        keycode = MKS_KEY_UP; break;
-		case XK_Down:      keycode = MKS_KEY_DOWN; break;
-		case XK_Insert:    keycode = MKS_KEY_INSERT; break;
-		case XK_Delete:    keycode = MKS_KEY_DELETE; break;
-		case XK_Home:      keycode = MKS_KEY_HOME; break;
-		case XK_End:       keycode = MKS_KEY_END; break;
-		case XK_Page_Up:   keycode = MKS_KEY_PAGEUP; break;
-		case XK_Page_Down: keycode = MKS_KEY_PAGEDOWN; break;
-		case XK_Num_Lock:  keycode = MKS_KEY_NUMLOCK; break;
-		case XK_Scroll_Lock: keycode = MKS_KEY_SCROLLLOCK; break;
-		case XK_Print:     keycode = MKS_KEY_PRINTSCREEN; break;
-		case XK_Pause:     keycode = MKS_KEY_PAUSE; break;
-		case XK_Menu:      keycode = MKS_KEY_MENU; break;
+		case XK_Left:      keycode = MKFW_KEY_LEFT; break;
+		case XK_Right:     keycode = MKFW_KEY_RIGHT; break;
+		case XK_Up:        keycode = MKFW_KEY_UP; break;
+		case XK_Down:      keycode = MKFW_KEY_DOWN; break;
+		case XK_Insert:    keycode = MKFW_KEY_INSERT; break;
+		case XK_Delete:    keycode = MKFW_KEY_DELETE; break;
+		case XK_Home:      keycode = MKFW_KEY_HOME; break;
+		case XK_End:       keycode = MKFW_KEY_END; break;
+		case XK_Page_Up:   keycode = MKFW_KEY_PAGEUP; break;
+		case XK_Page_Down: keycode = MKFW_KEY_PAGEDOWN; break;
+		case XK_Num_Lock:  keycode = MKFW_KEY_NUMLOCK; break;
+		case XK_Scroll_Lock: keycode = MKFW_KEY_SCROLLLOCK; break;
+		case XK_Print:     keycode = MKFW_KEY_PRINTSCREEN; break;
+		case XK_Pause:     keycode = MKFW_KEY_PAUSE; break;
+		case XK_Menu:      keycode = MKFW_KEY_MENU; break;
 	}
 
 	// Handle numpad keys
 	switch(keysym) {
-		case XK_KP_0:        keycode = MKS_KEY_NUMPAD_0; break;
-		case XK_KP_1:        keycode = MKS_KEY_NUMPAD_1; break;
-		case XK_KP_2:        keycode = MKS_KEY_NUMPAD_2; break;
-		case XK_KP_3:        keycode = MKS_KEY_NUMPAD_3; break;
-		case XK_KP_4:        keycode = MKS_KEY_NUMPAD_4; break;
-		case XK_KP_5:        keycode = MKS_KEY_NUMPAD_5; break;
-		case XK_KP_6:        keycode = MKS_KEY_NUMPAD_6; break;
-		case XK_KP_7:        keycode = MKS_KEY_NUMPAD_7; break;
-		case XK_KP_8:        keycode = MKS_KEY_NUMPAD_8; break;
-		case XK_KP_9:        keycode = MKS_KEY_NUMPAD_9; break;
-		case XK_KP_Decimal:  keycode = MKS_KEY_NUMPAD_DECIMAL; break;
-		case XK_KP_Divide:   keycode = MKS_KEY_NUMPAD_DIVIDE; break;
-		case XK_KP_Multiply: keycode = MKS_KEY_NUMPAD_MULTIPLY; break;
-		case XK_KP_Subtract: keycode = MKS_KEY_NUMPAD_SUBTRACT; break;
-		case XK_KP_Add:      keycode = MKS_KEY_NUMPAD_ADD; break;
-		case XK_KP_Enter:    keycode = MKS_KEY_NUMPAD_ENTER; break;
+		case XK_KP_0:        keycode = MKFW_KEY_NUMPAD_0; break;
+		case XK_KP_1:        keycode = MKFW_KEY_NUMPAD_1; break;
+		case XK_KP_2:        keycode = MKFW_KEY_NUMPAD_2; break;
+		case XK_KP_3:        keycode = MKFW_KEY_NUMPAD_3; break;
+		case XK_KP_4:        keycode = MKFW_KEY_NUMPAD_4; break;
+		case XK_KP_5:        keycode = MKFW_KEY_NUMPAD_5; break;
+		case XK_KP_6:        keycode = MKFW_KEY_NUMPAD_6; break;
+		case XK_KP_7:        keycode = MKFW_KEY_NUMPAD_7; break;
+		case XK_KP_8:        keycode = MKFW_KEY_NUMPAD_8; break;
+		case XK_KP_9:        keycode = MKFW_KEY_NUMPAD_9; break;
+		case XK_KP_Decimal:  keycode = MKFW_KEY_NUMPAD_DECIMAL; break;
+		case XK_KP_Divide:   keycode = MKFW_KEY_NUMPAD_DIVIDE; break;
+		case XK_KP_Multiply: keycode = MKFW_KEY_NUMPAD_MULTIPLY; break;
+		case XK_KP_Subtract: keycode = MKFW_KEY_NUMPAD_SUBTRACT; break;
+		case XK_KP_Add:      keycode = MKFW_KEY_NUMPAD_ADD; break;
+		case XK_KP_Enter:    keycode = MKFW_KEY_NUMPAD_ENTER; break;
 	}
 
 	// Update key state
@@ -218,7 +218,7 @@ static uint32_t map_x11_keysym(struct mkfw_state *state, KeySym keysym, int key_
 
 	// Call the key callback
 	if(keycode && state->key_callback) {
-		state->key_callback(state, keycode, key_down ? MKS_PRESSED : MKS_RELEASED, (state->keyboard_state[MKS_KEY_SHIFT] ? MKS_MOD_SHIFT : 0) | (state->keyboard_state[MKS_KEY_CTRL] ? MKS_MOD_CTRL : 0) | (state->keyboard_state[MKS_KEY_ALT] ? MKS_MOD_ALT : 0) | (state->keyboard_state[MKS_KEY_LSUPER] ? MKS_MOD_LSUPER : 0) | (state->keyboard_state[MKS_KEY_RSUPER] ? MKS_MOD_RSUPER : 0));
+		state->key_callback(state, keycode, key_down ? MKFW_PRESSED : MKFW_RELEASED, (state->keyboard_state[MKFW_KEY_SHIFT] ? MKFW_MOD_SHIFT : 0) | (state->keyboard_state[MKFW_KEY_CTRL] ? MKFW_MOD_CTRL : 0) | (state->keyboard_state[MKFW_KEY_ALT] ? MKFW_MOD_ALT : 0) | (state->keyboard_state[MKFW_KEY_LSUPER] ? MKFW_MOD_LSUPER : 0) | (state->keyboard_state[MKFW_KEY_RSUPER] ? MKFW_MOD_RSUPER : 0));
 	}
 
 	return keycode;
@@ -1076,21 +1076,21 @@ static void mkfw_pump_messages(struct mkfw_state *state) {
 				} else {
 					uint8_t mapped = 0;
 					if(xbtn == 1) {
-						mapped = MOUSE_BUTTON_LEFT;
+						mapped = MKFW_MOUSE_LEFT;
 					} else if(xbtn == 2) {
-						mapped = MOUSE_BUTTON_MIDDLE;
+						mapped = MKFW_MOUSE_MIDDLE;
 					} else if(xbtn == 3) {
-						mapped = MOUSE_BUTTON_RIGHT;
+						mapped = MKFW_MOUSE_RIGHT;
 					} else if(xbtn == 8) {
-						mapped = MOUSE_BUTTON_EXTRA1;
+						mapped = MKFW_MOUSE_EXTRA1;
 					} else if(xbtn == 9) {
-						mapped = MOUSE_BUTTON_EXTRA2;
+						mapped = MKFW_MOUSE_EXTRA2;
 					} else {
 						break;
 					}
 					state->mouse_buttons[mapped] = 1;
 					if(state->mouse_button_callback) {
-						state->mouse_button_callback(state, mapped, MKS_PRESSED);
+						state->mouse_button_callback(state, mapped, MKFW_PRESSED);
 					}
 				}
 			} break;
@@ -1099,21 +1099,21 @@ static void mkfw_pump_messages(struct mkfw_state *state) {
 				uint32_t xbtn = event.xbutton.button;
 				uint8_t mapped = 0;
 				if(xbtn == 1) {
-					mapped = MOUSE_BUTTON_LEFT;
+					mapped = MKFW_MOUSE_LEFT;
 				} else if(xbtn == 2) {
-					mapped = MOUSE_BUTTON_MIDDLE;
+					mapped = MKFW_MOUSE_MIDDLE;
 				} else if(xbtn == 3) {
-					mapped = MOUSE_BUTTON_RIGHT;
+					mapped = MKFW_MOUSE_RIGHT;
 				} else if(xbtn == 8) {
-					mapped = MOUSE_BUTTON_EXTRA1;
+					mapped = MKFW_MOUSE_EXTRA1;
 				} else if(xbtn == 9) {
-					mapped = MOUSE_BUTTON_EXTRA2;
+					mapped = MKFW_MOUSE_EXTRA2;
 				} else {
 					break;
 				}
 				state->mouse_buttons[mapped] = 0;
 				if(state->mouse_button_callback) {
-					state->mouse_button_callback(state, mapped, MKS_RELEASED);
+					state->mouse_button_callback(state, mapped, MKFW_RELEASED);
 				}
 			} break;
 
