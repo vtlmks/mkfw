@@ -8,7 +8,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <signal.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 #define MKFW_JOYSTICK_GAMEDB
 #include "../mkfw.h"
@@ -36,10 +40,14 @@ static void on_gamepad_connect(uint32_t pad, uint32_t connected) {
 
 // [=]===^=[ sleep_ms ]==========================================================================[=]
 static void sleep_ms(uint32_t ms) {
+#ifdef _WIN32
+	Sleep(ms);
+#else
 	struct timespec ts;
 	ts.tv_sec = ms / 1000;
 	ts.tv_nsec = (ms % 1000) * 1000000L;
 	nanosleep(&ts, NULL);
+#endif
 }
 
 // [=]===^=[ main ]==============================================================================[=]

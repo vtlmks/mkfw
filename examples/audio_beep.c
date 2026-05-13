@@ -5,7 +5,11 @@
 
 #include <math.h>
 #include <stdio.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 #include "../mkfw.h"
 #include "../mkfw_audio.h"
@@ -66,8 +70,12 @@ int main(void) {
 	mkfw_audio_set_device_lost_callback(on_device_lost, 0);
 	mkfw_audio_set_callback(on_audio, &st);
 
+#ifdef _WIN32
+	Sleep(1000);
+#else
 	struct timespec ts = {1, 0};
 	nanosleep(&ts, 0);
+#endif
 
 	mkfw_audio_set_callback(0, 0);
 	mkfw_audio_shutdown();
