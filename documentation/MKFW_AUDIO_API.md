@@ -14,7 +14,7 @@ The MKFW Audio API provides low-latency, real-time audio output for applications
 - Simple callback-based interface
 - Platform-optimized implementations (WASAPI/ALSA)
 - Automatic hotplug recovery (device disconnect/reconnect)
-- Thread-safe callback swapping via `mkfw_set_audio_callback`
+- Thread-safe callback swapping via `mkfw_audio_set_callback`
 
 ## Platform Support
 
@@ -83,10 +83,10 @@ The audio system uses a **callback function** that you provide. This function is
 
 ## Initialization and Shutdown
 
-### `mkfw_audio_initialize`
+### `mkfw_audio_init`
 
 ```c
-void mkfw_audio_initialize(void)
+void mkfw_audio_init(void)
 ```
 
 Initialize the audio subsystem and start playback.
@@ -102,7 +102,7 @@ Initialize the audio subsystem and start playback.
 **Example:**
 ```c
 mkfw_audio_callback = my_audio_callback;
-mkfw_audio_initialize();
+mkfw_audio_init();
 ```
 
 ---
@@ -129,10 +129,10 @@ mkfw_audio_shutdown();
 
 ---
 
-### `mkfw_set_audio_callback`
+### `mkfw_audio_set_callback`
 
 ```c
-void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t))
+void mkfw_audio_set_callback(void (*cb)(int16_t *, size_t))
 ```
 
 Set or change the audio callback function. Thread-safe -- can be called while audio is running.
@@ -148,10 +148,10 @@ Set or change the audio callback function. Thread-safe -- can be called while au
 **Example:**
 ```c
 // Switch to a different audio source at runtime
-mkfw_set_audio_callback(new_synth_callback);
+mkfw_audio_set_callback(new_synth_callback);
 
 // Mute audio without stopping the thread
-mkfw_set_audio_callback(NULL);
+mkfw_audio_set_callback(NULL);
 ```
 
 ---
@@ -232,7 +232,7 @@ void audio_callback(int16_t *buffer, size_t frames) {
 
 int main(void) {
     mkfw_audio_callback = audio_callback;
-    mkfw_audio_initialize();
+    mkfw_audio_init();
 
     // Audio plays in background
     while (running) {
@@ -264,7 +264,7 @@ int main(void) {
 
     // Start audio
     mkfw_audio_callback = audio_callback;
-    mkfw_audio_initialize();
+    mkfw_audio_init();
 
     // Run application
     while (running) {
@@ -350,7 +350,7 @@ void my_audio_callback(int16_t *buffer, size_t frames) {
 int main(int argc, char **argv) {
     // Initialize audio first
     mkfw_audio_callback = my_audio_callback;
-    mkfw_audio_initialize();
+    mkfw_audio_init();
 
     // Initialize timer
     mkfw_timer_init();
@@ -505,8 +505,8 @@ The audio system handles errors gracefully:
 // The API doesn't return error codes
 // Audio thread always starts, even if no device is available
 
-mkfw_set_audio_callback(my_callback);
-mkfw_audio_initialize();
+mkfw_audio_set_callback(my_callback);
+mkfw_audio_init();
 
 // Audio plays when a device is available, retries silently when not
 ```
@@ -517,14 +517,14 @@ mkfw_audio_initialize();
 
 ### Safe Operations
 
-- Setting `mkfw_audio_callback` before `mkfw_audio_initialize()`
-- Calling `mkfw_set_audio_callback()` while audio is running (atomic swap)
+- Setting `mkfw_audio_callback` before `mkfw_audio_init()`
+- Calling `mkfw_audio_set_callback()` while audio is running (atomic swap)
 - Calling `mkfw_audio_shutdown()` from any thread
 - Reading audio state from callback (one-way communication)
 
 ### Unsafe Operations
 
-- Directly assigning `mkfw_audio_callback` while audio is running (use `mkfw_set_audio_callback()` instead)
+- Directly assigning `mkfw_audio_callback` while audio is running (use `mkfw_audio_set_callback()` instead)
 - Accessing audio thread internals from outside
 
 ### Inter-thread Communication
@@ -559,7 +559,7 @@ atomic_store(&volume, 50);  // Safe!
 
 ### No audio output
 
-1. Check that callback is set before `mkfw_audio_initialize()`
+1. Check that callback is set before `mkfw_audio_init()`
 2. Verify callback is generating non-zero samples
 3. Check system audio settings and volume
 4. Ensure audio device is not in use by another application
@@ -625,7 +625,7 @@ int main(void) {
     printf("Starting audio test (440Hz sine wave)...\n");
 
     mkfw_audio_callback = audio_callback;
-    mkfw_audio_initialize();
+    mkfw_audio_init();
 
     // Play for 5 seconds
     for (int i = 0; i < 5; i++) {

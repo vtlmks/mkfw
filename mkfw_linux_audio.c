@@ -12,8 +12,8 @@
 
 void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
 
-// [=]===^=[ mkfw_set_audio_callback ]============================================================[=]
-static void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t)) {
+// [=]===^=[ mkfw_audio_set_callback ]============================================================[=]
+static void mkfw_audio_set_callback(void (*cb)(int16_t *, size_t)) {
 	__atomic_store(&mkfw_audio_callback, &cb, __ATOMIC_RELEASE);
 }
 
@@ -233,8 +233,8 @@ static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
 	return 0;
 }
 
-// [=]===^=[ mkfw_audio_initialize ]==============================================================[=]
-static void mkfw_audio_initialize(void) {
+// [=]===^=[ mkfw_audio_init ]==============================================================[=]
+static void mkfw_audio_init(void) {
 	if(load_alsa_functions() < 0) {
 		mkfw_error("ALSA not available");
 		return;

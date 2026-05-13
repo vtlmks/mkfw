@@ -32,8 +32,8 @@ MKFW_GUID_DEF(mkfw_IID_IAudioRenderClient,    0xf294acfc, 0x3146, 0x4483, 0xa7, 
 
 void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
 
-// [=]===^=[ mkfw_set_audio_callback ]============================================================[=]
-static void mkfw_set_audio_callback(void (*cb)(int16_t *, size_t)) {
+// [=]===^=[ mkfw_audio_set_callback ]============================================================[=]
+static void mkfw_audio_set_callback(void (*cb)(int16_t *, size_t)) {
 	__atomic_store(&mkfw_audio_callback, &cb, __ATOMIC_RELEASE);
 }
 
@@ -181,8 +181,8 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	return 0;
 }
 
-// [=]===^=[ mkfw_audio_initialize ]==============================================================[=]
-static void mkfw_audio_initialize(void) {
+// [=]===^=[ mkfw_audio_init ]==============================================================[=]
+static void mkfw_audio_init(void) {
 	if(FAILED(CoInitializeEx(0, COINIT_MULTITHREADED))) {
 		return;
 	}
