@@ -15,6 +15,16 @@
 
 #include "mkfw.h"
 
+struct mkfw_timer_handle;
+
+MKFW_API void                       mkfw_timer_init(void);
+MKFW_API void                       mkfw_timer_shutdown(void);
+MKFW_API struct mkfw_timer_handle  *mkfw_timer_create(uint64_t interval_ns);
+MKFW_API void                       mkfw_timer_destroy(struct mkfw_timer_handle *t);
+MKFW_API uint32_t                   mkfw_timer_wait(struct mkfw_timer_handle *t);
+MKFW_API void                       mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns);
+MKFW_API void                       mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled);
+
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"

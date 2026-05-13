@@ -1,11 +1,22 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
+// In unity mode this file is #included from mkfw_joystick.h.
+// In library mode it is compiled standalone; the include below pulls
+// in the public types, MKFW_API / MKFW_VAR macros, and the cross-TU
+// variable declarations.
+#include "mkfw_joystick.h"
 
 #include <xinput.h>
 
-static struct mkfw_joystick_pad mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS];
-static mkfw_joystick_callback_t mkfw_joystick_cb;
+/* Cross-TU storage: declared as MKFW_VAR in mkfw_joystick.h.  In unity
+ * mode the header's static declaration is the definition; in library
+ * mode the storage block below provides it. */
+#if defined(MKFW_BUILD_SHARED) || defined(MKFW_BUILD_LIBRARY)
+struct mkfw_joystick_pad      mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS];
+mkfw_joystick_callback_t      mkfw_joystick_cb;
+#endif
+
 static uint8_t mkfw_joystick_initialized;
 
 // [=]===^=[ mkfw_joystick_apply_deadzone ]=======================================================[=]

@@ -1,6 +1,11 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
+// In unity mode this file is #included from mkfw_timer.h.  In library
+// mode it is compiled standalone; the include below pulls in the
+// public types and MKFW_API macro.
+#include "mkfw_timer.h"
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>

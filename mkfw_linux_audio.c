@@ -1,6 +1,11 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
+// In unity mode this file is #included from mkfw_audio.h.  In library
+// mode it is compiled standalone; the include below pulls in the
+// public audio types and MKFW_API macro.
+#include "mkfw_audio.h"
+
 #include <alsa/asoundlib.h>
 #include <dlfcn.h>
 #include <sched.h>

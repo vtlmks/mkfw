@@ -59,6 +59,12 @@ struct mkfw_audio_info {
 	uint64_t latency_ns;         // best estimate, total
 };
 
+MKFW_API uint32_t mkfw_audio_init(struct mkfw_audio_options *opts);
+MKFW_API void     mkfw_audio_shutdown(void);
+MKFW_API void     mkfw_audio_set_callback(mkfw_audio_callback_t cb, void *userdata);
+MKFW_API void     mkfw_audio_set_device_lost_callback(mkfw_audio_device_lost_callback_t cb, void *userdata);
+MKFW_API void     mkfw_audio_info(struct mkfw_audio_info *out);
+
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"

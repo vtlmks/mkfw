@@ -1,6 +1,11 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
+// In unity mode this file is #included from mkfw.h; in library mode it
+// is compiled standalone, so include mkfw.h to pick up the public
+// types, MKFW_API / MKFW_VAR macros, error helpers, etc.
+#include "mkfw.h"
+
 #include <windows.h>
 #include <windowsx.h>
 #include <wingdi.h>
@@ -9,6 +14,15 @@
 
 __declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
 __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+
+/* Storage for the cross-TU variables declared MKFW_VAR in mkfw.h.
+ * Provided only in library / shared builds; in unity mode the static
+ * declarations in the header are also the definitions. */
+#if defined(MKFW_BUILD_SHARED) || defined(MKFW_BUILD_LIBRARY)
+mkfw_error_callback_t           mkfw_error_callback;
+MKFW_THREAD_LOCAL char          mkfw_last_error_buf[512];
+MKFW_THREAD_LOCAL uint8_t       mkfw_last_error_set;
+#endif
 
 // WGL constants for context creation
 #define WGL_CONTEXT_MAJOR_VERSION_ARB           0x2091
