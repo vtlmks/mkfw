@@ -1955,18 +1955,6 @@ typedef void (APIENTRY *GLDEBUGPROC)(GLenum source, GLenum type, GLuint id, GLen
 #define GL_TRANSFORM_FEEDBACK_STREAM_OVERFLOW 0x82ED
 #endif /* GL 4.6 */
 
-#ifdef __EMSCRIPTEN__
-
-// On Emscripten, GL ES 3.0 functions are linked statically by emcc.
-// No function pointers, no Compatibility Profile externs needed.
-#include <GLES3/gl3.h>
-
-static void mkfw_gl_loader(void) {
-	/* WebGL2 functions are statically linked by emcc */
-}
-
-#else /* !__EMSCRIPTEN__ */
-
 // ============================================================
 // Function pointer types and globals (loaded at runtime)
 // ============================================================
@@ -3206,7 +3194,5 @@ static void *mkfw_gl_get_address(const char *name) {
 static void mkfw_gl_loader(void) {
 	MKFW_GL_FUNCTIONS(MKFW_GL_LOAD);
 }
-
-#endif /* !__EMSCRIPTEN__ */
 
 #endif /* MKFW_GL_LOADER_H */

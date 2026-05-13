@@ -1814,11 +1814,3 @@ static const char *mkfw_get_clipboard_text(struct mkfw_state *state) {
 	return "";
 }
 
-// [=]===^=[ mkfw_run ]============================================================================^===[=]
-static void mkfw_run(struct mkfw_state *state, void (*frame)(struct mkfw_state *)) {
-	while(!mkfw_should_close(state)) {
-		mkfw_pump_messages(state);
-		frame(state);
-		mkfw_swap_buffers(state);
-	}
-}
