@@ -16,14 +16,13 @@ mkfw is what I use in my own projects. It covers similar ground to GLFW — wind
 - Multiple windows
 - Cross-platform threading primitives
 
-**Optional subsystems** (enabled via compile-time defines):
+**Optional subsystems** (enabled by including the matching companion header):
 
-| Define | Subsystem | Description |
+| Header | Subsystem | Description |
 |--------|-----------|-------------|
-| `MKFW_JOYSTICK` | Joystick | Up to 4 gamepads, hotplug, analog axes, buttons, d-pad |
-| `MKFW_JOYSTICK_GAMEDB` | GameDB | SDL GameController DB mappings for standardized button names |
-| `MKFW_AUDIO` | Audio | Low-latency callback-based audio output (WASAPI / ALSA) |
-| `MKFW_TIMER` | Timer | High-precision timing with sleep+spin strategy |
+| `mkfw_joystick.h` | Joystick | Up to 4 gamepads, hotplug, analog axes, buttons, d-pad. Define `MKFW_JOYSTICK_GAMEDB` before including to also pull in the SDL GameController DB mappings. |
+| `mkfw_audio.h` | Audio | Low-latency callback-based audio output (WASAPI / ALSA) |
+| `mkfw_timer.h` | Timer | High-precision timing with sleep+spin strategy |
 
 ## Platforms
 
@@ -88,15 +87,18 @@ MinGW implicitly links `user32` and `shell32`. clang-cl requires them explicitly
 
 ## Optional subsystems
 
-Enable subsystems by defining the corresponding flag before including the header:
+Each subsystem has its own companion header.  Include it in addition to `mkfw.h`:
 
 ```c
-#define MKFW_AUDIO
-#define MKFW_TIMER
-#define MKFW_JOYSTICK
-#define MKFW_JOYSTICK_GAMEDB
 #include "mkfw.h"
+#include "mkfw_audio.h"
+#include "mkfw_timer.h"
+
+#define MKFW_JOYSTICK_GAMEDB   // optional: also pull in SDL gamedb
+#include "mkfw_joystick.h"
 ```
+
+The subsystem headers are unity-build companion files (they `#include` the platform `.c` source directly).  No separate compilation step is required.
 
 ## OpenGL version
 

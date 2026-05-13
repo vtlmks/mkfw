@@ -10,9 +10,9 @@
 #include <signal.h>
 #include <time.h>
 
-#define MKFW_JOYSTICK
 #define MKFW_JOYSTICK_GAMEDB
 #include "../mkfw.h"
+#include "../mkfw_joystick.h"
 
 static volatile sig_atomic_t running = 1;
 

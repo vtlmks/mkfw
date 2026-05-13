@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 
-#ifndef MKFW_JOYSTICK
-#error "MKFW_JOYSTICK_GAMEDB requires MKFW_JOYSTICK to be defined"
-#endif
-
 #include "mkfw_joystick_gamedb.h"
 
 /* Mapping source types */
