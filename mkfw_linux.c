@@ -1,6 +1,11 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
+// In unity mode this file is #included from mkfw.h; in library mode it
+// is compiled standalone, so include mkfw.h to pick up the public
+// types, MKFW_API / MKFW_VAR macros, error helpers, etc.
+#include "mkfw.h"
+
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -24,6 +29,15 @@
 #include "mkfw_linux_xlib_loader.h"
 #include "mkfw_linux_xrandr_loader.h"
 #include "mkfw_linux_xinput2_loader.h"
+
+/* Storage for the cross-TU variables declared MKFW_VAR in mkfw.h.
+ * Provided only in library / shared builds; in unity mode the
+ * static declarations in the header are also the definitions. */
+#if defined(MKFW_BUILD_SHARED) || defined(MKFW_BUILD_LIBRARY)
+mkfw_error_callback_t           mkfw_error_callback;
+MKFW_THREAD_LOCAL char          mkfw_last_error_buf[512];
+MKFW_THREAD_LOCAL uint8_t       mkfw_last_error_set;
+#endif
 
 /* Platform casting macros */
 #define PLATFORM(state) ((struct x11_mkfw_window *)(state)->platform)
@@ -359,12 +373,16 @@ MKFW_API void mkfw_window_set_should_close(struct mkfw_window *state, int32_t va
 }
 
 // [=]===^=[ select_best_fbconfig_for ]===========================================================[=]
+// Returns the chosen GLXFBConfig, or 0 on failure (mkfw_error has been fired).
 static GLXFBConfig select_best_fbconfig_for(Display *display, int screen, int32_t transparent) {
 	int fb_count = 0;
 	GLXFBConfig *fbcs = glXChooseFBConfig(display, screen, 0, &fb_count);
 	if(!fbcs || fb_count == 0) {
 		mkfw_error("no framebuffer configs found");
-		exit(EXIT_FAILURE);
+		if(fbcs) {
+			XFree(fbcs);
+		}
+		return 0;
 	}
 
 	GLXFBConfig best_fbconfig = 0;
@@ -482,6 +500,10 @@ MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 
 	int screen = DefaultScreen(dpy);
 	GLXFBConfig fb_config = select_best_fbconfig_for(dpy, screen, 0);
+	if(!fb_config) {
+		XCloseDisplay(dpy);
+		return 0;
+	}
 
 	XVisualInfo *vi = glXGetVisualFromFBConfig(dpy, fb_config);
 	if(!vi) {
@@ -637,6 +659,11 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 
 	if(graphics_api == MKFW_GFX_GL) {
 		fb_config = select_best_fbconfig_for(display, screen, transparent);
+		if(!fb_config) {
+			free(state->platform);
+			free(state);
+			return 0;
+		}
 		vi = glXGetVisualFromFBConfig(display, fb_config);
 		if(!vi) {
 			mkfw_error("unable to get a visual from framebuffer config");
