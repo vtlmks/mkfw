@@ -2,7 +2,12 @@
 
 A minimal windowing and input library for OpenGL applications on Linux (X11) and Windows (Win32).
 
-mkfw is what I use in my own projects. It covers similar ground to GLFW — window creation, input handling, OpenGL context management — but it's a solo effort without the test coverage or ecosystem that GLFW has. It works well for me, and you're welcome to use it, but I'd suggest evaluating it with that in mind.
+mkfw is what I use in my own projects.  It covers similar ground
+to GLFW — window creation, input handling, OpenGL context
+management — and ships with a small smoke test suite that
+exercises every subsystem.  It's still a solo effort, so the
+ecosystem (third-party bindings, integrations, distro packages)
+isn't there yet; evaluate accordingly if those matter to you.
 
 ## Features
 

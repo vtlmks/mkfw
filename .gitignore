@@ -2,5 +2,9 @@ examples/joystick
 examples/threaded
 examples/monitor
 examples/transparency
+examples/audio_beep
+examples/multi_window
+tests/smoke
+tests/multi_window
 tools/gen_gl_loader.py
 tools/gl.xml
