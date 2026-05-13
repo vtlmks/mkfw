@@ -996,40 +996,128 @@ Check if a mouse button was just released.
 
 ---
 
-### `mkfw_window_set_mouse_cursor`
+### `mkfw_window_set_cursor_visible`
 
 ```c
-void mkfw_window_set_mouse_cursor(struct mkfw_window *state, int visible)
+void mkfw_window_set_cursor_visible(struct mkfw_window *state, uint32_t visible)
 ```
 
-Show or hide the mouse cursor.
+Show or hide the mouse cursor inside the window's client area.
 
 **Parameters:**
-- `state` - Window state pointer
-- `visible` - Non-zero to show cursor, 0 to hide
+- `state` - Window pointer
+- `visible` - Non-zero to render the OS cursor, 0 to hide it
 
 **Notes:**
-- Hides cursor by creating invisible pixmap cursor
-- Automatically constrains mouse when hidden
-- Restores cursor position when shown again
+- Visibility is independent of lock state. Both toggles can be set
+  in any combination (see table below).
 
 ---
 
-### `mkfw_window_constrain_mouse`
+### `mkfw_window_set_cursor_locked`
 
 ```c
-void mkfw_window_constrain_mouse(struct mkfw_window *state, int constrain)
+void mkfw_window_set_cursor_locked(struct mkfw_window *state, uint32_t locked)
 ```
 
-Constrain mouse to window (grab pointer).
+Grab the pointer and confine it to the window's client area.
 
 **Parameters:**
-- `state` - Window state pointer
-- `constrain` - Non-zero to constrain, 0 to release
+- `state` - Window pointer
+- `locked` - Non-zero to grab the pointer, 0 to release
 
 **Notes:**
-- Warps pointer to window center when constrained
-- Used for FPS-style mouse look
+- Locking is independent of visibility. mkfw never warps a visible
+  locked cursor; FPS-style centring only happens when the cursor is
+  both locked and hidden.
+- Use the raw-delta callback
+  (`mkfw_window_set_mouse_move_delta_callback`) to read relative
+  motion while locked.
+
+---
+
+### `mkfw_window_is_cursor_visible`
+
+```c
+uint32_t mkfw_window_is_cursor_visible(struct mkfw_window *state)
+```
+
+Query whether the cursor is currently set visible on this window.
+
+---
+
+### `mkfw_window_is_cursor_locked`
+
+```c
+uint32_t mkfw_window_is_cursor_locked(struct mkfw_window *state)
+```
+
+Query whether the cursor is currently locked to this window.
+
+**Cursor state combinations:**
+
+| visible | locked | typical use                                       |
+|---------|--------|---------------------------------------------------|
+| 1       | 0      | default; UI, drawing tool not in capture mode     |
+| 0       | 1      | FPS-style mouse look (window-centred each frame)  |
+| 1       | 1      | drawing tool with snap-to-window, cursor visible  |
+| 0       | 0      | hide cursor while idle in fullscreen presenter    |
+
+---
+
+### `mkfw_window_get_modifiers`
+
+```c
+uint32_t mkfw_window_get_modifiers(struct mkfw_window *state)
+```
+
+Return a snapshot of the held modifier keys as `MKFW_MOD_*` bits OR'd
+together (`MKFW_MOD_LSHIFT`, `MKFW_MOD_RSHIFT`, `MKFW_MOD_SHIFT`,
+`MKFW_MOD_LCTRL`, `MKFW_MOD_RCTRL`, `MKFW_MOD_CTRL`, `MKFW_MOD_LALT`,
+`MKFW_MOD_RALT`, `MKFW_MOD_ALT`, `MKFW_MOD_LSUPER`, `MKFW_MOD_RSUPER`,
+`MKFW_MOD_SUPER`). Derived from `keyboard_state[]`.
+
+---
+
+### `mkfw_window_get_native_handles`
+
+```c
+struct mkfw_native_handles {
+    void     *display;       // Linux: Display *  Win32: HINSTANCE
+    uintptr_t window;        // Linux: Window     Win32: HWND
+    void     *gl_context;    // GLXContext / HGLRC; 0 if graphics_api != MKFW_GFX_GL
+};
+
+void mkfw_window_get_native_handles(struct mkfw_window *state, struct mkfw_native_handles *out)
+```
+
+Expose the underlying platform handles for callers integrating with
+APIs mkfw does not own (Vulkan surfaces via `vkCreateXlibSurfaceKHR`
+/ `vkCreateWin32SurfaceKHR`, EGL on Linux, Direct2D, etc.).
+
+The handles are valid until the window is destroyed. mkfw deliberately
+does not include the platform headers from `mkfw.h`; callers cast the
+`void *` / `uintptr_t` to the appropriate platform type at the use
+site after including the relevant header (`<X11/Xlib.h>`,
+`<GL/glx.h>`, `<windows.h>`).
+
+---
+
+### `mkfw_get_last_error`
+
+```c
+const char *mkfw_get_last_error(void)
+void mkfw_clear_last_error(void)
+```
+
+`mkfw_get_last_error` returns a thread-local string describing the
+most recent failure observed on the calling thread, or `0` if no
+error has been recorded (or after `mkfw_clear_last_error`).
+
+mkfw never writes to `stdout` / `stderr`. Errors surface through
+this thread-local channel and, additionally, through the optional
+callback installed with `mkfw_set_error_callback`. Both are
+populated together by every internal failure site.
 
 ---
 

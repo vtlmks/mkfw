@@ -45,6 +45,7 @@ struct win32_mkfw_window {
 	HWND hwnd;
 	HDC hdc;
 	HGLRC hglrc;
+	uint32_t graphics_api;
 	float aspect_ratio;
 	uint8_t should_close;
 
@@ -52,7 +53,8 @@ struct win32_mkfw_window {
 	int32_t saved_style;
 	int32_t saved_style_ex;
 
-	uint8_t mouse_constrained;
+	uint8_t cursor_locked;
+	uint8_t cursor_visible;
 	double last_mouse_dx;
 	double last_mouse_dy;
 	double accumulated_dx;
@@ -62,7 +64,6 @@ struct win32_mkfw_window {
 	int32_t min_height;
 	HCURSOR hidden_cursor;
 	uint8_t is_fullscreen;
-	uint8_t cursor_hidden;
 	uint8_t aspect_ratio_enabled;
 	WINDOWPLACEMENT window_placement;
 
@@ -137,11 +138,6 @@ static uint32_t map_vk_to_scancode(struct mkfw_window *state, WPARAM wParam, LPA
 	state->keyboard_state[MKFW_KEY_SHIFT] = state->keyboard_state[MKFW_KEY_LSHIFT] || state->keyboard_state[MKFW_KEY_RSHIFT];
 	state->keyboard_state[MKFW_KEY_CTRL]  = state->keyboard_state[MKFW_KEY_LCTRL] || state->keyboard_state[MKFW_KEY_RCTRL];
 	state->keyboard_state[MKFW_KEY_ALT]   = state->keyboard_state[MKFW_KEY_LALT] || state->keyboard_state[MKFW_KEY_RALT];
-
-	// Update modifier_state array for compatibility
-	state->modifier_state[MKFW_MODIFIER_SHIFT] = state->keyboard_state[MKFW_KEY_SHIFT];
-	state->modifier_state[MKFW_MODIFIER_CTRL] = state->keyboard_state[MKFW_KEY_CTRL];
-	state->modifier_state[MKFW_MODIFIER_ALT] = state->keyboard_state[MKFW_KEY_ALT];
 
 	// Handle number keys (VK_0 - VK_9)
 	if(wParam >= 0x30 && wParam <= 0x39) {
@@ -524,7 +520,7 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 					double dx = (double)raw.data.mouse.lLastX * WIN32_RAW_MOUSE_SCALE;
 					double dy = (double)raw.data.mouse.lLastY * WIN32_RAW_MOUSE_SCALE;
 
-					if(PLATFORM(state)->mouse_constrained) {
+					if(PLATFORM(state)->cursor_locked) {
 						if(dx * dx + dy * dy < 0.1) {
 							dx = PLATFORM(state)->last_mouse_dx;
 							dy = PLATFORM(state)->last_mouse_dy;
@@ -572,7 +568,7 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 
 		case WM_SETCURSOR: {
 			if(LOWORD(lParam) == HTCLIENT) {
-				if(PLATFORM(state)->cursor_hidden) {
+				if(!PLATFORM(state)->cursor_visible) {
 					SetCursor(0);
 					return TRUE;
 				}
@@ -734,6 +730,13 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	if(!opts) {
 		opts = &defaults;
 	}
+
+	uint32_t graphics_api = opts->graphics_api;
+	if(graphics_api == MKFW_GFX_GLES || graphics_api == MKFW_GFX_VULKAN) {
+		mkfw_error("graphics_api %u not supported (only MKFW_GFX_GL and MKFW_GFX_NONE)", graphics_api);
+		return 0;
+	}
+
 	int32_t width    = opts->width    > 0 ? opts->width    : 1280;
 	int32_t height   = opts->height   > 0 ? opts->height   : 720;
 	int32_t gl_major = opts->gl_major > 0 ? opts->gl_major : 3;
@@ -755,6 +758,8 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 
 	PLATFORM(state)->mouse_sensitivity = 1.0;
 	PLATFORM(state)->hinstance = CTX_PLATFORM(ctx)->hinstance;
+	PLATFORM(state)->graphics_api = graphics_api;
+	PLATFORM(state)->cursor_visible = 1;
 
 	DWORD style = WS_OVERLAPPEDWINDOW;
 	RECT rect = { 0, 0, width, height };
@@ -766,60 +771,62 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 
 	PLATFORM(state)->hdc = GetDC(PLATFORM(state)->hwnd);
 
-	PIXELFORMATDESCRIPTOR pfd = {0};
-	pfd.nSize      = sizeof(pfd);
-	pfd.nVersion   = 1;
-	pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-	pfd.iPixelType = PFD_TYPE_RGBA;
-	pfd.cColorBits = 24;
-	pfd.cAlphaBits = 8;
-	pfd.cDepthBits = 24;
-	pfd.cStencilBits = 8;
-	pfd.iLayerType = PFD_MAIN_PLANE;
+	if(graphics_api == MKFW_GFX_GL) {
+		PIXELFORMATDESCRIPTOR pfd = {0};
+		pfd.nSize      = sizeof(pfd);
+		pfd.nVersion   = 1;
+		pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+		pfd.iPixelType = PFD_TYPE_RGBA;
+		pfd.cColorBits = 24;
+		pfd.cAlphaBits = 8;
+		pfd.cDepthBits = 24;
+		pfd.cStencilBits = 8;
+		pfd.iLayerType = PFD_MAIN_PLANE;
 
-	int pf = ChoosePixelFormat(PLATFORM(state)->hdc, &pfd);
-	SetPixelFormat(PLATFORM(state)->hdc, pf, &pfd);
+		int pf = ChoosePixelFormat(PLATFORM(state)->hdc, &pfd);
+		SetPixelFormat(PLATFORM(state)->hdc, pf, &pfd);
 
-	HGLRC temp_ctx = wglCreateContext(PLATFORM(state)->hdc);
-	wglMakeCurrent(PLATFORM(state)->hdc, temp_ctx);
+		HGLRC temp_ctx = wglCreateContext(PLATFORM(state)->hdc);
+		wglMakeCurrent(PLATFORM(state)->hdc, temp_ctx);
 
-	wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)(void *)wglGetProcAddress("wglCreateContextAttribsARB");
-	if(!wglCreateContextAttribsARB) {
-		PLATFORM(state)->hglrc = temp_ctx;
-	} else {
-		int ctx_attribs[] = {
-			WGL_CONTEXT_MAJOR_VERSION_ARB, gl_major,
-			WGL_CONTEXT_MINOR_VERSION_ARB, gl_minor,
-			WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
-			0
-		};
-
-		HGLRC modern_ctx = wglCreateContextAttribsARB(PLATFORM(state)->hdc, 0, ctx_attribs);
-		if(modern_ctx) {
-			wglMakeCurrent(0, 0);
-			wglDeleteContext(temp_ctx);
-			wglMakeCurrent(PLATFORM(state)->hdc, modern_ctx);
-			PLATFORM(state)->hglrc = modern_ctx;
+		wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)(void *)wglGetProcAddress("wglCreateContextAttribsARB");
+		if(!wglCreateContextAttribsARB) {
+			PLATFORM(state)->hglrc = temp_ctx;
 		} else {
-			typedef const unsigned char *(__stdcall *PFNGLGETSTRINGPROC)(unsigned int);
-			HMODULE gl_module = GetModuleHandleA("opengl32.dll");
-			PFNGLGETSTRINGPROC pglGetString = gl_module ? (PFNGLGETSTRINGPROC)(void *)GetProcAddress(gl_module, "glGetString") : 0;
-			int32_t max_major = 0, max_minor = 0;
-			if(pglGetString) {
-				const char *ver = (const char *)pglGetString(0x1F02);
-				if(ver) {
-					mkfw_parse_version(ver, &max_major, &max_minor);
+			int ctx_attribs[] = {
+				WGL_CONTEXT_MAJOR_VERSION_ARB, gl_major,
+				WGL_CONTEXT_MINOR_VERSION_ARB, gl_minor,
+				WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+				0
+			};
+
+			HGLRC modern_ctx = wglCreateContextAttribsARB(PLATFORM(state)->hdc, 0, ctx_attribs);
+			if(modern_ctx) {
+				wglMakeCurrent(0, 0);
+				wglDeleteContext(temp_ctx);
+				wglMakeCurrent(PLATFORM(state)->hdc, modern_ctx);
+				PLATFORM(state)->hglrc = modern_ctx;
+			} else {
+				typedef const unsigned char *(__stdcall *PFNGLGETSTRINGPROC)(unsigned int);
+				HMODULE gl_module = GetModuleHandleA("opengl32.dll");
+				PFNGLGETSTRINGPROC pglGetString = gl_module ? (PFNGLGETSTRINGPROC)(void *)GetProcAddress(gl_module, "glGetString") : 0;
+				int32_t max_major = 0, max_minor = 0;
+				if(pglGetString) {
+					const char *ver = (const char *)pglGetString(0x1F02);
+					if(ver) {
+						mkfw_parse_version(ver, &max_major, &max_minor);
+					}
 				}
+				wglMakeCurrent(0, 0);
+				wglDeleteContext(temp_ctx);
+				mkfw_error("OpenGL %d.%d Compatibility Profile not available (driver supports up to %d.%d)",
+					gl_major, gl_minor, max_major, max_minor);
+				ReleaseDC(PLATFORM(state)->hwnd, PLATFORM(state)->hdc);
+				DestroyWindow(PLATFORM(state)->hwnd);
+				free(state->platform);
+				free(state);
+				return 0;
 			}
-			wglMakeCurrent(0, 0);
-			wglDeleteContext(temp_ctx);
-			mkfw_error("OpenGL %d.%d Compatibility Profile not available (driver supports up to %d.%d)",
-				gl_major, gl_minor, max_major, max_minor);
-			ReleaseDC(PLATFORM(state)->hwnd, PLATFORM(state)->hdc);
-			DestroyWindow(PLATFORM(state)->hwnd);
-			free(state->platform);
-			free(state);
-			return 0;
 		}
 	}
 
@@ -906,10 +913,20 @@ MKFW_API void mkfw_poll_events(struct mkfw_context *ctx) {
 	}
 }
 
-// [=]===^=[ mkfw_window_constrain_mouse ]===============================================================[=]
-MKFW_API void mkfw_window_constrain_mouse(struct mkfw_window *state, int32_t constrain) {
-	PLATFORM(state)->mouse_constrained = constrain;
-	if(constrain) {
+// [=]===^=[ mkfw_window_set_cursor_visible ]=====================================================[=]
+MKFW_API void mkfw_window_set_cursor_visible(struct mkfw_window *state, uint32_t visible) {
+	PLATFORM(state)->cursor_visible = visible ? 1 : 0;
+	if(visible) {
+		SetCursor(PLATFORM(state)->cursors[PLATFORM(state)->current_cursor]);
+	} else {
+		SetCursor(0);
+	}
+}
+
+// [=]===^=[ mkfw_window_set_cursor_locked ]======================================================[=]
+MKFW_API void mkfw_window_set_cursor_locked(struct mkfw_window *state, uint32_t locked) {
+	PLATFORM(state)->cursor_locked = locked ? 1 : 0;
+	if(locked) {
 		RECT rect;
 		GetClientRect(PLATFORM(state)->hwnd, &rect);
 		POINT ul = { rect.left, rect.top };
@@ -926,17 +943,21 @@ MKFW_API void mkfw_window_constrain_mouse(struct mkfw_window *state, int32_t con
 	}
 }
 
-// [=]===^=[ mkfw_window_set_mouse_cursor ]==============================================================[=]
-MKFW_API void mkfw_window_set_mouse_cursor(struct mkfw_window *state, int32_t visible) {
-	if(visible) {
-		PLATFORM(state)->cursor_hidden = 0;
-		mkfw_window_constrain_mouse(state, 0);
-		SetCursor(LoadCursor(0, IDC_ARROW));
-	} else {
-		PLATFORM(state)->cursor_hidden = 1;
-		mkfw_window_constrain_mouse(state, 1);
-		SetCursor(0);
-	}
+// [=]===^=[ mkfw_window_is_cursor_visible ]======================================================[=]
+MKFW_API uint32_t mkfw_window_is_cursor_visible(struct mkfw_window *state) {
+	return PLATFORM(state)->cursor_visible;
+}
+
+// [=]===^=[ mkfw_window_is_cursor_locked ]=======================================================[=]
+MKFW_API uint32_t mkfw_window_is_cursor_locked(struct mkfw_window *state) {
+	return PLATFORM(state)->cursor_locked;
+}
+
+// [=]===^=[ mkfw_window_get_native_handles ]=====================================================[=]
+MKFW_API void mkfw_window_get_native_handles(struct mkfw_window *state, struct mkfw_native_handles *out) {
+	out->display    = (void *)PLATFORM(state)->hinstance;
+	out->window     = (uintptr_t)PLATFORM(state)->hwnd;
+	out->gl_context = (void *)PLATFORM(state)->hglrc;
 }
 
 // [=]===^=[ mkfw_window_set_swap_interval ]==============================================================[=]
@@ -1319,8 +1340,9 @@ MKFW_API void mkfw_window_destroy(struct mkfw_window *state) {
 		return;
 	}
 
-	mkfw_window_set_mouse_cursor(state, 1);
-	mkfw_window_constrain_mouse(state, 0);
+	if(PLATFORM(state)->cursor_locked) {
+		ClipCursor(0);
+	}
 
 	if(PLATFORM(state)->hglrc) {
 		wglMakeCurrent(0, 0);
@@ -1420,7 +1442,7 @@ MKFW_API void mkfw_window_set_cursor_shape(struct mkfw_window *state, uint32_t c
 		cursor = MKFW_CURSOR_ARROW;
 	}
 	PLATFORM(state)->current_cursor = cursor;
-	if(!PLATFORM(state)->cursor_hidden) {
+	if(PLATFORM(state)->cursor_visible) {
 		SetCursor(PLATFORM(state)->cursors[cursor]);
 	}
 }

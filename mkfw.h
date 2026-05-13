@@ -34,8 +34,6 @@ struct mkfw_window {
 	// Input state
 	uint8_t keyboard_state[MKFW_KEY_LAST];
 	uint8_t prev_keyboard_state[MKFW_KEY_LAST];
-	uint8_t modifier_state[MKFW_MODIFIER_LAST];
-	uint8_t prev_modifier_state[MKFW_MODIFIER_LAST];
 	uint8_t mouse_buttons[5];
 	uint8_t previous_mouse_buttons[5];
 	int32_t mouse_x;
@@ -62,20 +60,51 @@ struct mkfw_window {
 	void *user_data;
 };
 
-/* Error reporting callback */
+/* Error reporting.
+ *
+ * mkfw never writes to stdout/stderr.  Errors surface through two
+ * channels that are populated together:
+ *
+ *   - A thread-local buffer holding the last error message, read via
+ *     mkfw_get_last_error() (returns 0 if no error has been recorded
+ *     on this thread, or after mkfw_clear_last_error()).
+ *   - An optional user callback installed with mkfw_set_error_callback().
+ *
+ * mkfw_error() is internal and not part of the public API surface,
+ * but is declared here because the inline platform .c is included
+ * into the same translation unit.  All sites that report failure
+ * call mkfw_error() with a printf-style format string. */
 typedef void (*mkfw_error_callback_t)(const char *message);
 static mkfw_error_callback_t mkfw_error_callback;
 
+#ifdef _WIN32
+	#define MKFW_THREAD_LOCAL __declspec(thread)
+#else
+	#define MKFW_THREAD_LOCAL __thread
+#endif
+
+static MKFW_THREAD_LOCAL char mkfw_last_error_buf[512];
+static MKFW_THREAD_LOCAL uint8_t mkfw_last_error_set;
+
 __attribute__((format(printf, 1, 2)))
 static inline void mkfw_error(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(mkfw_last_error_buf, sizeof(mkfw_last_error_buf), fmt, args);
+	va_end(args);
+	mkfw_last_error_set = 1;
 	if(mkfw_error_callback) {
-		char buf[512];
-		va_list args;
-		va_start(args, fmt);
-		vsnprintf(buf, sizeof(buf), fmt, args);
-		va_end(args);
-		mkfw_error_callback(buf);
+		mkfw_error_callback(mkfw_last_error_buf);
 	}
+}
+
+static inline const char *mkfw_get_last_error(void) {
+	return mkfw_last_error_set ? mkfw_last_error_buf : 0;
+}
+
+static inline void mkfw_clear_last_error(void) {
+	mkfw_last_error_buf[0] = 0;
+	mkfw_last_error_set = 0;
 }
 
 // sscanf("%d.%d") pulls in __isoc23_sscanf on GCC 13+, requiring glibc 2.38
@@ -140,6 +169,24 @@ struct mkfw_options {
 #define MKFW_WIN_TRANSPARENT  (1u << 0)
 #define MKFW_WIN_HIDDEN       (1u << 1)
 
+/* Graphics-API selection for window creation.
+ *
+ * MKFW_GFX_GL (the default) creates a GLX/WGL context honouring
+ * gl_major/gl_minor in the options struct.  MKFW_GFX_NONE skips all
+ * rendering setup; the window is created in a state suitable for the
+ * caller to manage a Vulkan surface, a Direct2D surface, or any other
+ * API mkfw does not know about.  Reach the underlying platform
+ * handles with mkfw_window_get_native_handles().
+ *
+ * MKFW_GFX_GLES and MKFW_GFX_VULKAN are reserved for future use.
+ * Passing them today fails window creation with an error. */
+enum mkfw_graphics_api {
+	MKFW_GFX_GL = 0,
+	MKFW_GFX_GLES,
+	MKFW_GFX_VULKAN,
+	MKFW_GFX_NONE,
+};
+
 /* Window creation options.  Pass 0 to use defaults for every field.
  * The version field must be 0 for now; future revisions may add
  * fields and bump the version. */
@@ -151,6 +198,28 @@ struct mkfw_window_options {
 	int32_t  gl_major;       // 0 = 3
 	int32_t  gl_minor;       // 0 = 1
 	uint32_t flags;          // MKFW_WIN_*
+	uint32_t graphics_api;   // MKFW_GFX_*; 0 = MKFW_GFX_GL
+};
+
+/* Native platform handles for callers that need to integrate with
+ * APIs mkfw does not own (Vulkan surfaces, EGL, Direct2D, ...).
+ *
+ *   Linux:  display     -> Display *      (X11 connection)
+ *           window      -> Window         (X11 XID; cast via uintptr_t)
+ *           gl_context  -> GLXContext     (0 if graphics_api != MKFW_GFX_GL)
+ *
+ *   Win32:  display     -> HINSTANCE
+ *           window      -> HWND
+ *           gl_context  -> HGLRC          (0 if graphics_api != MKFW_GFX_GL)
+ *
+ * The handles remain valid until the window is destroyed.  mkfw does
+ * not include the platform headers from this file, so callers cast
+ * the void * / uintptr_t to the appropriate platform type at the use
+ * site after including the relevant header. */
+struct mkfw_native_handles {
+	void     *display;
+	uintptr_t window;
+	void     *gl_context;
 };
 
 /* Public-API linkage macro.
@@ -233,8 +302,18 @@ struct mkfw_window_options {
 /* Inline helper functions - placed after platform includes so struct is defined */
 static inline void mkfw_window_update_input_state(struct mkfw_window *state) {
 	memcpy(state->prev_keyboard_state, state->keyboard_state, sizeof(state->keyboard_state));
-	memcpy(state->prev_modifier_state, state->modifier_state, sizeof(state->modifier_state));
 	memcpy(state->previous_mouse_buttons, state->mouse_buttons, sizeof(state->mouse_buttons));
+}
+
+static inline uint32_t mkfw_window_get_modifiers(struct mkfw_window *state) {
+	return (state->keyboard_state[MKFW_KEY_LSHIFT] ? MKFW_MOD_LSHIFT : 0)
+		 | (state->keyboard_state[MKFW_KEY_RSHIFT] ? MKFW_MOD_RSHIFT : 0)
+		 | (state->keyboard_state[MKFW_KEY_LCTRL]  ? MKFW_MOD_LCTRL  : 0)
+		 | (state->keyboard_state[MKFW_KEY_RCTRL]  ? MKFW_MOD_RCTRL  : 0)
+		 | (state->keyboard_state[MKFW_KEY_LALT]   ? MKFW_MOD_LALT   : 0)
+		 | (state->keyboard_state[MKFW_KEY_RALT]   ? MKFW_MOD_RALT   : 0)
+		 | (state->keyboard_state[MKFW_KEY_LSUPER] ? MKFW_MOD_LSUPER : 0)
+		 | (state->keyboard_state[MKFW_KEY_RSUPER] ? MKFW_MOD_RSUPER : 0);
 }
 
 static inline void mkfw_set_error_callback(mkfw_error_callback_t callback) { mkfw_error_callback = callback; }

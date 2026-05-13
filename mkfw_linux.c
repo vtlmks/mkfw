@@ -40,16 +40,16 @@ struct x11_mkfw_window {
 	Display *display;
 	Window   window;
 	GLXContext glctx;
+	uint32_t graphics_api;
 	float aspect_ratio;
-	uint8_t mouse_constrained;
+	uint8_t cursor_locked;
+	uint8_t cursor_visible;
 	int32_t last_mouse_x;
 	int32_t last_mouse_y;
 	int32_t win_saved_width;
 	int32_t win_saved_height;
 	int32_t win_saved_x;
 	int32_t win_saved_y;
-	int32_t hide_mouse_x;
-	int32_t hide_mouse_y;
 	int32_t min_width;
 	int32_t min_height;
 	Atom wm_delete_window;
@@ -153,11 +153,6 @@ static uint32_t map_x11_keysym(struct mkfw_window *state, KeySym keysym, int key
 	state->keyboard_state[MKFW_KEY_SHIFT] = state->keyboard_state[MKFW_KEY_LSHIFT] || state->keyboard_state[MKFW_KEY_RSHIFT];
 	state->keyboard_state[MKFW_KEY_CTRL]  = state->keyboard_state[MKFW_KEY_LCTRL] || state->keyboard_state[MKFW_KEY_RCTRL];
 	state->keyboard_state[MKFW_KEY_ALT]   = state->keyboard_state[MKFW_KEY_LALT] || state->keyboard_state[MKFW_KEY_RALT];
-
-	// Update modifier_state array for compatibility
-	state->modifier_state[MKFW_MODIFIER_SHIFT] = state->keyboard_state[MKFW_KEY_SHIFT];
-	state->modifier_state[MKFW_MODIFIER_CTRL] = state->keyboard_state[MKFW_KEY_CTRL];
-	state->modifier_state[MKFW_MODIFIER_ALT] = state->keyboard_state[MKFW_KEY_ALT];
 
 	// Handle non-extended special keys
 	switch(keysym) {
@@ -507,6 +502,12 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	if(!opts) {
 		opts = &defaults;
 	}
+	uint32_t graphics_api = opts->graphics_api;
+	if(graphics_api == MKFW_GFX_GLES || graphics_api == MKFW_GFX_VULKAN) {
+		mkfw_error("graphics_api %u not supported (only MKFW_GFX_GL and MKFW_GFX_NONE)", graphics_api);
+		return 0;
+	}
+
 	int32_t width    = opts->width    > 0 ? opts->width    : 1280;
 	int32_t height   = opts->height   > 0 ? opts->height   : 720;
 	int32_t gl_major = opts->gl_major > 0 ? opts->gl_major : 3;
@@ -529,19 +530,32 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	PLATFORM(state)->mouse_sensitivity = 1.0;
 	PLATFORM(state)->xi_opcode = -1;
 	PLATFORM(state)->display = CTX_PLATFORM(ctx)->display;
+	PLATFORM(state)->graphics_api = graphics_api;
+	PLATFORM(state)->cursor_visible = 1;
 
 	Display *display = CTX_PLATFORM(ctx)->display;
 	int screen = DefaultScreen(display);
 	Window root = RootWindow(display, screen);
 
-	GLXFBConfig fb_config = select_best_fbconfig_for(display, screen, transparent);
+	XVisualInfo vi_storage = {0};
+	XVisualInfo *vi = 0;
+	GLXFBConfig fb_config = 0;
 
-	XVisualInfo *vi = glXGetVisualFromFBConfig(display, fb_config);
-	if(!vi) {
-		mkfw_error("unable to get a visual from framebuffer config");
-		free(state->platform);
-		free(state);
-		return 0;
+	if(graphics_api == MKFW_GFX_GL) {
+		fb_config = select_best_fbconfig_for(display, screen, transparent);
+		vi = glXGetVisualFromFBConfig(display, fb_config);
+		if(!vi) {
+			mkfw_error("unable to get a visual from framebuffer config");
+			free(state->platform);
+			free(state);
+			return 0;
+		}
+	} else {
+		if(!transparent || !XMatchVisualInfo(display, screen, 32, TrueColor, &vi_storage)) {
+			vi_storage.visual = DefaultVisual(display, screen);
+			vi_storage.depth  = DefaultDepth(display, screen);
+		}
+		vi = &vi_storage;
 	}
 
 	Colormap cmap = XCreateColormap(display, root, vi->visual, AllocNone);
@@ -567,58 +581,60 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	XSetWMProtocols(display, PLATFORM(state)->window, &PLATFORM(state)->wm_delete_window, 1);
 	enable_xi2_raw_input(state);
 
-	if(!glXCreateContextAttribsARB) {
-		mkfw_error("glXCreateContextAttribsARB not supported");
-		XFree(vi);
-		XDestroyWindow(display, PLATFORM(state)->window);
-		free(state->platform);
-		free(state);
-		return 0;
-	}
+	if(graphics_api == MKFW_GFX_GL) {
+		if(!glXCreateContextAttribsARB) {
+			mkfw_error("glXCreateContextAttribsARB not supported");
+			XFree(vi);
+			XDestroyWindow(display, PLATFORM(state)->window);
+			free(state->platform);
+			free(state);
+			return 0;
+		}
 
-	int ctx_attribs[] = {
-		GLX_CONTEXT_MAJOR_VERSION_ARB, gl_major,
-		GLX_CONTEXT_MINOR_VERSION_ARB, gl_minor,
-		GLX_CONTEXT_PROFILE_MASK_ARB,  GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
-		0
-	};
-
-	PLATFORM(state)->glctx = glXCreateContextAttribsARB(display, fb_config, 0, 1, ctx_attribs);
-	if(!PLATFORM(state)->glctx) {
-		int fallback_attribs[] = {
-			GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
-			GLX_CONTEXT_MINOR_VERSION_ARB, 1,
+		int ctx_attribs[] = {
+			GLX_CONTEXT_MAJOR_VERSION_ARB, gl_major,
+			GLX_CONTEXT_MINOR_VERSION_ARB, gl_minor,
 			GLX_CONTEXT_PROFILE_MASK_ARB,  GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 			0
 		};
-		GLXContext query_ctx = glXCreateContextAttribsARB(display, fb_config, 0, 1, fallback_attribs);
-		if(query_ctx) {
-			glXMakeCurrent(display, PLATFORM(state)->window, query_ctx);
-			typedef const unsigned char *(*PFNGLGETSTRINGPROC)(unsigned int);
-			PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const unsigned char *)"glGetString");
-			int32_t max_major = 0, max_minor = 0;
-			if(pglGetString) {
-				const char *ver = (const char *)pglGetString(0x1F02);
-				if(ver) {
-					mkfw_parse_version(ver, &max_major, &max_minor);
-				}
-			}
-			glXMakeCurrent(display, None, 0);
-			glXDestroyContext(display, query_ctx);
-			mkfw_error("OpenGL %d.%d Compatibility Profile not available (driver supports up to %d.%d)",
-				gl_major, gl_minor, max_major, max_minor);
-		} else {
-			mkfw_error("OpenGL %d.%d Compatibility Profile not available", gl_major, gl_minor);
-		}
-		XFree(vi);
-		XDestroyWindow(display, PLATFORM(state)->window);
-		free(state->platform);
-		free(state);
-		return 0;
-	}
 
-	glXMakeCurrent(display, PLATFORM(state)->window, PLATFORM(state)->glctx);
-	XFree(vi);
+		PLATFORM(state)->glctx = glXCreateContextAttribsARB(display, fb_config, 0, 1, ctx_attribs);
+		if(!PLATFORM(state)->glctx) {
+			int fallback_attribs[] = {
+				GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
+				GLX_CONTEXT_MINOR_VERSION_ARB, 1,
+				GLX_CONTEXT_PROFILE_MASK_ARB,  GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+				0
+			};
+			GLXContext query_ctx = glXCreateContextAttribsARB(display, fb_config, 0, 1, fallback_attribs);
+			if(query_ctx) {
+				glXMakeCurrent(display, PLATFORM(state)->window, query_ctx);
+				typedef const unsigned char *(*PFNGLGETSTRINGPROC)(unsigned int);
+				PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const unsigned char *)"glGetString");
+				int32_t max_major = 0, max_minor = 0;
+				if(pglGetString) {
+					const char *ver = (const char *)pglGetString(0x1F02);
+					if(ver) {
+						mkfw_parse_version(ver, &max_major, &max_minor);
+					}
+				}
+				glXMakeCurrent(display, None, 0);
+				glXDestroyContext(display, query_ctx);
+				mkfw_error("OpenGL %d.%d Compatibility Profile not available (driver supports up to %d.%d)",
+					gl_major, gl_minor, max_major, max_minor);
+			} else {
+				mkfw_error("OpenGL %d.%d Compatibility Profile not available", gl_major, gl_minor);
+			}
+			XFree(vi);
+			XDestroyWindow(display, PLATFORM(state)->window);
+			free(state->platform);
+			free(state);
+			return 0;
+		}
+
+		glXMakeCurrent(display, PLATFORM(state)->window, PLATFORM(state)->glctx);
+		XFree(vi);
+	}
 
 	PLATFORM(state)->xim = XOpenIM(display, 0, 0, 0);
 	if(PLATFORM(state)->xim) {
@@ -669,50 +685,12 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	return state;
 }
 
-// [=]===^=[ mkfw_window_constrain_mouse ]===============================================================[=]
-MKFW_API void mkfw_window_constrain_mouse(struct mkfw_window *state, int32_t constrain) {
-	PLATFORM(state)->mouse_constrained = constrain;
-
-	XWindowAttributes attrs;
-	XGetWindowAttributes(PLATFORM(state)->display, PLATFORM(state)->window, &attrs);
-
-	if(constrain) {
-		int result = XGrabPointer(PLATFORM(state)->display, PLATFORM(state)->window, True, ButtonPressMask | ButtonReleaseMask | PointerMotionMask | FocusChangeMask, GrabModeAsync, GrabModeAsync, PLATFORM(state)->window, None, CurrentTime);
-
-		if(result != GrabSuccess) {
-			mkfw_error("failed to grab pointer");
-			return;
-		}
-
-		int center_x = attrs.width / 2;
-		int center_y = attrs.height / 2;
-		XWarpPointer(PLATFORM(state)->display, None, PLATFORM(state)->window, 0, 0, 0, 0, center_x, center_y);
-	} else {
-		XUngrabPointer(PLATFORM(state)->display, CurrentTime);
-	}
-
-	XFlush(PLATFORM(state)->display);
-}
-
-// [=]===^=[ mkfw_window_set_mouse_cursor ]==============================================================[=]
-MKFW_API void mkfw_window_set_mouse_cursor(struct mkfw_window *state, int32_t visible) {
+// [=]===^=[ mkfw_window_set_cursor_visible ]=====================================================[=]
+MKFW_API void mkfw_window_set_cursor_visible(struct mkfw_window *state, uint32_t visible) {
+	PLATFORM(state)->cursor_visible = visible ? 1 : 0;
 	if(visible) {
-		if(PLATFORM(state)->mouse_constrained) { // Only warp back if the cursor was previously hidden
-			mkfw_window_constrain_mouse(state, 0);
-			XWarpPointer(PLATFORM(state)->display, None, PLATFORM(state)->window, 0, 0, 0, 0, PLATFORM(state)->hide_mouse_x, PLATFORM(state)->hide_mouse_y);
-		}
-		XUndefineCursor(PLATFORM(state)->display, PLATFORM(state)->window);
+		XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->cursors[PLATFORM(state)->current_cursor]);
 	} else {
-		Window root, child;
-		int root_x, root_y, win_x, win_y;
-		unsigned int mask;
-
-		if(XQueryPointer(PLATFORM(state)->display, PLATFORM(state)->window, &root, &child, &root_x, &root_y, &win_x, &win_y, &mask)) {
-			PLATFORM(state)->hide_mouse_x = win_x;
-			PLATFORM(state)->hide_mouse_y = win_y;
-		}
-
-		mkfw_window_constrain_mouse(state, 1);
 		if(!PLATFORM(state)->hidden_cursor) {
 			Pixmap pixmap = XCreatePixmap(PLATFORM(state)->display, PLATFORM(state)->window, 1, 1, 1);
 			XColor black = {0};
@@ -722,6 +700,39 @@ MKFW_API void mkfw_window_set_mouse_cursor(struct mkfw_window *state, int32_t vi
 		XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->hidden_cursor);
 	}
 	XFlush(PLATFORM(state)->display);
+}
+
+// [=]===^=[ mkfw_window_set_cursor_locked ]======================================================[=]
+MKFW_API void mkfw_window_set_cursor_locked(struct mkfw_window *state, uint32_t locked) {
+	if(locked) {
+		int result = XGrabPointer(PLATFORM(state)->display, PLATFORM(state)->window, True, ButtonPressMask | ButtonReleaseMask | PointerMotionMask | FocusChangeMask, GrabModeAsync, GrabModeAsync, PLATFORM(state)->window, None, CurrentTime);
+		if(result != GrabSuccess) {
+			mkfw_error("failed to grab pointer");
+			return;
+		}
+		PLATFORM(state)->cursor_locked = 1;
+	} else {
+		XUngrabPointer(PLATFORM(state)->display, CurrentTime);
+		PLATFORM(state)->cursor_locked = 0;
+	}
+	XFlush(PLATFORM(state)->display);
+}
+
+// [=]===^=[ mkfw_window_is_cursor_visible ]======================================================[=]
+MKFW_API uint32_t mkfw_window_is_cursor_visible(struct mkfw_window *state) {
+	return PLATFORM(state)->cursor_visible;
+}
+
+// [=]===^=[ mkfw_window_is_cursor_locked ]=======================================================[=]
+MKFW_API uint32_t mkfw_window_is_cursor_locked(struct mkfw_window *state) {
+	return PLATFORM(state)->cursor_locked;
+}
+
+// [=]===^=[ mkfw_window_get_native_handles ]=====================================================[=]
+MKFW_API void mkfw_window_get_native_handles(struct mkfw_window *state, struct mkfw_native_handles *out) {
+	out->display    = (void *)PLATFORM(state)->display;
+	out->window     = (uintptr_t)PLATFORM(state)->window;
+	out->gl_context = (void *)PLATFORM(state)->glctx;
 }
 
 // [=]===^=[ mkfw_window_set_fullscreen ]====================================================================[=]
@@ -754,7 +765,6 @@ MKFW_API void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enab
 
 		XSendEvent(PLATFORM(state)->display, DefaultRootWindow(PLATFORM(state)->display), False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
 
-		mkfw_window_set_mouse_cursor(state, 0);
 		state->is_fullscreen = 1;
 
 	} else if(!enable && state->is_fullscreen) {
@@ -773,7 +783,6 @@ MKFW_API void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enab
 
 		XSendEvent(PLATFORM(state)->display, DefaultRootWindow(PLATFORM(state)->display), False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
 		XMoveResizeWindow(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->win_saved_x, PLATFORM(state)->win_saved_y, PLATFORM(state)->win_saved_width, PLATFORM(state)->win_saved_height);
-		mkfw_window_set_mouse_cursor(state, 1);
 		state->is_fullscreen = 0;
 	}
 
@@ -980,7 +989,7 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 						}
 					}
 
-					if(PLATFORM(state)->mouse_constrained) {
+					if(PLATFORM(state)->cursor_locked) {
 						if(dx * dx + dy * dy < 0.1) {
 							dx = PLATFORM(state)->last_mouse_dx;
 							dy = PLATFORM(state)->last_mouse_dy;
@@ -1202,14 +1211,14 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 					state->mouse_x = event.xmotion.x;
 					state->mouse_y = event.xmotion.y;
 
-					if(PLATFORM(state)->mouse_constrained) {
+					if(PLATFORM(state)->cursor_locked && !PLATFORM(state)->cursor_visible) {
 						XWindowAttributes attrs;
 						XGetWindowAttributes(PLATFORM(state)->display, PLATFORM(state)->window, &attrs);
 						int center_x = attrs.width / 2;
 						int center_y = attrs.height / 2;
-						if (event.xmotion.x != center_x || event.xmotion.y != center_y) { // Only warp if pointer is NOT at the center
+						if (event.xmotion.x != center_x || event.xmotion.y != center_y) { // Only re-center hidden+locked FPS cursors
 							XWarpPointer(PLATFORM(state)->display, None, PLATFORM(state)->window, 0, 0, 0, 0, center_x, center_y);
-							XSync(PLATFORM(state)->display, False); // Sync is still important
+							XSync(PLATFORM(state)->display, False);
 							PLATFORM(state)->last_mouse_x = center_x;
 							PLATFORM(state)->last_mouse_y = center_y;
 						}
@@ -1772,8 +1781,12 @@ MKFW_API void mkfw_window_destroy(struct mkfw_window *state) {
 		return;
 	}
 
-	mkfw_window_set_mouse_cursor(state, 1);
-	mkfw_window_constrain_mouse(state, 0);
+	if(PLATFORM(state)->cursor_locked) {
+		XUngrabPointer(PLATFORM(state)->display, CurrentTime);
+	}
+	if(PLATFORM(state)->hidden_cursor) {
+		XFreeCursor(PLATFORM(state)->display, PLATFORM(state)->hidden_cursor);
+	}
 
 	if(PLATFORM(state)->xic) {
 		XDestroyIC(PLATFORM(state)->xic);
@@ -1788,8 +1801,10 @@ MKFW_API void mkfw_window_destroy(struct mkfw_window *state) {
 	}
 	free(PLATFORM(state)->clipboard_text);
 
-	glXMakeCurrent(PLATFORM(state)->display, None, 0);
-	glXDestroyContext(PLATFORM(state)->display, PLATFORM(state)->glctx);
+	if(PLATFORM(state)->glctx) {
+		glXMakeCurrent(PLATFORM(state)->display, None, 0);
+		glXDestroyContext(PLATFORM(state)->display, PLATFORM(state)->glctx);
+	}
 	XDestroyWindow(PLATFORM(state)->display, PLATFORM(state)->window);
 
 	// Unlink from its context's window list
