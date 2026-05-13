@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 CFLAGS="-std=gnu99 -O2 -Wall -Wextra"
 LDFLAGS="-lm -lpthread -ldl"
 
-for src in joystick.c threaded.c monitor.c transparency.c; do
+for src in joystick.c threaded.c monitor.c transparency.c audio_beep.c; do
 	name="${src%.c}"
 	echo "Building $name..."
 	gcc $CFLAGS "$src" $LDFLAGS -o "$name"

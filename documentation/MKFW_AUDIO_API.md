@@ -1,658 +1,223 @@
-# MKFW Audio API Documentation
+# MKFW Audio API
 
-**Low-Latency Audio Subsystem for MKFW**
+Low-latency, callback-based audio output for mkfw applications.
 
 ## Overview
 
-The MKFW Audio API provides low-latency, real-time audio output for applications requiring precise audio timing. It uses platform-specific implementations with dedicated high-priority audio threads to minimize latency and prevent dropouts.
+mkfw_audio is an optional companion subsystem for mkfw. It opens
+the default system output, negotiates a sample rate and channel
+count, and calls your fill function from a dedicated audio thread.
+mkfw does not resample, mix, decode, or otherwise process the
+samples. The OS audio layer (WASAPI shared mode / PipeWire /
+PulseAudio / ALSA `plug`) converts the negotiated stream to
+whatever the physical device requires.
 
-## Features
+- **Format**: 32-bit IEEE float, interleaved, range `[-1.0, 1.0]`.
+- **Default request**: 48 kHz, stereo, ~10 ms latency. Configurable.
+- **Transport**: WASAPI shared mode on Windows, ALSA `default`
+  device on Linux (which is usually PipeWire's pipewire-alsa shim
+  or PulseAudio's alsa plugin).
 
-- Low-latency audio output (typically 10-20ms on modern systems)
-- 48kHz sample rate, 16-bit stereo
-- High-priority audio thread for glitch-free playback
-- Simple callback-based interface
-- Platform-optimized implementations (WASAPI/ALSA)
-- Automatic hotplug recovery (device disconnect/reconnect)
-- Thread-safe callback swapping via `mkfw_audio_set_callback`
+## Enabling
 
-## Platform Support
-
-- Linux (ALSA, tries PipeWire first then falls back to default ALSA device)
-- Windows (WASAPI event-driven)
-
----
-
-## Enabling the Audio Subsystem
-
-The audio subsystem is optional and must be enabled before including `mkfw.h`:
+mkfw_audio ships as a header next to `mkfw.h`. Include both:
 
 ```c
-#define MKFW_AUDIO
 #include "mkfw.h"
+#include "mkfw_audio.h"
 ```
 
-This will include the platform-specific audio implementation:
-- `mkfw_win32_audio.c` on Windows
-- `mkfw_linux_audio.c` on Linux
+Link:
+- Linux: `-lpthread -ldl -lm`
+- Windows: `ole32.lib avrt.lib uuid.lib` plus the base mkfw libs.
+
+ALSA on Linux is loaded at runtime via `dlopen` from
+`libasound.so.2`; do not link `-lasound`.
 
 ---
 
-## Audio Format
+## Types
 
-The audio subsystem uses a fixed format optimized for low latency:
+### `mkfw_audio_callback_t`
 
-- **Sample Rate:** 48,000 Hz
-- **Channels:** 2 (stereo)
-- **Bit Depth:** 16-bit signed integer
-- **Frame Size:** 4 bytes (2 channels × 2 bytes)
-- **Buffer Size:** Platform-dependent (256 frames on ALSA, 480 frames on WASAPI typical)
-
-**Sample format:**
 ```c
-int16_t audio_buffer[frames * 2];  // Interleaved stereo
-// audio_buffer[0] = left channel, sample 0
-// audio_buffer[1] = right channel, sample 0
-// audio_buffer[2] = left channel, sample 1
-// audio_buffer[3] = right channel, sample 1
-// ...
+typedef void (*mkfw_audio_callback_t)(void *userdata, float *buffer, uint32_t frames);
+```
+
+Called from the audio thread. Fill `buffer` with `frames *
+channels` interleaved float samples. Channel count is fixed for
+the device's lifetime and retrievable via `mkfw_audio_info()`.
+
+The callback should be lock-free, allocation-free, and bounded in
+runtime. Avoid GL, X11 / Win32 windowing, file I/O, or anything
+that can block.
+
+### `mkfw_audio_device_lost_callback_t`
+
+```c
+typedef void (*mkfw_audio_device_lost_callback_t)(void *userdata);
+```
+
+Fired once each time the audio device transitions from playing to
+lost (USB unplug, driver crash, user changed default device).
+mkfw will continue retrying the default endpoint in the
+background; this hook only exists so the application can react.
+
+### `struct mkfw_audio_options`
+
+```c
+struct mkfw_audio_options {
+    uint32_t version;                 // 0 = current
+    uint32_t preferred_sample_rate;   // 0 = 48000
+    uint32_t preferred_channels;      // 0 = 2 (stereo)
+    uint32_t preferred_buffer_frames; // 0 = backend default
+    uint32_t realtime_priority;       // 0 = normal, non-zero = try RT scheduling
+};
+```
+
+Hints, not guarantees. Whatever the OS layer negotiates is what
+`mkfw_audio_info` reports. Pass `0` for every field to use
+defaults.
+
+`realtime_priority` is opt-in: when set, mkfw asks for
+`SCHED_FIFO` priority 5 on Linux (typically requires `CAP_SYS_NICE`
+or an `rtkit-daemon` policy) and the `Pro Audio` MMCSS class on
+Windows. On either platform mkfw reports the failure through the
+error callback / `mkfw_get_last_error()` and continues at normal
+priority.
+
+### `struct mkfw_audio_info`
+
+```c
+struct mkfw_audio_info {
+    uint32_t sample_rate;        // negotiated, in Hz
+    uint32_t channels;           // negotiated
+    uint32_t frames_per_buffer;  // device buffer in frames
+    uint32_t period_frames;      // callback granularity in frames
+    uint64_t latency_ns;         // best estimate, total
+};
 ```
 
 ---
 
-## Core Concepts
-
-### Callback-Based Audio
-
-The audio system uses a **callback function** that you provide. This function is called automatically by the audio thread whenever the audio device needs more samples.
-
-**Key principles:**
-1. Your callback fills a buffer with audio samples
-2. The audio thread calls your callback at regular intervals
-3. You must fill the requested number of frames quickly
-4. The callback runs on a high-priority thread - keep it fast!
-
-### Audio Thread Priority
-
-- Runs at realtime/high priority to prevent dropouts
-- On Windows: Uses MMCSS "Pro Audio" scheduling class
-- On Linux: Standard thread priority (relies on PipeWire/ALSA buffering)
-- Your callback runs in this high-priority context - avoid blocking operations!
-
----
-
-## Initialization and Shutdown
+## Functions
 
 ### `mkfw_audio_init`
 
 ```c
-void mkfw_audio_init(void)
+uint32_t mkfw_audio_init(struct mkfw_audio_options *opts);
 ```
 
-Initialize the audio subsystem and start playback.
+Open the default output, negotiate format, spawn the audio
+thread. Pass `0` for `opts` to use defaults.
 
-**Notes:**
-- Opens the default audio output device
-- Creates a high-priority audio thread
-- Starts audio playback immediately
-- On Windows: Uses WASAPI in shared mode with event-driven callback
-- On Linux: Tries "plug:pipewire" first, falls back to "default" ALSA device if PipeWire is not available
-- Must set `mkfw_audio_callback` before calling, or audio will be silent
-
-**Example:**
-```c
-mkfw_audio_callback = my_audio_callback;
-mkfw_audio_init();
-```
-
----
+Returns non-zero on success, `0` on failure. On failure,
+`mkfw_get_last_error()` returns a description and the error
+callback (if installed) has been fired.
 
 ### `mkfw_audio_shutdown`
 
 ```c
-void mkfw_audio_shutdown(void)
+void mkfw_audio_shutdown(void);
 ```
 
-Stop playback and clean up audio resources.
-
-**Notes:**
-- Stops the audio thread gracefully
-- On Windows: Fills remaining buffer with silence before stopping
-- Closes audio device
-- Frees allocated buffers
-- Safe to call even if audio failed to initialize
-
-**Example:**
-```c
-mkfw_audio_shutdown();
-```
-
----
+Stop the audio thread, release the device, free internal
+buffers.
 
 ### `mkfw_audio_set_callback`
 
 ```c
-void mkfw_audio_set_callback(void (*cb)(int16_t *, size_t))
+void mkfw_audio_set_callback(mkfw_audio_callback_t cb, void *userdata);
 ```
 
-Set or change the audio callback function. Thread-safe -- can be called while audio is running.
+Install (or replace) the fill callback. Safe to call at any time
+including while audio is running; the swap is atomic and the
+audio thread sees a consistent (cb, userdata) pair. Pass `0` for
+both to silence output.
 
-**Parameters:**
-- `cb` - New callback function, or `NULL` for silence
+### `mkfw_audio_set_device_lost_callback`
 
-**Notes:**
-- Uses atomic store, safe to call from any thread at any time
-- The new callback takes effect on the next buffer fill
-- Preferred over directly assigning `mkfw_audio_callback` when audio is already running
-
-**Example:**
 ```c
-// Switch to a different audio source at runtime
-mkfw_audio_set_callback(new_synth_callback);
-
-// Mute audio without stopping the thread
-mkfw_audio_set_callback(NULL);
+void mkfw_audio_set_device_lost_callback(mkfw_audio_device_lost_callback_t cb, void *userdata);
 ```
 
----
+Install (or replace) the device-lost hook. Same swap semantics
+as `mkfw_audio_set_callback`.
 
-## Audio Callback
-
-### `mkfw_audio_callback`
+### `mkfw_audio_info`
 
 ```c
-void (*mkfw_audio_callback)(int16_t *audio_buffer, size_t frames);
+void mkfw_audio_info(struct mkfw_audio_info *out);
 ```
 
-Function pointer to your audio generation callback.
-
-**Parameters:**
-- `audio_buffer` - Buffer to fill with interleaved stereo samples
-- `frames` - Number of frames to generate (NOT samples - multiply by 2 for sample count)
-
-**Callback responsibilities:**
-1. Fill `frames * 2` samples in the buffer (interleaved L/R)
-2. Return quickly (this runs on realtime thread)
-3. Generate audio without blocking or allocating memory
-
-**Notes:**
-- Buffer is pre-zeroed before your callback is called
-- If callback is NULL, audio plays silence
-- Runs on high-priority audio thread - keep processing minimal
-- Typical frame counts: 256 frames on ALSA (5.3ms), 480 frames on WASAPI (10ms) at 48kHz
-
-**Example:**
-```c
-void my_audio_callback(int16_t *audio_buffer, size_t frames) {
-    for (size_t i = 0; i < frames; i++) {
-        // Generate left and right samples
-        int16_t left = generate_sample();
-        int16_t right = generate_sample();
-
-        // Interleaved stereo
-        audio_buffer[i * 2 + 0] = left;
-        audio_buffer[i * 2 + 1] = right;
-    }
-}
-
-// Set callback
-mkfw_audio_callback = my_audio_callback;
-```
+Copy the negotiated device info into `*out`. Valid only after a
+successful `mkfw_audio_init`. Read once at startup and cache;
+the values do not change for the device's lifetime.
 
 ---
 
-## Typical Usage Patterns
-
-### Simple Tone Generation
+## Example
 
 ```c
-#define MKFW_AUDIO
-#include "mkfw.h"
-
-float phase = 0.0f;
-
-void audio_callback(int16_t *buffer, size_t frames) {
-    float frequency = 440.0f;  // A4
-    float sample_rate = 48000.0f;
-    float phase_increment = frequency / sample_rate;
-
-    for (size_t i = 0; i < frames; i++) {
-        // Generate sine wave
-        int16_t sample = (int16_t)(sin(phase * 2.0f * M_PI) * 16000.0f);
-
-        // Stereo - same on both channels
-        buffer[i * 2 + 0] = sample;
-        buffer[i * 2 + 1] = sample;
-
-        // Advance phase
-        phase += phase_increment;
-        if (phase >= 1.0f) phase -= 1.0f;
-    }
-}
-
-int main(void) {
-    mkfw_audio_callback = audio_callback;
-    mkfw_audio_init();
-
-    // Audio plays in background
-    while (running) {
-        // Do other work
-    }
-
-    mkfw_audio_shutdown();
-    return 0;
-}
-```
-
----
-
-### Music Player with External Library
-
-```c
-#define MKFW_AUDIO
-#include "mkfw.h"
-#include "micromod.h"  // Example: tracker music player
-
-void audio_callback(int16_t *buffer, size_t frames) {
-    // Use external library to generate audio
-    micromod_get_audio(buffer, frames);
-}
-
-int main(void) {
-    // Initialize music player
-    micromod_initialise(mod_data, sample_rate);
-
-    // Start audio
-    mkfw_audio_callback = audio_callback;
-    mkfw_audio_init();
-
-    // Run application
-    while (running) {
-        // ...
-    }
-
-    mkfw_audio_shutdown();
-    return 0;
-}
-```
-
----
-
-### Mixer with Multiple Sources
-
-```c
-#define MKFW_AUDIO
-#include "mkfw.h"
-
-typedef struct {
-    int16_t *samples;
-    size_t length;
-    size_t position;
-    float volume;
-    int playing;
-} sound_source_t;
-
-#define MAX_SOURCES 16
-sound_source_t sources[MAX_SOURCES];
-
-void audio_callback(int16_t *buffer, size_t frames) {
-    // Buffer is pre-zeroed
-
-    // Mix all active sources
-    for (int s = 0; s < MAX_SOURCES; s++) {
-        if (!sources[s].playing) continue;
-
-        sound_source_t *src = &sources[s];
-
-        for (size_t i = 0; i < frames && src->position < src->length; i++) {
-            // Read stereo sample from source
-            int16_t left = src->samples[src->position * 2 + 0];
-            int16_t right = src->samples[src->position * 2 + 1];
-
-            // Apply volume and mix (with clamping)
-            int32_t mixed_left = buffer[i * 2 + 0] + (int32_t)(left * src->volume);
-            int32_t mixed_right = buffer[i * 2 + 1] + (int32_t)(right * src->volume);
-
-            // Clamp to int16 range
-            if (mixed_left > 32767) mixed_left = 32767;
-            if (mixed_left < -32768) mixed_left = -32768;
-            if (mixed_right > 32767) mixed_right = 32767;
-            if (mixed_right < -32768) mixed_right = -32768;
-
-            buffer[i * 2 + 0] = (int16_t)mixed_left;
-            buffer[i * 2 + 1] = (int16_t)mixed_right;
-
-            src->position++;
-        }
-
-        // Stop if finished
-        if (src->position >= src->length) {
-            src->playing = 0;
-        }
-    }
-}
-```
-
----
-
-### Integration with Platform Template (from platform.c)
-
-```c
-#define MKFW_TIMER
-#define MKFW_AUDIO
-#include "mkfw.h"
-
-// Your audio callback
-void my_audio_callback(int16_t *buffer, size_t frames) {
-    // Generate audio
-}
-
-int main(int argc, char **argv) {
-    // Initialize audio first
-    mkfw_audio_callback = my_audio_callback;
-    mkfw_audio_init();
-
-    // Initialize timer
-    mkfw_timer_init();
-
-    // Create window and run application
-    // ...
-
-    // Cleanup in reverse order
-    mkfw_timer_shutdown();
-    mkfw_audio_shutdown();
-
-    return 0;
-}
-```
-
----
-
-## Best Practices
-
-### DO:
-
-✓ Keep callback processing fast and deterministic
-✓ Pre-allocate all resources before audio starts
-✓ Use lock-free data structures for communication with audio thread
-✓ Handle the exact number of frames requested
-✓ Fill buffer completely (or leave zeros for silence)
-✓ Use atomic operations or lock-free queues for inter-thread communication
-
-### DON'T:
-
-✗ Allocate memory in the callback
-✗ Use mutexes or blocking operations
-✗ Perform file I/O
-✗ Call system functions that might block
-✗ Access graphics resources
-✗ Assume a specific callback frequency
-
----
-
-## Platform-Specific Implementation Details
-
-### Windows Implementation
-
-**Files:** `mkfw_win32_audio.c`
-
-**Key features:**
-- Uses WASAPI (Windows Audio Session API) in shared mode
-- Event-driven callback (no polling)
-- MMCSS "Pro Audio" thread priority
-- Automatic format conversion (via `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`)
-- Sample rate conversion (via `AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY`)
-- Graceful shutdown with buffer flushing
-
-**Dependencies:**
-- audioclient.h, mmdeviceapi.h, avrt.h, timeapi.h
-- Links (MinGW): `-lole32 -lavrt -lwinmm`
-- Links (clang-cl): `ole32.lib avrt.lib winmm.lib uuid.lib`
-
-WASAPI GUIDs are defined inline in the source to avoid depending on `uuid.lib` for those specific identifiers, but clang-cl may still require `uuid.lib` for other COM GUIDs. MinGW provides these implicitly.
-
-**Buffer size:**
-- Determined by device default period in shared mode (typically 10ms = 480 frames at 48kHz)
-- System manages buffering automatically
-
----
-
-### Linux Implementation
-
-**Files:** `mkfw_linux_audio.c`
-
-**Key features:**
-- Uses ALSA (Advanced Linux Sound Architecture)
-- Tries "plug:pipewire" first, falls back to "default" device (compatible with both PipeWire and ALSA-only systems)
-- Double buffering for low latency (2 × 256 frames = ~10.7ms latency)
-- Automatic recovery from buffer underruns
-- Blocking I/O with `snd_pcm_wait()`
-
-**Dependencies:**
-- alsa/asoundlib.h (compile-time header), pthread.h
-- libasound is loaded at runtime via dlopen (no link-time dependency)
-- Links: `-lpthread -ldl`
-
-**Buffer configuration:**
-- Period size: 256 frames (5.3ms at 48kHz)
-- Buffer size: 512 frames (10.7ms at 48kHz)
-- 2 periods for low-latency playback
-
----
-
-## Constants and Configuration
-
-### Audio Format Constants
-
-```c
-#define MKFW_SAMPLE_RATE     48000
-#define MKFW_NUM_CHANNELS    2
-#define MKFW_BITS_PER_SAMPLE 16
-#define MKFW_FRAME_SIZE      4  // 2 channels × 2 bytes
-```
-
-### Linux-Specific Constants
-
-```c
-#define MKFW_PREFERRED_FRAMES_PER_BUFFER 256
-#define MKFW_BUFFER_SIZE     1024  // 256 × 4 bytes
-#define MKFW_BUFFER_COUNT    2     // Double buffering
-```
-
----
-
-## Latency Characteristics
-
-### Expected Latency
-
-| Platform | Typical Latency | Notes |
-|----------|----------------|-------|
-| Windows (WASAPI) | 10-20ms | Depends on device period |
-| Linux (ALSA/PipeWire) | 10-15ms | 2× buffering, low latency |
-
-### Reducing Latency
-
-**Windows:**
-- Latency is determined by audio device and system settings
-- Exclusive mode could reduce latency (not currently supported)
-
-**Linux:**
-- Already optimized for low latency (10-15ms)
-- Can reduce `MKFW_PREFERRED_FRAMES_PER_BUFFER` to 128 for ultra-low latency (~5ms)
-- May cause underruns on slower systems or under high load
-- Use real-time kernel for even better scheduling
-
----
-
-## Error Handling
-
-The audio system handles errors gracefully:
-
-- **Device open failure:** Audio thread stays alive and retries every 100ms until a device becomes available
-- **Buffer underrun (Linux):** Automatically recovered via `snd_pcm_recover()`
-- **Device disconnect (hotplug):** Audio thread detects the failure, tears down the device, and immediately begins retrying. First retry is instant (no delay), then 100ms backoff between attempts. Audio resumes automatically when a new device appears.
-- **Initialization failure:** `mkfw_audio_shutdown()` is still safe to call
-
-**Hotplug behavior:**
-- Disconnecting a USB audio interface causes ~100ms of silence per retry cycle
-- Reconnecting the same or a different device resumes playback automatically
-- The audio thread never exits -- it retries indefinitely until shutdown is called
-- On Linux: reopens ALSA device (tries PipeWire first, then default)
-- On Windows: re-enumerates WASAPI default endpoint
-
-**Checking for success:**
-```c
-// The API doesn't return error codes
-// Audio thread always starts, even if no device is available
-
-mkfw_audio_set_callback(my_callback);
-mkfw_audio_init();
-
-// Audio plays when a device is available, retries silently when not
-```
-
----
-
-## Thread Safety
-
-### Safe Operations
-
-- Setting `mkfw_audio_callback` before `mkfw_audio_init()`
-- Calling `mkfw_audio_set_callback()` while audio is running (atomic swap)
-- Calling `mkfw_audio_shutdown()` from any thread
-- Reading audio state from callback (one-way communication)
-
-### Unsafe Operations
-
-- Directly assigning `mkfw_audio_callback` while audio is running (use `mkfw_audio_set_callback()` instead)
-- Accessing audio thread internals from outside
-
-### Inter-thread Communication
-
-For communicating with the audio thread, use:
-
-1. **Atomic variables** - For simple flags and counters
-2. **Lock-free ring buffers** - For audio data streaming
-3. **Lock-free queues** - For event passing
-
-**Example with atomics:**
-```c
-#include <stdatomic.h>
-
-atomic_int volume = ATOMIC_VAR_INIT(100);
-
-void audio_callback(int16_t *buffer, size_t frames) {
-    int v = atomic_load(&volume);
-
-    for (size_t i = 0; i < frames * 2; i++) {
-        buffer[i] = (buffer[i] * v) / 100;
-    }
-}
-
-// From main thread:
-atomic_store(&volume, 50);  // Safe!
-```
-
----
-
-## Troubleshooting
-
-### No audio output
-
-1. Check that callback is set before `mkfw_audio_init()`
-2. Verify callback is generating non-zero samples
-3. Check system audio settings and volume
-4. Ensure audio device is not in use by another application
-
-### Audio dropouts/glitches
-
-1. Callback is taking too long - profile and optimize
-2. System is too loaded - close background applications
-3. Memory allocation in callback - pre-allocate everything
-4. Blocking operations in callback - use lock-free data structures
-
-### Audio delay/latency
-
-1. Check platform latency characteristics (see table above)
-2. On Linux: Reduce buffer count (may cause instability)
-3. Consider platform limitations
-
-### Crackling/distortion
-
-1. Samples exceeding ±32767 range - clamp your output
-2. Buffer is not fully filled - generate all requested frames
-3. Mixing overflow - use 32-bit intermediate values and clamp
-
----
-
-## Example: Complete Audio Player
-
-```c
-#define MKFW_AUDIO
-#include "mkfw.h"
 #include <math.h>
+#include "mkfw.h"
+#include "mkfw_audio.h"
 
-typedef struct {
-    float frequency;
-    float phase;
-    float volume;
-} oscillator_t;
+struct synth_state {
+    double phase;
+    double phase_step;
+    uint32_t channels;
+};
 
-oscillator_t osc = { .frequency = 440.0f, .phase = 0.0f, .volume = 0.3f };
-
-void audio_callback(int16_t *buffer, size_t frames) {
-    const float sample_rate = 48000.0f;
-    const float phase_inc = osc.frequency / sample_rate;
-
-    for (size_t i = 0; i < frames; i++) {
-        // Generate sine wave
-        float sample_f = sinf(osc.phase * 2.0f * M_PI) * 32000.0f * osc.volume;
-        int16_t sample = (int16_t)sample_f;
-
-        // Stereo
-        buffer[i * 2 + 0] = sample;
-        buffer[i * 2 + 1] = sample;
-
-        // Advance phase
-        osc.phase += phase_inc;
-        if (osc.phase >= 1.0f) {
-            osc.phase -= 1.0f;
+static void on_audio(void *userdata, float *buffer, uint32_t frames) {
+    struct synth_state *s = (struct synth_state *)userdata;
+    for(uint32_t f = 0; f < frames; ++f) {
+        float sample = (float)(sin(s->phase) * 0.2);
+        s->phase += s->phase_step;
+        for(uint32_t c = 0; c < s->channels; ++c) {
+            buffer[f * s->channels + c] = sample;
         }
     }
 }
 
 int main(void) {
-    printf("Starting audio test (440Hz sine wave)...\n");
-
-    mkfw_audio_callback = audio_callback;
-    mkfw_audio_init();
-
-    // Play for 5 seconds
-    for (int i = 0; i < 5; i++) {
-        printf("Playing... %d\n", i + 1);
-        sleep(1);
+    struct mkfw_audio_options opts = {0};
+    if(!mkfw_audio_init(&opts)) {
+        return 1;
     }
 
-    mkfw_audio_shutdown();
-    printf("Audio stopped.\n");
+    struct mkfw_audio_info info;
+    mkfw_audio_info(&info);
 
+    struct synth_state s = {0};
+    s.phase_step = 2.0 * 3.141592653589793 * 440.0 / info.sample_rate;
+    s.channels = info.channels;
+
+    mkfw_audio_set_callback(on_audio, &s);
+
+    // ... run application ...
+
+    mkfw_audio_set_callback(0, 0);
+    mkfw_audio_shutdown();
     return 0;
 }
 ```
 
 ---
 
-## See Also
+## Threading
 
-- `MKFW_API.md` - Main MKFW windowing API
-- `MKFW_TIMER_API.md` - Timer subsystem documentation
-- External audio libraries compatible with this API:
-  - MicroMod - MOD/XM/S3M tracker playback
-  - FutureComposer - Amiga FC music playback
-  - Custom synthesizers and samplers
+- The audio callback runs on the audio thread. Do not touch GL,
+  X11/Win32 windowing, or any non-realtime resource from inside
+  it. Communicate with the main thread via atomics or a
+  lock-free queue.
+- `mkfw_audio_set_callback`, `mkfw_audio_set_device_lost_callback`,
+  and `mkfw_audio_info` are safe to call from any thread.
+- `mkfw_audio_init` / `mkfw_audio_shutdown` should be called from
+  the same thread (typically main).
 
----
+## Memory ownership
 
-## License
-
-MIT License - See source files for full license text.
+mkfw_audio never returns library-owned memory and never asks the
+application for an allocation. The callback `buffer` is owned by
+mkfw and valid only for the duration of the call.

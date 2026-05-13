@@ -14,6 +14,15 @@
 //
 // On Windows, link with ole32.lib, avrt.lib, uuid.lib in addition to
 // the base mkfw libraries.
+//
+// Format contract.  The audio callback always receives interleaved
+// 32-bit IEEE float samples in the [-1.0, 1.0] range.  Sample rate
+// and channel count are negotiated at mkfw_audio_init() time; the
+// negotiated values (along with buffer size and estimated latency)
+// are retrievable via mkfw_audio_info().  mkfw does not resample;
+// the OS audio layer (WASAPI shared / PipeWire / PulseAudio / ALSA
+// plug) is trusted to convert the negotiated stream to whatever the
+// physical device wants.
 
 #pragma once
 
@@ -21,6 +30,36 @@
 #include <stddef.h>
 
 #include "mkfw.h"
+
+/* Callback invoked from the audio thread to fill the next period.
+ * The buffer holds (frames * channels) interleaved float samples. */
+typedef void (*mkfw_audio_callback_t)(void *userdata, float *buffer, uint32_t frames);
+
+/* Callback fired once each time the audio device transitions from
+ * playing to lost.  mkfw will continue trying to reopen the default
+ * device in the background; this hook only exists so the
+ * application can react (pause music, dim a UI indicator, ...). */
+typedef void (*mkfw_audio_device_lost_callback_t)(void *userdata);
+
+/* Audio init options.  Pass 0 to use defaults for every field.
+ * The version field must be 0 for now; future revisions may add
+ * fields and bump the version. */
+struct mkfw_audio_options {
+	uint32_t version;                 // 0 = current
+	uint32_t preferred_sample_rate;   // 0 = 48000
+	uint32_t preferred_channels;      // 0 = 2 (stereo)
+	uint32_t preferred_buffer_frames; // 0 = backend default
+	uint32_t realtime_priority;       // 0 = normal, non-zero = try RT scheduling
+};
+
+/* Audio device info.  Filled by mkfw_audio_info(). */
+struct mkfw_audio_info {
+	uint32_t sample_rate;        // negotiated, in Hz
+	uint32_t channels;           // negotiated
+	uint32_t frames_per_buffer;  // device buffer in frames
+	uint32_t period_frames;      // callback granularity in frames
+	uint64_t latency_ns;         // best estimate, total
+};
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
