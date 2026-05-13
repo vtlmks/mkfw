@@ -725,7 +725,7 @@ if(!mkfw_has_focus(window)) {
 ### `mkfw_set_window_state_callback`
 
 ```c
-void mkfw_set_window_state_callback(struct mkfw_state *state, window_state_callback_t callback)
+void mkfw_set_window_state_callback(struct mkfw_state *state, mkfw_window_state_callback_t callback)
 ```
 
 Register a callback that fires when the window transitions between normal, maximized, and minimized states.
@@ -907,8 +907,8 @@ void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mo
 ### `mkfw_set_key_callback`
 
 ```c
-typedef void (*key_callback_t)(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods);
-void mkfw_set_key_callback(struct mkfw_state *state, key_callback_t callback)
+typedef void (*mkfw_key_callback_t)(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods);
+void mkfw_set_key_callback(struct mkfw_state *state, mkfw_key_callback_t callback)
 ```
 
 Register a callback for keyboard events.
@@ -1036,8 +1036,8 @@ Constrain mouse to window (grab pointer).
 ### `mkfw_set_mouse_move_delta_callback`
 
 ```c
-typedef void (*mouse_move_delta_callback_t)(struct mkfw_state *state, int32_t dx, int32_t dy);
-void mkfw_set_mouse_move_delta_callback(struct mkfw_state *state, mouse_move_delta_callback_t callback)
+typedef void (*mkfw_mouse_move_delta_callback_t)(struct mkfw_state *state, int32_t dx, int32_t dy);
+void mkfw_set_mouse_move_delta_callback(struct mkfw_state *state, mkfw_mouse_move_delta_callback_t callback)
 ```
 
 Register a callback for raw mouse motion.
@@ -1068,8 +1068,8 @@ mkfw_set_mouse_move_delta_callback(window, on_mouse_move);
 ### `mkfw_set_mouse_button_callback`
 
 ```c
-typedef void (*mouse_button_callback_t)(struct mkfw_state *state, uint8_t button, int action);
-void mkfw_set_mouse_button_callback(struct mkfw_state *state, mouse_button_callback_t callback)
+typedef void (*mkfw_mouse_button_callback_t)(struct mkfw_state *state, uint8_t button, int action);
+void mkfw_set_mouse_button_callback(struct mkfw_state *state, mkfw_mouse_button_callback_t callback)
 ```
 
 Register a callback for mouse button events.
@@ -1098,8 +1098,8 @@ mkfw_set_mouse_button_callback(window, on_mouse_button);
 ### `mkfw_set_char_callback`
 
 ```c
-typedef void (*char_callback_t)(struct mkfw_state *state, uint32_t codepoint);
-void mkfw_set_char_callback(struct mkfw_state *state, char_callback_t callback)
+typedef void (*mkfw_char_callback_t)(struct mkfw_state *state, uint32_t codepoint);
+void mkfw_set_char_callback(struct mkfw_state *state, mkfw_char_callback_t callback)
 ```
 
 Register a callback for character input events.
@@ -1124,8 +1124,8 @@ Register a callback for character input events.
 ### `mkfw_set_scroll_callback`
 
 ```c
-typedef void (*scroll_callback_t)(struct mkfw_state *state, double xoffset, double yoffset);
-void mkfw_set_scroll_callback(struct mkfw_state *state, scroll_callback_t callback)
+typedef void (*mkfw_scroll_callback_t)(struct mkfw_state *state, double xoffset, double yoffset);
+void mkfw_set_scroll_callback(struct mkfw_state *state, mkfw_scroll_callback_t callback)
 ```
 
 Register a callback for mouse scroll events.
@@ -1318,8 +1318,8 @@ printf("Clipboard: %s\n", text);
 ### `mkfw_set_focus_callback`
 
 ```c
-typedef void (*focus_callback_t)(struct mkfw_state *state, uint8_t focused);
-void mkfw_set_focus_callback(struct mkfw_state *state, focus_callback_t callback)
+typedef void (*mkfw_focus_callback_t)(struct mkfw_state *state, uint8_t focused);
+void mkfw_set_focus_callback(struct mkfw_state *state, mkfw_focus_callback_t callback)
 ```
 
 Register a callback for window focus changes.
@@ -1347,8 +1347,8 @@ These are updated automatically by `mkfw_pump_messages()`.
 ### `mkfw_set_drop_callback`
 
 ```c
-typedef void (*drop_callback_t)(uint32_t count, const char **paths);
-void mkfw_set_drop_callback(struct mkfw_state *state, drop_callback_t callback)
+typedef void (*mkfw_drop_callback_t)(uint32_t count, const char **paths);
+void mkfw_set_drop_callback(struct mkfw_state *state, mkfw_drop_callback_t callback)
 ```
 
 Register a callback for file drag-and-drop events. Setting a callback enables drop acceptance on the window. Setting it to `NULL` disables drops.
@@ -1483,8 +1483,8 @@ printf("VSync: %s\n", vsync ? "on" : "off");
 ### `mkfw_set_framebuffer_size_callback`
 
 ```c
-typedef void (*framebuffer_callback_t)(struct mkfw_state *state, int32_t width, int32_t height, float aspect_ratio);
-void mkfw_set_framebuffer_size_callback(struct mkfw_state *state, framebuffer_callback_t callback)
+typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_state *state, int32_t width, int32_t height, float aspect_ratio);
+void mkfw_set_framebuffer_size_callback(struct mkfw_state *state, mkfw_framebuffer_callback_t callback)
 ```
 
 Register a callback for framebuffer size changes.
