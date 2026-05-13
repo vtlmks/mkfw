@@ -2,7 +2,7 @@ name: Build mkfw
 
 on:
   push:
-    branches: [master, emscripten-support]
+    branches: [master]
   pull_request:
     branches: [master]
 
@@ -11,37 +11,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libxrandr-dev libgl-dev libasound2-dev
-      - name: Build example
+      - name: Install development headers
+        # Runtime libraries are dlopen'd; only the headers are needed at
+        # compile time.  See the Linking section in README.md.
         run: |
-          cd mkfw_run_example
-          gcc mkfw_run_example.c -I.. -lX11 -lXi -lXrandr -lGL -lm -lpthread -lasound -o mkfw_run_example -O2 -Wall -Wextra
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxi-dev libxrandr-dev libxcursor-dev \
+            libgl-dev libasound2-dev
+      - name: Build examples
+        run: bash examples/build_examples.sh
+      - name: Build tests
+        run: bash tests/build_tests.sh
 
   windows-clang-cl:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Build example
+      - name: Build examples and tests
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cd mkfw_run_example
-          clang-cl /O2 /W4 /D_CRT_SECURE_NO_WARNINGS -Wno-unused-parameter /I.. mkfw_run_example.c opengl32.lib gdi32.lib winmm.lib ole32.lib avrt.lib user32.lib shell32.lib uuid.lib /Fe:mkfw_run_example.exe
+          set CFLAGS=/O2 /W3 /D_CRT_SECURE_NO_WARNINGS -Wno-unused-parameter
+          set LIBS=opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib ole32.lib avrt.lib uuid.lib
 
-  emscripten:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Setup Emscripten
-        run: |
-          git clone https://github.com/emscripten-core/emsdk.git --depth 1
-          cd emsdk
-          ./emsdk install latest
-          ./emsdk activate latest
-      - name: Build example
-        run: |
-          source emsdk/emsdk_env.sh
-          cd mkfw_run_example
-          emcc mkfw_run_example.c -I.. -sUSE_WEBGL2=1 -sFULL_ES3=1 -sAUDIO_WORKLET=1 -sWASM_WORKERS=1 -o mkfw_run_example.html -O2 -Wall -Wextra -Wno-unused-parameter
+          pushd examples
+          clang-cl %CFLAGS% /I.. joystick.c     %LIBS% /Fe:joystick.exe     || exit /b 1
+          clang-cl %CFLAGS% /I.. threaded.c     %LIBS% /Fe:threaded.exe     || exit /b 1
+          clang-cl %CFLAGS% /I.. monitor.c      %LIBS% /Fe:monitor.exe      || exit /b 1
+          clang-cl %CFLAGS% /I.. transparency.c %LIBS% /Fe:transparency.exe || exit /b 1
+          clang-cl %CFLAGS% /I.. audio_beep.c   %LIBS% /Fe:audio_beep.exe   || exit /b 1
+          clang-cl %CFLAGS% /I.. multi_window.c %LIBS% /Fe:multi_window.exe || exit /b 1
+          popd
 
+          pushd tests
+          clang-cl %CFLAGS% /I.. smoke.c        %LIBS% /Fe:smoke.exe        || exit /b 1
+          clang-cl %CFLAGS% /I.. multi_window.c %LIBS% /Fe:multi_window.exe || exit /b 1
+          popd
