@@ -1,545 +1,303 @@
-# MKFW Timer API Documentation
+# mkfw timer API
 
-**High-Precision Timer Subsystem for MKFW**
+High-precision interval timing for frame pacing and fixed-step
+simulation loops.  Uses a sleep + spin strategy: the timer
+thread sleeps until close to the deadline, then signals the
+waiter via a futex / event so the caller wakes on the precise
+deadline tick rather than the OS scheduler's coarse granularity.
+
+## Enabling
+
+```c
+#include "mkfw.h"
+#include "mkfw_timer.h"
+```
+
+For required linker flags see the **Linking** section in the
+project README (the timer adds nothing beyond the core libs).
+
+## Contents
+
+- [Overview](#overview)
+- [Lifecycle: init and shutdown](#lifecycle-init-and-shutdown)
+- [Timer handles](#timer-handles)
+- [Waiting on a deadline](#waiting-on-a-deadline)
+- [Adjusting an active timer](#adjusting-an-active-timer)
+- [Threading](#threading)
+- [Platform details](#platform-details)
+- [Patterns](#patterns)
+
+---
 
 ## Overview
 
-The MKFW Timer API provides high-precision, low-jitter timing for applications requiring accurate frame pacing. It uses platform-specific implementations with sleep+spin strategies to achieve sub-millisecond accuracy while minimizing CPU usage.
-
-## Features
-
-- High-precision timing with nanosecond resolution
-- Hybrid sleep+spin approach for low jitter
-- Platform-optimized implementations (Win32/Linux)
-- Realtime priority support for minimal latency
-- Configurable spin threshold
-- Multiple independent timer instances
-
-## Platform Support
-
-- Linux (using futex, CLOCK_MONOTONIC_RAW, and nanosleep)
-- Windows (using QueryPerformanceCounter and NtDelayExecution)
-
----
-
-## Enabling the Timer Subsystem
-
-The timer subsystem is optional and must be enabled before including `mkfw.h`:
+Each timer owns a worker thread that tracks a monotonic deadline
+and wakes the application precisely at every tick.
 
 ```c
-#define MKFW_TIMER
-#include "mkfw.h"
+mkfw_timer_init();   // Win32 needs this; Linux no-op
+struct mkfw_timer_handle *t = mkfw_timer_create(16666666ULL);   // ~60 Hz
+
+while(running) {
+    mkfw_timer_wait(t);
+    update();
+    render();
+}
+
+mkfw_timer_destroy(t);
+mkfw_timer_shutdown();
 ```
 
-This will include the platform-specific timer implementation:
-- `mkfw_win32_timer.c` on Windows
-- `mkfw_linux_timer.c` on Linux
+The interval is in **nanoseconds**.  Common cadences:
+
+| Rate    | Interval (ns) |
+|---------|---------------|
+| 30 Hz   | 33333333      |
+| 60 Hz   | 16666666      |
+| 120 Hz  | 8333333       |
+| NTSC field (60.0988 Hz) | 16639090 |
+| PAL field (50 Hz)       | 20000000 |
+| 240 Hz  | 4166666       |
 
 ---
 
-## Core Concepts
-
-The timer subsystem uses a **sleep+spin strategy** for accurate timing:
-
-1. **Sleep phase** - For large time intervals, uses platform sleep functions to yield CPU
-2. **Spin phase** - For the final microseconds before deadline, busy-waits for precision
-3. **Deadline tracking** - Maintains absolute deadlines to prevent drift over time
-
-This approach balances CPU efficiency (sleep) with timing accuracy (spin).
-
-### Spin Thresholds
-
-- **Windows:** 1000µs (1ms) - Higher threshold due to timer resolution limitations
-- **Linux:** 500µs - Lower threshold thanks to more accurate nanosleep
-
----
-
-## Initialization
+## Lifecycle: init and shutdown
 
 ### `mkfw_timer_init`
 
 ```c
-void mkfw_timer_init(void)
+void mkfw_timer_init(void);
 ```
 
-Initialize the timer subsystem. Must be called before creating any timers.
+Initialize the timer subsystem.  Must be called before
+`mkfw_timer_create`.
 
-**Notes:**
-- On Windows: Sets timer resolution to 1 ms via `timeBeginPeriod()` and requests 0.5 ms via `NtSetTimerResolution()`.  On Windows 10 version 2004 and newer `timeBeginPeriod` is scoped **per-process for foreground apps** (older Windows applies it system-wide), so the call is well-behaved on modern systems and does not slow other processes' timer cadence.
-- On Windows: Caches QueryPerformanceCounter frequency for efficient time queries
-- On Windows: Loads `NtDelayExecution` from ntdll.dll for high-precision sleep
-- On Linux: No-op (stub function for API compatibility)
-- Must be paired with `mkfw_timer_shutdown()` before program exit
-
-**Example:**
-```c
-mkfw_timer_init();
-```
-
----
+- **Linux**: no-op stub.  Safe to call (and required for API
+  symmetry).
+- **Windows**: raises the global timer resolution to 1 ms via
+  `timeBeginPeriod(1)` and requests 0.5 ms via
+  `NtSetTimerResolution`; caches `QueryPerformanceFrequency`;
+  loads `NtDelayExecution` from ntdll.dll.  On Windows 10
+  version 2004 and newer `timeBeginPeriod` is **per-process for
+  foreground apps** (older Windows applies it system-wide), so
+  the call is well-behaved on modern systems.
 
 ### `mkfw_timer_shutdown`
 
 ```c
-void mkfw_timer_shutdown(void)
+void mkfw_timer_shutdown(void);
 ```
 
-Clean up timer subsystem resources.
+Tear down what `mkfw_timer_init` set up.
 
-**Notes:**
-- On Windows: Restores system timer resolution via `timeEndPeriod()`
-- On Linux: No-op (stub function for API compatibility)
-- Call after destroying all timer instances
+- **Linux**: no-op.
+- **Windows**: restores the global timer resolution and releases
+  the cached function pointers.
 
-**Example:**
-```c
-mkfw_timer_shutdown();
-```
+Call after every `mkfw_timer_destroy` you intend to make.
 
 ---
 
-## Timer Handle Management
+## Timer handles
 
 ### `mkfw_timer_create`
 
 ```c
-struct mkfw_timer_handle *mkfw_timer_create(uint64_t interval_ns)
+struct mkfw_timer_handle *mkfw_timer_create(uint64_t interval_ns);
 ```
 
-Create a new timer instance with the specified interval.
+Spawn a new timer ticking every `interval_ns` nanoseconds.  The
+internal worker thread starts immediately; the first
+`mkfw_timer_wait` blocks until the first deadline.
 
-**Parameters:**
-- `interval_ns` - Timer interval in nanoseconds
+Spin-correction is enabled by default
+(`mkfw_timer_set_spin(t, 1)`).  Turn off if you want pure sleep
+behaviour (cheaper, but coarser).
 
-**Returns:**
-- Pointer to timer handle
-
-**Notes:**
-- Creates a dedicated high-priority background thread
-- Thread runs at realtime priority for minimal jitter
-- On Windows: Uses MMCSS "Pro Audio" class or falls back to REALTIME_PRIORITY_CLASS
-- On Windows: Pins thread to CPU core 0 for consistency
-- On Linux: Uses futex for efficient wait/wake
-- Maintains absolute deadlines to prevent cumulative drift
-- Each timer is completely independent
-
-**Example:**
-```c
-// 60 FPS timer (16.666... ms)
-#define FRAME_TIME_NS 16666666
-struct mkfw_timer_handle *timer = mkfw_timer_create(FRAME_TIME_NS);
-```
-
-**Common intervals:**
-```c
-// 60 FPS
-#define FPS_60  16666666ULL
-
-// 50 FPS (PAL video timing)
-#define FPS_50  20000000ULL
-
-// 30 FPS
-#define FPS_30  33333333ULL
-
-// 120 FPS
-#define FPS_120 8333333ULL
-
-struct mkfw_timer_handle *timer = mkfw_timer_create(FPS_60);
-```
-
----
-
-### `mkfw_timer_wait`
-
-```c
-uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t)
-```
-
-Wait for the next timer tick.
-
-**Parameters:**
-- `t` - Timer handle
-
-**Returns:**
-- Always returns 1
-
-**Notes:**
-- Blocks until the next deadline is reached
-- Uses sleep+spin strategy for accurate timing
-- Automatically advances deadline for next tick
-- Safe to call from any thread (typically the render thread)
-- Will never drift - uses absolute deadlines internally
-
-**Example:**
-```c
-while (running) {
-    // Do frame work
-    render_scene();
-    swap_buffers();
-
-    // Wait for next frame
-    mkfw_timer_wait(timer);
-}
-```
-
----
-
-### `mkfw_timer_set_interval`
-
-```c
-void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns)
-```
-
-Change the interval of a running timer without destroying and recreating it.
-
-**Parameters:**
-- `t` - Timer handle
-- `interval_ns` - New timer interval in nanoseconds
-
-**Notes:**
-- Takes effect on the very next tick after the current one completes
-- Does not reset or disturb the current deadline
-- Safe to call from any thread
-- Useful for dynamic frame pacing (e.g., adjusting to audio buffer fill level)
-
-**Example:**
-```c
-// NES emulator: nudge frame time to keep audio buffer healthy.
-// NTSC field rate is 60.0988 Hz = ~16639090 ns/frame.
-#define NES_NTSC_FRAME_NS 16639090
-
-struct mkfw_timer_handle *timer = mkfw_timer_create(NES_NTSC_FRAME_NS);
-
-// Audio callback notices buffer is getting thin -- speed up slightly
-mkfw_timer_set_interval(timer, NES_NTSC_FRAME_NS - 50000);
-
-// Audio buffer is getting full -- slow down slightly
-mkfw_timer_set_interval(timer, NES_NTSC_FRAME_NS + 50000);
-```
-
----
+Returns the new timer handle.  The caller owns it and must
+release it with `mkfw_timer_destroy`.
 
 ### `mkfw_timer_destroy`
 
 ```c
-void mkfw_timer_destroy(struct mkfw_timer_handle *t)
+void mkfw_timer_destroy(struct mkfw_timer_handle *t);
 ```
 
-Destroy a timer instance and clean up resources.
-
-**Parameters:**
-- `t` - Timer handle
-
-**Notes:**
-- Stops the background timer thread
-- Waits for thread to exit cleanly
-- Frees all associated resources
-- On Windows: Reverts MMCSS thread priority if it was set
-- Safe to call even if timer is currently waiting
-
-**Example:**
-```c
-mkfw_timer_destroy(timer);
-```
+Stop the worker thread, free internal storage.  Passing `0` is a
+no-op.  Safe to call from any thread.
 
 ---
 
-## Typical Usage Pattern
+## Waiting on a deadline
 
-### Fixed Frame Rate Application
+### `mkfw_timer_wait`
 
 ```c
-#define MKFW_TIMER
-#include "mkfw.h"
-
-#define FRAME_TIME_NS 16666666  // 60 FPS
-
-int main(void) {
-    // Initialize timer subsystem
-    mkfw_timer_init();
-
-    // Create 60 FPS timer
-    struct mkfw_timer_handle *timer = mkfw_timer_create(FRAME_TIME_NS);
-
-    // Main loop
-    while (running) {
-        // Update game state
-        update_game();
-
-        // Render frame
-        render_scene();
-        swap_buffers();
-
-        // Wait for next frame (accurate timing)
-        mkfw_timer_wait(timer);
-    }
-
-    // Cleanup
-    mkfw_timer_destroy(timer);
-    mkfw_timer_shutdown();
-
-    return 0;
-}
+uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t);
 ```
+
+Block until the timer's next deadline.  Returns non-zero on a
+normal tick, zero only if `t` is `0`.
+
+Each call returns once per deadline.  If the application falls
+behind (handlers take longer than the interval), missed ticks
+accumulate at the deadline boundary; subsequent calls will
+return immediately until the application catches up.  Plan for
+either:
+
+- catching up by running the simulation at fixed-step regardless
+  of how many ticks fired, or
+- skipping render frames when too far behind.
 
 ---
 
-### Multiple Independent Timers
+## Adjusting an active timer
+
+### `mkfw_timer_set_interval`
 
 ```c
-// Different update rates for different systems
-struct mkfw_timer_handle *render_timer = mkfw_timer_create(16666666);  // 60 FPS
-struct mkfw_timer_handle *physics_timer = mkfw_timer_create(10000000); // 100 Hz
-struct mkfw_timer_handle *network_timer = mkfw_timer_create(50000000); // 20 Hz
-
-// Each timer runs independently with its own thread
+void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns);
 ```
 
----
+Change the tick interval.  Takes effect on the next deadline
+after the current one completes; the active deadline is not
+disturbed.  Safe to call from any thread.
 
-### Render Thread Pattern (from platform.c)
+Useful for variable-rate pacing (e.g. nudging frame time to
+match audio buffer fill level).
+
+### `mkfw_timer_set_spin`
 
 ```c
-#define MKFW_TIMER
-#include "mkfw.h"
-
-void *render_thread_func(void *arg) {
-    struct mkfw_timer_handle *timer = mkfw_timer_create(FRAME_TIME_NS);
-
-    while (state.running) {
-        // Handle input
-        if (mkfw_window_is_key_pressed(window, MKFW_KEY_ESCAPE)) {
-            state.running = 0;
-        }
-
-        // Update state
-        update_keyboard_state(window);
-        update_mouse_state(window);
-
-        // Render
-        render_frame();
-        mkfw_window_swap_buffers(window);
-
-        // Precise timing
-        mkfw_timer_wait(timer);
-    }
-
-    mkfw_timer_destroy(timer);
-    return 0;
-}
-
-int main(void) {
-    mkfw_timer_init();
-
-    // Create window, set up context
-    // ...
-
-    // Detach context from main thread
-    mkfw_window_detach_context(window);
-
-    // Start render thread
-    pthread_create(&thread, NULL, render_thread_func, NULL);
-
-    // Main thread handles events
-    while (state.running && !mkfw_window_should_close(window)) {
-        mkfw_poll_events(window);
-        mkfw_sleep(5000000);  // 5ms
-    }
-
-    pthread_join(thread, NULL);
-    mkfw_timer_shutdown();
-
-    return 0;
-}
+void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled);
 ```
+
+Toggle the spin-correction phase.
+
+- `enabled != 0` (default): the worker sleeps until close to the
+  deadline then **spins** until the precise deadline.  Lower
+  jitter, higher CPU.
+- `enabled == 0`: pure sleep.  Higher jitter (typically OS
+  scheduler quantum), lower CPU.
+
+Safe to flip at runtime; the next tick observes the new value.
 
 ---
 
-## Debug Mode
+## Threading
 
-Define `MKFW_TIMER_DEBUG` before including to enable debug output:
+The internal worker thread is invisible to the application.
+`mkfw_timer_wait` is called from whichever thread the
+application chooses to run the wait loop on.  All of
+`mkfw_timer_set_interval`, `_set_spin`, `_destroy` are safe to
+call from any thread; their effects are visible to the worker
+via acquire/release atomics.
+
+Do **not** mix:
+
+- Driving the wait loop on one thread and calling
+  `mkfw_timer_destroy` on the same handle from another without
+  first making sure the wait loop is no longer running, or
+- Sharing a single timer handle between multiple waiting
+  threads (only one of them will be woken per tick; behaviour
+  is otherwise undefined).
+
+If two threads need independent cadences, create two timers.
+
+---
+
+## Platform details
+
+### Linux
+
+- The worker uses `clock_gettime(CLOCK_MONOTONIC_RAW)` for
+  deadlines, `nanosleep` for the sleep phase, and a custom
+  futex (`SYS_futex` with `FUTEX_WAIT` / `FUTEX_WAKE`) for
+  cross-thread wake-up.
+- No system-wide configuration change.
+
+### Windows
+
+- The worker uses `QueryPerformanceCounter` for deadlines.  The
+  sleep phase uses `NtDelayExecution` with the cached 0.5 ms
+  resolution (via `timeBeginPeriod` + `NtSetTimerResolution`
+  in `mkfw_timer_init`).
+- Wake-up uses `WaitForSingleObject` on a manual-reset Event.
+- The 1 ms timer resolution is held only for the lifetime of
+  the subsystem (between `mkfw_timer_init` and
+  `mkfw_timer_shutdown`).
+
+---
+
+## Patterns
+
+### Fixed-step game loop
 
 ```c
-#define MKFW_TIMER_DEBUG
-#define MKFW_TIMER
-#include "mkfw.h"
-```
+mkfw_timer_init();
+struct mkfw_timer_handle *t = mkfw_timer_create(16666666ULL);  // 60 Hz
 
-**Debug output includes:**
-- Time remaining after sleep phase
-- Overshoot amount (how late past the deadline)
-- Helps diagnose timing issues
+while(!mkfw_window_should_close(win)) {
+    mkfw_poll_events(ctx);
 
-**Example output:**
-```
-[DEBUG] Woke up with 450123 ns left. Overshoot:    24 ns
-[DEBUG] Woke up with 498765 ns left. Overshoot:    19 ns
-```
+    // Fixed-step simulation
+    update_simulation();
 
----
-
-## Platform-Specific Implementation Details
-
-### Windows Implementation
-
-**Files:** `mkfw_win32_timer.c`
-
-**Key features:**
-- Uses `QueryPerformanceCounter` for time measurement
-- Uses `NtDelayExecution` for high-precision sleep
-- Sets thread to MMCSS "Pro Audio" class for realtime priority
-- Falls back to `REALTIME_PRIORITY_CLASS` + `THREAD_PRIORITY_TIME_CRITICAL`
-- Pins timer thread to CPU core 0 for consistency
-- Spin threshold: 1000µs (1ms)
-
-**Dependencies:**
-- Windows.h, mmsystem.h, avrt.h, winternl.h
-- Links: `-lwinmm -lavrt`
-
----
-
-### Linux Implementation
-
-**Files:** `mkfw_linux_timer.c`
-
-**Key features:**
-- Uses `CLOCK_MONOTONIC_RAW` for drift-free time measurement
-- Uses `nanosleep()` for sleep phase
-- Uses futex for efficient wait/wake between threads
-- Spin threshold: 500µs
-
-**Dependencies:**
-- pthread.h, time.h, linux/futex.h, sys/syscall.h
-- Links: `-lpthread`
-
----
-
-## Performance Characteristics
-
-### Accuracy
-
-- **Typical jitter:** 50-200 nanoseconds (on modern hardware)
-- **Maximum jitter:** Usually under 1 microsecond
-- **Long-term drift:** Zero (uses absolute deadlines)
-
-### CPU Usage
-
-- **Sleep phase:** Near-zero CPU usage
-- **Spin phase:** 100% on one core for the spin threshold duration
-- **Overall:** Up to ~3% of one core on Linux, ~6% on Windows at 60 FPS (spin only runs during idle time — if your frame uses most of the budget, spin cost approaches zero)
-
-### Priority
-
-- Runs at realtime priority to minimize scheduler interference
-- Should not starve other processes (spins for microseconds, not milliseconds)
-
----
-
-## Important Notes
-
-### Thread Safety
-
-- Each timer handle has its own dedicated thread
-- `mkfw_timer_wait()` is safe to call from any thread
-- Multiple timers are completely independent
-
-### Realtime Scheduling
-
-- Timers use realtime priority for accuracy
-- Spin phase is intentionally kept short to avoid system impact
-
-### System Timer Resolution
-
-- Windows: Timer resolution is set to 1ms system-wide during `mkfw_timer_init()`
-- This affects the entire system, not just your application
-- Resolution is restored on `mkfw_timer_shutdown()`
-
-### Deadline Management
-
-- Timers maintain absolute deadlines, not relative intervals
-- This prevents cumulative drift over long run times
-- If you miss a deadline (frame drop), the next deadline compensates automatically
-
----
-
-## Common Patterns
-
-### Variable Refresh Rate Adaptation
-
-```c
-// Start with 60 FPS
-struct mkfw_timer_handle *timer = mkfw_timer_create(16666666);
-
-// Later, switch to 120 FPS
-mkfw_timer_set_interval(timer, 8333333);
-```
-
-### Frame Time Measurement
-
-```c
-#include "mkfw.h"
-
-uint64_t last_time = mkfw_get_time(window);
-
-while (running) {
-    uint64_t current_time = mkfw_get_time(window);
-    uint64_t delta = current_time - last_time;
-    last_time = current_time;
-
-    printf("Frame time: %llu ns (%.2f FPS)\n",
-           delta, 1000000000.0 / delta);
-
+    // Render
     render_frame();
-    mkfw_timer_wait(timer);
+    mkfw_window_swap_buffers(win);
+    mkfw_window_update_input_state(win);
+
+    mkfw_timer_wait(t);  // sleep until next tick
+}
+
+mkfw_timer_destroy(t);
+mkfw_timer_shutdown();
+```
+
+### NTSC frame pacing (emulator)
+
+The NTSC field rate is 60.0988 Hz, not 60 Hz exactly:
+
+```c
+#define NES_NTSC_FRAME_NS 16639090   /* 60.0988 Hz field rate */
+
+struct mkfw_timer_handle *t = mkfw_timer_create(NES_NTSC_FRAME_NS);
+```
+
+Nudge the interval at runtime to keep the audio buffer at a
+healthy level:
+
+```c
+if(audio_buffer_low()) {
+    mkfw_timer_set_interval(t, NES_NTSC_FRAME_NS - 50000);
+} else if(audio_buffer_high()) {
+    mkfw_timer_set_interval(t, NES_NTSC_FRAME_NS + 50000);
 }
 ```
 
----
+### Render thread (separate from input pump)
 
-## Comparison with Other Timing Methods
+The threaded-rendering pattern (`examples/threaded.c`) pairs the
+timer with a dedicated render thread:
 
-| Method | Accuracy | CPU Usage | Complexity |
-|--------|----------|-----------|------------|
-| `sleep()` / `Sleep()` | ~15ms jitter | Very low | Simple |
-| Busy spin | Perfect | 100% one core | Simple |
-| **MKFW Timer** | ~0.0001ms jitter | Very low | Simple API |
-| Custom sleep+spin | ~0.001ms jitter | Very low | Complex |
+```c
+static MKFW_THREAD_FUNC(render_thread, arg) {
+    struct app *app = arg;
+    mkfw_window_attach_context(app->win);
+    mkfw_timer_init();
+    struct mkfw_timer_handle *t = mkfw_timer_create(16666666ULL);
+    while(app->running) {
+        render(app);
+        mkfw_window_swap_buffers(app->win);
+        mkfw_timer_wait(t);
+    }
+    mkfw_timer_destroy(t);
+    mkfw_timer_shutdown();
+    return 0;
+}
+```
 
----
-
-## Troubleshooting
-
-### High jitter on Windows
-
-- Ensure `mkfw_timer_init()` is called to set timer resolution
-- Check system load - other realtime processes may interfere
-- Disable Windows power saving features
-
-### Occasional jitter spikes on Linux
-
-- The timer uses normal thread priority and achieves excellent results (typically <50ns jitter)
-- Occasional spikes (~80µs) are usually caused by SMI (System Management Interrupts), not scheduling
-- SMI cannot be eliminated without BIOS settings changes (disable C-states, Intel ME, etc.)
-- Advanced: Boot with `isolcpus=` and `nohz_full=` kernel parameters to isolate timer to dedicated CPU
-- Not necessary for most use cases - default behavior is already excellent
-
-### Consistent overshoot
-
-- System may be too loaded to meet deadline
-- Reduce frame rate or optimize frame workload
-- Check if other realtime processes are competing
-
----
-
-## See Also
-
-- `MKFW_API.md` - Main MKFW windowing API
-- `MKFW_AUDIO_API.md` - Audio subsystem documentation
-- `mkfw_get_time()` - High-resolution time query (in main MKFW API)
-- `mkfw_sleep()` - Simple sleep function (in main MKFW API)
-
----
-
-## License
-
-MIT License - See source files for full license text.
+The main thread loops on `mkfw_poll_events` + a coarse
+`mkfw_sleep`; the render thread owns the GL context and the
+timer.

@@ -1,640 +1,428 @@
-# MKFW Joystick API Documentation
+# mkfw joystick API
 
-**Gamepad/Joystick Input Subsystem for MKFW**
+Gamepad input subsystem: tracks up to 4 controllers, exposes raw
+buttons / axes / hat (D-pad) state, and optionally maps them to
+standardised gamepad layout names via the SDL_GameControllerDB
+mappings shipped in [`mkfw_joystick_gamedb.h`](../mkfw_joystick_gamedb.h).
+
+## Enabling
+
+```c
+#include "mkfw.h"
+#include "mkfw_joystick.h"
+```
+
+To also pull in the SDL gamepad mapping database (so you can
+write `mkfw_gamepad_get_button(pad, MKFW_GAMEPAD_A)` instead of
+hardcoding raw button indices), define `MKFW_JOYSTICK_GAMEDB`
+before including:
+
+```c
+#define MKFW_JOYSTICK_GAMEDB
+#include "mkfw_joystick.h"
+```
+
+For required linker flags see the **Linking** section in the
+project README (joystick adds nothing beyond the core libs).
+
+## Contents
+
+- [Overview](#overview)
+- [Constants](#constants)
+- [Pad state](#pad-state)
+- [Lifecycle](#lifecycle)
+- [Connection state](#connection-state)
+- [Raw button / axis / hat queries](#raw-button--axis--hat-queries)
+- [Connect / disconnect callback](#connect--disconnect-callback)
+- [Rumble](#rumble)
+- [Standardised gamepad layout (gamedb)](#standardised-gamepad-layout-gamedb)
+- [Threading](#threading)
+- [Platform details](#platform-details)
+- [Refreshing the gamepad mapping database](#refreshing-the-gamepad-mapping-database)
+
+---
 
 ## Overview
 
-The MKFW Joystick API provides polling-based gamepad and joystick input for up to 4 controllers simultaneously. It uses platform-specific implementations (XInput on Windows, evdev on Linux) with automatic hotplug detection.
-
-An optional mapping layer (`MKFW_JOYSTICK_GAMEDB`) provides standardized gamepad button/axis names using the SDL GameController DB format, allowing you to query `MKFW_GAMEPAD_A` instead of raw button indices.
-
-## Features
-
-- Up to 4 simultaneous controllers
-- Polling-based API with per-frame updates
-- Button edge detection (pressed/released this frame)
-- Normalized axes (-1.0 to 1.0)
-- D-pad as discrete hat values
-- Hotplug detection (connect/disconnect callbacks)
-- Rumble/vibration support (force feedback)
-- Optional SDL GameController DB mapping layer
-- No external library dependencies (Linux)
-
-## Platform Support
-
-| Platform | Backend | Notes |
-|----------|---------|-------|
-| Windows | XInput | Up to 4 Xbox-compatible controllers, standardized layout |
-| Linux | evdev | Any gamepad via `/dev/input/event*`, inotify hotplug |
-
----
-
-## Enabling the Joystick Subsystem
-
-The joystick subsystem is optional and must be enabled before including `mkfw.h`:
+The joystick subsystem is **global** (not per-window).
+Controllers are system-level resources; mkfw exposes them as
+indices `0..MKFW_JOYSTICK_MAX_PADS-1`.
 
 ```c
-#define MKFW_JOYSTICK
-#include "mkfw.h"
+mkfw_joystick_init();
+
+while(running) {
+    mkfw_joystick_update();   // pull new state from the OS
+
+    for(uint32_t p = 0; p < MKFW_JOYSTICK_MAX_PADS; ++p) {
+        if(!mkfw_joystick_is_connected(p)) {
+            continue;
+        }
+        // raw read:
+        if(mkfw_joystick_is_button_pressed(p, 0)) {
+            printf("Pad %u button 0 pressed\n", p);
+        }
+        // gamedb-mapped read (requires MKFW_JOYSTICK_GAMEDB):
+        if(mkfw_gamepad_is_button_pressed(p, MKFW_GAMEPAD_A)) {
+            printf("Pad %u: A pressed\n", p);
+        }
+    }
+}
+
+mkfw_joystick_shutdown();
 ```
 
-For standardized gamepad button names (SDL GameController DB mapping):
+`mkfw_joystick_update()` is the polling driver: call it once per
+frame (typically right after `mkfw_poll_events`).  Connect /
+disconnect transitions also fire inside `update`.
+
+---
+
+## Constants
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `MKFW_JOYSTICK_MAX_PADS`    | 4   | Maximum concurrently-tracked pads |
+| `MKFW_JOYSTICK_MAX_BUTTONS` | 32  | Max raw buttons per pad |
+| `MKFW_JOYSTICK_MAX_AXES`    | 8   | Max raw axes per pad |
+| `MKFW_JOYSTICK_NAME_LEN`    | 256 | Bytes in `pad->name[]` |
+
+Gamedb (when `MKFW_JOYSTICK_GAMEDB` is defined):
 
 ```c
-#define MKFW_JOYSTICK
-#define MKFW_JOYSTICK_GAMEDB
-#include "mkfw.h"
+enum {                                  enum {
+    MKFW_GAMEPAD_A = 0,                     MKFW_GAMEPAD_AXIS_LEFT_X = 0,
+    MKFW_GAMEPAD_B,                         MKFW_GAMEPAD_AXIS_LEFT_Y,
+    MKFW_GAMEPAD_X,                         MKFW_GAMEPAD_AXIS_RIGHT_X,
+    MKFW_GAMEPAD_Y,                         MKFW_GAMEPAD_AXIS_RIGHT_Y,
+    MKFW_GAMEPAD_LEFT_BUMPER,               MKFW_GAMEPAD_AXIS_LEFT_TRIGGER,
+    MKFW_GAMEPAD_RIGHT_BUMPER,              MKFW_GAMEPAD_AXIS_RIGHT_TRIGGER,
+    MKFW_GAMEPAD_BACK,                      MKFW_GAMEPAD_AXIS_LAST,
+    MKFW_GAMEPAD_START,                 };
+    MKFW_GAMEPAD_GUIDE,
+    MKFW_GAMEPAD_LEFT_THUMB,
+    MKFW_GAMEPAD_RIGHT_THUMB,
+    MKFW_GAMEPAD_DPAD_UP,
+    MKFW_GAMEPAD_DPAD_DOWN,
+    MKFW_GAMEPAD_DPAD_LEFT,
+    MKFW_GAMEPAD_DPAD_RIGHT,
+    MKFW_GAMEPAD_BUTTON_LAST,
+};
 ```
 
-`MKFW_JOYSTICK_GAMEDB` requires `MKFW_JOYSTICK` to also be defined.
+---
+
+## Pad state
+
+The library exposes the array
+`mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS]` directly; callers
+may read it freely (alongside the accessor helpers below):
+
+```c
+struct mkfw_joystick_pad {
+    uint8_t  connected;                          // 1 if present
+    uint8_t  was_connected;                      // previous-frame snapshot
+    char     name[MKFW_JOYSTICK_NAME_LEN];       // device name (UTF-8)
+    uint16_t vendor_id;                          // USB VID
+    uint16_t product_id;                         // USB PID
+    int      button_count;                       // populated by update()
+    int      axis_count;                         // populated by update()
+    uint8_t  buttons[MKFW_JOYSTICK_MAX_BUTTONS]; // 1 = held
+    uint8_t  prev_buttons[MKFW_JOYSTICK_MAX_BUTTONS];
+    float    axes[MKFW_JOYSTICK_MAX_AXES];       // -1.0 .. 1.0
+    float    hat_x;                              // -1, 0, 1
+    float    hat_y;                              // -1, 0, 1
+};
+```
+
+`vendor_id` and `product_id` are what the gamedb keys on; they
+are also useful for hand-rolled mappings of obscure controllers.
 
 ---
 
-## Core Concepts
-
-### Polling Model
-
-The joystick API is polling-based. Each frame you:
-
-1. Call `mkfw_joystick_update()` to read all connected devices
-2. Query button/axis/hat state using the accessor functions
-3. Edge detection (pressed/released) is handled automatically via double-buffered state
-
-### Global State
-
-Joystick state is **global**, not per-window. Controllers are system-level resources. All functions take a `pad_index` (0-3) rather than a window state pointer.
-
-### Raw vs Mapped API
-
-- **Raw API** (`MKFW_JOYSTICK`): Query buttons by index, axes by index. The button/axis layout depends on the controller and platform.
-- **Mapped API** (`MKFW_JOYSTICK_GAMEDB`): Query by standardized names like `MKFW_GAMEPAD_A`, `MKFW_GAMEPAD_AXIS_LEFT_X`. The mapping database translates these to the correct raw indices for each controller model.
-
-On Windows with XInput, the raw layout is already standardized (Xbox layout). The mapping layer is primarily valuable on Linux where different controllers report buttons/axes in different orders.
-
-### D-pad
-
-The D-pad is reliably readable on all platforms without any mapping database:
-
-- **Windows**: D-pad state comes from XInput button flags
-- **Linux**: D-pad is reported as `ABS_HAT0X`/`ABS_HAT0Y` axes (or as buttons on some controllers)
-
-Hat values are -1, 0, or 1 using screen coordinates (Y-down: up = -1, down = 1).
-
----
-
-## Initialization and Shutdown
+## Lifecycle
 
 ### `mkfw_joystick_init`
 
 ```c
-void mkfw_joystick_init(void)
+void mkfw_joystick_init(void);
 ```
 
-Initialize the joystick subsystem.
-
-**Notes:**
-- On Linux: Sets up inotify for hotplug detection and scans `/dev/input/` for existing gamepads
-- On Windows: Zeroes state (XInput requires no explicit initialization)
-- Call before the main loop
-- Safe to call multiple times (idempotent)
-
----
+Initialize the subsystem.  Linux scans `/dev/input/event*`; Win32
+queries XInput.  Safe to call before any windows exist.
 
 ### `mkfw_joystick_shutdown`
 
 ```c
-void mkfw_joystick_shutdown(void)
+void mkfw_joystick_shutdown(void);
 ```
 
-Clean up joystick resources.
-
-**Notes:**
-- On Linux: Closes all open device file descriptors and inotify watches
-- On Windows: Zeroes state
-- Safe to call even if no joysticks were connected
-
----
-
-## Per-Frame Update
+Release device handles, internal state, and (Linux) close
+`/dev/input` file descriptors.
 
 ### `mkfw_joystick_update`
 
 ```c
-void mkfw_joystick_update(void)
+void mkfw_joystick_update(void);
 ```
 
-Poll all connected controllers and update state.
+Drain pending device events, snapshot the previous-frame button
+state for edge detection, refresh connect / disconnect status,
+and fire the connect callback for any transitions.
 
-**Notes:**
-- Must be called once per frame, before querying state
-- Copies current button state to previous (for edge detection)
-- On Linux: Checks inotify for hotplug events, reads pending evdev events
-- On Windows: Polls XInputGetState for each controller slot
-- Fires connect/disconnect callbacks on state transitions
-
-**Example:**
-```c
-while (running) {
-    mkfw_poll_events(window);
-    mkfw_joystick_update();
-
-    // Query state here...
-
-    mkfw_window_update_input_state(window);
-}
-```
+Call once per frame, typically right after `mkfw_poll_events`.
 
 ---
 
-## Query API
+## Connection state
 
 ### `mkfw_joystick_is_connected`
 
 ```c
-int mkfw_joystick_is_connected(int pad_index)
+uint32_t mkfw_joystick_is_connected(uint32_t pad_index);
 ```
 
-Check if a controller is connected.
-
-**Returns:** 1 if connected, 0 if not.
-
----
+Return non-zero if the slot is currently populated.  Pads can
+connect / disconnect at any time (hotplug supported on both
+platforms); always test before reading other state.
 
 ### `mkfw_joystick_get_name`
 
 ```c
-const char *mkfw_joystick_get_name(int pad_index)
+const char *mkfw_joystick_get_name(uint32_t pad_index);
 ```
 
-Get the controller name string.
+Return the device's human-readable name (UTF-8).  The pointer is
+borrowed; valid only until the pad disconnects.
 
-**Returns:** Device name (e.g. "Xbox 360 Controller", "PS5 Controller"). Empty string if not connected.
+### `mkfw_joystick_get_button_count` / `_get_axis_count`
 
-**Notes:**
-- On Windows: Returns "XInput Controller N" (XInput doesn't provide device names)
-- On Linux: Returns the kernel-reported device name
+```c
+uint32_t mkfw_joystick_get_button_count(uint32_t pad_index);
+uint32_t mkfw_joystick_get_axis_count  (uint32_t pad_index);
+```
+
+Number of buttons / axes the device exposes.  Bounded by
+`MKFW_JOYSTICK_MAX_BUTTONS` / `MKFW_JOYSTICK_MAX_AXES`.
 
 ---
+
+## Raw button / axis / hat queries
+
+These read from the raw arrays without any gamedb-style
+normalisation.  Use them for non-gamepad controllers (joysticks,
+flight sticks, racing wheels) where the layout isn't a standard
+A/B/X/Y dual-stick gamepad.
 
 ### `mkfw_joystick_get_button`
 
 ```c
-int mkfw_joystick_get_button(int pad_index, int button_index)
+uint32_t mkfw_joystick_get_button(uint32_t pad_index, uint32_t button_index);
 ```
 
-Check if a button is currently held down.
+Non-zero while the raw button is held.
 
-**Returns:** 1 if pressed, 0 if not.
-
----
-
-### `mkfw_joystick_is_button_pressed`
+### `mkfw_joystick_is_button_pressed` / `_was_button_released`
 
 ```c
-int mkfw_joystick_is_button_pressed(int pad_index, int button_index)
+uint32_t mkfw_joystick_is_button_pressed   (uint32_t pad_index, uint32_t button_index);
+uint32_t mkfw_joystick_was_button_released (uint32_t pad_index, uint32_t button_index);
 ```
 
-Check if a button was pressed this frame (edge detection).
-
-**Returns:** 1 if the button transitioned from released to pressed this frame.
-
----
-
-### `mkfw_joystick_was_button_released`
-
-```c
-int mkfw_joystick_was_button_released(int pad_index, int button_index)
-```
-
-Check if a button was released this frame (edge detection).
-
-**Returns:** 1 if the button transitioned from pressed to released this frame.
-
----
+Edge-detected button queries (compared against
+`prev_buttons[]`, refreshed by `mkfw_joystick_update`).
 
 ### `mkfw_joystick_get_axis`
 
 ```c
-float mkfw_joystick_get_axis(int pad_index, int axis_index)
+float mkfw_joystick_get_axis(uint32_t pad_index, uint32_t axis_index);
 ```
 
-Get a normalized axis value.
+Current axis position in `[-1.0, 1.0]` (with deadzone applied).
+Triggers report `[0.0, 1.0]`.
 
-**Returns:** Value from -1.0 to 1.0. Triggers return 0.0 to 1.0.
+### `mkfw_joystick_get_hat_x` / `_get_hat_y`
 
-**Notes:**
-- On Windows: Thumbstick deadzones are applied automatically (7849 for left, 8689 for right)
-- On Windows: Trigger threshold of 30 is applied
-- On Linux: Values are normalized using the axis range reported by the kernel
+```c
+float mkfw_joystick_get_hat_x(uint32_t pad_index);
+float mkfw_joystick_get_hat_y(uint32_t pad_index);
+```
+
+D-pad / hat position decomposed into X / Y axes (`-1.0`, `0.0`,
+or `1.0`).  Used for D-pad input on controllers that report the
+D-pad as a single hat instead of four buttons.
 
 ---
 
-### `mkfw_joystick_get_hat_x` / `mkfw_joystick_get_hat_y`
+## Connect / disconnect callback
 
 ```c
-float mkfw_joystick_get_hat_x(int pad_index)
-float mkfw_joystick_get_hat_y(int pad_index)
+typedef void (*mkfw_joystick_callback_t)(int pad_index, int connected);
+
+void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback);
 ```
 
-Get D-pad state.
-
-**Returns:**
-- `hat_x`: -1.0 (left), 0.0 (center), 1.0 (right)
-- `hat_y`: -1.0 (up), 0.0 (center), 1.0 (down)
-
----
-
-### `mkfw_joystick_get_button_count` / `mkfw_joystick_get_axis_count`
+Install a callback fired by `mkfw_joystick_update` whenever a
+pad's connection state transitions.  `connected` is `1` on
+plug-in, `0` on unplug.  Pass `0` to remove the callback.
 
 ```c
-int mkfw_joystick_get_button_count(int pad_index)
-int mkfw_joystick_get_axis_count(int pad_index)
-```
-
-Get the number of buttons/axes on a controller.
-
-**Notes:**
-- On Windows (XInput): Always 14 buttons and 6 axes
-- On Linux: Varies by controller
-
----
-
-### `mkfw_joystick_set_callback`
-
-```c
-void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback)
-```
-
-Set a callback for controller connect/disconnect events.
-
-**Callback signature:**
-```c
-void callback(int pad_index, int connected)
-```
-
-- `pad_index`: Controller slot (0-3)
-- `connected`: 1 = connected, 0 = disconnected
-
-**Example:**
-```c
-void on_gamepad(int pad, int connected) {
-    printf("Pad %d %s: %s\n", pad,
-           connected ? "connected" : "disconnected",
-           mkfw_joystick_get_name(pad));
+static void on_pad(int pad, int connected) {
+    if(connected) {
+        printf("Pad %d connected: %s\n", pad, mkfw_joystick_get_name(pad));
+    } else {
+        printf("Pad %d disconnected\n", pad);
+    }
 }
 
-mkfw_joystick_set_callback(on_gamepad);
+mkfw_joystick_set_callback(on_pad);
 ```
 
+The callback fires from `mkfw_joystick_update`'s thread (the
+same one that calls it; typically the main thread).
+
 ---
+
+## Rumble
 
 ### `mkfw_joystick_rumble`
 
 ```c
-void mkfw_joystick_rumble(int pad_index, float low_freq, float high_freq, uint32_t duration_ms)
+void mkfw_joystick_rumble(uint32_t pad_index,
+                          float low_freq, float high_freq,
+                          uint32_t duration_ms);
 ```
 
-Trigger rumble/vibration on a controller.
+Trigger force-feedback rumble for `duration_ms` milliseconds.
+`low_freq` / `high_freq` are the magnitudes of the two rumble
+motors in `[0.0, 1.0]` (mapped from "low-frequency" /
+"high-frequency" actuator semantics).
 
-**Parameters:**
-- `pad_index` - Controller slot (0-3)
-- `low_freq` - Low-frequency (heavy) motor intensity, 0.0 to 1.0
-- `high_freq` - High-frequency (light) motor intensity, 0.0 to 1.0
-- `duration_ms` - Duration in milliseconds (Linux only, max 65535; ignored on Windows)
+A duration of `0` and both magnitudes `0` stop any active rumble.
 
-**Notes:**
-- On Linux: Uses evdev force feedback (`FF_RUMBLE`). The device must be opened with write access and support `FF_RUMBLE`. Effects are uploaded via `EVIOCSFF` ioctl and played via `EV_FF` event. The effect ID is cached per pad so subsequent calls update the same slot.
-- On Windows: Uses `XInputSetState` with `XINPUT_VIBRATION`. Duration is not supported by XInput -- vibration stays on until you call `mkfw_joystick_rumble(pad, 0, 0, 0)` to stop it.
-- No-op if the controller doesn't support rumble or is not connected.
-- No-op if `MKFW_JOYSTICK` is not defined (stub macro returns void).
-
-**Example:**
-```c
-// Trigger a strong rumble for 200ms
-mkfw_joystick_rumble(0, 0.8f, 0.5f, 200);
-
-// Stop rumble (important on Windows where duration is ignored)
-mkfw_joystick_rumble(0, 0.0f, 0.0f, 0);
-```
+Supported on Linux via the kernel evdev force-feedback interface
+and on Windows via `XInputSetState`.  Unsupported controllers
+silently ignore the request.
 
 ---
 
-## Raw Button Layout
+## Standardised gamepad layout (gamedb)
 
-### Windows (XInput)
-
-All XInput controllers use this fixed layout:
-
-| Index | Button |
-|-------|--------|
-| 0 | A |
-| 1 | B |
-| 2 | X |
-| 3 | Y |
-| 4 | Left Bumper (LB) |
-| 5 | Right Bumper (RB) |
-| 6 | Back / View |
-| 7 | Start / Menu |
-| 8 | Left Stick Click |
-| 9 | Right Stick Click |
-| 10 | D-Pad Up |
-| 11 | D-Pad Down |
-| 12 | D-Pad Left |
-| 13 | D-Pad Right |
-
-**Axis layout:**
-
-| Index | Axis | Range |
-|-------|------|-------|
-| 0 | Left Stick X | -1.0 to 1.0 |
-| 1 | Left Stick Y | -1.0 to 1.0 (up = positive) |
-| 2 | Right Stick X | -1.0 to 1.0 |
-| 3 | Right Stick Y | -1.0 to 1.0 (up = positive) |
-| 4 | Left Trigger | 0.0 to 1.0 |
-| 5 | Right Trigger | 0.0 to 1.0 |
-
-### Linux (evdev)
-
-Button and axis indices depend on the controller model. Common Xbox-compatible controllers typically follow a similar layout to XInput, but this is not guaranteed for all devices.
-
-Use the mapped gamepad API (`MKFW_JOYSTICK_GAMEDB`) for consistent cross-controller access on Linux.
-
----
-
-## Mapped Gamepad API (MKFW_JOYSTICK_GAMEDB)
-
-When `MKFW_JOYSTICK_GAMEDB` is defined, additional functions and constants are available for standardized access.
-
-### Button Constants
-
-```c
-MKFW_GAMEPAD_A              // Cross (PS) / A (Xbox) / B (Nintendo)
-MKFW_GAMEPAD_B              // Circle (PS) / B (Xbox) / A (Nintendo)
-MKFW_GAMEPAD_X              // Square (PS) / X (Xbox) / Y (Nintendo)
-MKFW_GAMEPAD_Y              // Triangle (PS) / Y (Xbox) / X (Nintendo)
-MKFW_GAMEPAD_LEFT_BUMPER    // L1 (PS) / LB (Xbox)
-MKFW_GAMEPAD_RIGHT_BUMPER   // R1 (PS) / RB (Xbox)
-MKFW_GAMEPAD_BACK           // Share/Select/View
-MKFW_GAMEPAD_START          // Options/Start/Menu
-MKFW_GAMEPAD_GUIDE          // PS/Xbox/Home button
-MKFW_GAMEPAD_LEFT_THUMB     // L3 (left stick click)
-MKFW_GAMEPAD_RIGHT_THUMB    // R3 (right stick click)
-MKFW_GAMEPAD_DPAD_UP
-MKFW_GAMEPAD_DPAD_DOWN
-MKFW_GAMEPAD_DPAD_LEFT
-MKFW_GAMEPAD_DPAD_RIGHT
-```
-
-### Axis Constants
-
-```c
-MKFW_GAMEPAD_AXIS_LEFT_X         // Left stick horizontal
-MKFW_GAMEPAD_AXIS_LEFT_Y         // Left stick vertical
-MKFW_GAMEPAD_AXIS_RIGHT_X        // Right stick horizontal
-MKFW_GAMEPAD_AXIS_RIGHT_Y        // Right stick vertical
-MKFW_GAMEPAD_AXIS_LEFT_TRIGGER   // L2 / LT
-MKFW_GAMEPAD_AXIS_RIGHT_TRIGGER  // R2 / RT
-```
+When `MKFW_JOYSTICK_GAMEDB` is defined before including
+`mkfw_joystick.h`, mkfw matches each connected pad against
+[`mkfw_joystick_gamedb.h`](../mkfw_joystick_gamedb.h) (a snapshot
+of the SDL_GameControllerDB project) by USB VID/PID and
+populates an internal mapping.  Three accessor helpers then
+expose pads in the standardised gamepad layout:
 
 ### `mkfw_gamepad_get_button`
 
 ```c
-int mkfw_gamepad_get_button(int pad_index, int gamepad_button)
+int mkfw_gamepad_get_button(int pad_index, int gamepad_button);
 ```
 
-Query a button by standardized name.
-
-**Returns:** 1 if pressed, 0 if not. Returns 0 if controller has no mapping in the database.
-
----
+Non-zero while the mapped button (`MKFW_GAMEPAD_A`,
+`_DPAD_UP`, ...) is held.
 
 ### `mkfw_gamepad_is_button_pressed`
 
 ```c
-int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button)
+int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button);
 ```
 
-Check if a mapped button was pressed this frame.
-
----
+Edge-detected rising-edge query.
 
 ### `mkfw_gamepad_get_axis`
 
 ```c
-float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis)
+float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis);
 ```
 
-Query an axis by standardized name.
+Mapped axis value (`MKFW_GAMEPAD_AXIS_LEFT_X`, `_RIGHT_X`,
+`_LEFT_TRIGGER`, ...) in `[-1.0, 1.0]` (sticks) or `[0.0, 1.0]`
+(triggers).
 
-**Returns:** Normalized value. Returns 0.0 if controller has no mapping.
-
----
-
-### Mapping Lookup
-
-Mapping lookup happens automatically (lazy) on first query for a connected controller. When a controller disconnects, its mapping is cleared and will be re-looked-up on reconnection.
-
-On Windows, XInput provides a fixed standardized layout, so the mapping is always a 1:1 identity mapping regardless of the database contents.
-
----
-
-## Typical Usage Patterns
-
-### Basic Joystick Input
+If `MKFW_JOYSTICK_GAMEDB` is **not** defined, these three
+functions are still declared but expand to constant zero
+returns, so conditional code using them stays compilable.
 
 ```c
-#define MKFW_JOYSTICK
-#include "mkfw.h"
-
-int main(void) {
-    struct mkfw_window *window = mkfw_init(1280, 720);
-    mkfw_window_show(window);
-
-    mkfw_joystick_init();
-
-    while (!mkfw_window_should_close(window)) {
-        mkfw_poll_events(window);
-        mkfw_joystick_update();
-
-        for (int p = 0; p < 4; p++) {
-            if (!mkfw_joystick_is_connected(p)) continue;
-
-            float lx = mkfw_joystick_get_axis(p, 0);
-            float ly = mkfw_joystick_get_axis(p, 1);
-
-            if (mkfw_joystick_is_button_pressed(p, 0)) {
-                printf("Pad %d: button A pressed!\n", p);
-            }
-
-            float dpad_x = mkfw_joystick_get_hat_x(p);
-            float dpad_y = mkfw_joystick_get_hat_y(p);
-        }
-
-        mkfw_window_update_input_state(window);
-    }
-
-    mkfw_joystick_shutdown();
-    mkfw_shutdown(window);
-    return 0;
-}
-```
-
-### Mapped Gamepad Input
-
-```c
-#define MKFW_JOYSTICK
 #define MKFW_JOYSTICK_GAMEDB
-#include "mkfw.h"
+#include "mkfw_joystick.h"
 
-int main(void) {
-    struct mkfw_window *window = mkfw_init(1280, 720);
-    mkfw_window_show(window);
-
-    mkfw_joystick_init();
-
-    while (!mkfw_window_should_close(window)) {
-        mkfw_poll_events(window);
-        mkfw_joystick_update();
-
-        if (mkfw_joystick_is_connected(0)) {
-            // Use standardized names - works across controller brands
-            if (mkfw_gamepad_is_button_pressed(0, MKFW_GAMEPAD_A)) {
-                printf("Jump!\n");
-            }
-            if (mkfw_gamepad_get_button(0, MKFW_GAMEPAD_RIGHT_BUMPER)) {
-                printf("Shooting...\n");
-            }
-
-            float move_x = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_LEFT_X);
-            float move_y = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_LEFT_Y);
-            float aim_x  = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_RIGHT_X);
-            float aim_y  = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_RIGHT_Y);
-        }
-
-        mkfw_window_update_input_state(window);
-    }
-
-    mkfw_joystick_shutdown();
-    mkfw_shutdown(window);
-    return 0;
+float lx = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_LEFT_X);
+float ly = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_LEFT_Y);
+if(mkfw_gamepad_is_button_pressed(0, MKFW_GAMEPAD_A)) {
+    fire();
 }
 ```
 
-### Hotplug Detection
+A pad that the database doesn't recognise will report zeros for
+every mapped query but still works through the raw API.
+XInput-class controllers on Windows are always supported because
+mkfw applies a fixed 1:1 mapping there.
 
-```c
-void on_gamepad(int pad, int connected) {
-    if (connected) {
-        printf("Controller %d connected: %s\n", pad, mkfw_joystick_get_name(pad));
-    } else {
-        printf("Controller %d disconnected\n", pad);
-    }
-}
+---
 
-mkfw_joystick_init();
-mkfw_joystick_set_callback(on_gamepad);
+## Threading
+
+`mkfw_joystick_init`, `_shutdown`, `_update`, and the connect
+callback all run on the application's owning thread (the one
+calling `mkfw_joystick_update`).  Reads from
+`mkfw_joystick_pads[]` and the accessor helpers are safe from
+the same thread.
+
+Reads from other threads see eventually-consistent values; the
+per-byte fields (buttons, hat) are atomic on x86-64, but the
+multi-byte `axes[]` fields can be torn if the reader and the
+update thread race.  If you need to read pad state from a
+non-main thread, snapshot the pad inside
+`mkfw_joystick_update`'s thread first.
+
+---
+
+## Platform details
+
+### Linux
+
+- Uses `/dev/input/event*` directly (libudev *not* required).
+  Hotplug is detected by re-scanning the directory.
+- Force-feedback rumble via the kernel evdev FF protocol.
+- The user typically needs to be in the `input` group:
+
+  ```sh
+  sudo usermod -aG input $USER
+  ```
+
+  (re-login after, or use `newgrp input`).
+
+### Windows
+
+- Uses XInput.  Up to 4 pads, always recognised, fixed gamedb
+  mapping.
+- `mkfw_joystick_rumble` calls `XInputSetState`.
+
+---
+
+## Refreshing the gamepad mapping database
+
+`mkfw_joystick_gamedb.h` is a snapshot of upstream
+SDL_GameControllerDB.  Refresh it by running
+[`tools/gen_joystick_gamedb.py`](../tools/gen_joystick_gamedb.py):
+
+```sh
+python3 tools/gen_joystick_gamedb.py             # fetch and rewrite
+python3 tools/gen_joystick_gamedb.py --dry-run   # preview only
+python3 tools/gen_joystick_gamedb.py --from-file gamecontrollerdb.txt
 ```
 
----
+The script replaces only the text between the
+`BEGIN GENERATED gamedb` / `END GENERATED gamedb` marker
+comments in the header.  Entries are filtered to
+`platform:Linux` / `platform:Windows`, deduplicated by GUID +
+platform, and emitted as one big C string literal.
 
-## Platform-Specific Notes
-
-### Linux (evdev)
-
-- Requires read access to `/dev/input/event*` devices
-- User typically needs to be in the `input` group: `sudo usermod -aG input $USER`
-- Or create a udev rule for gamepad access
-- Hotplug uses inotify on `/dev/input/`
-- Device capabilities are detected via ioctl (EV_ABS + EV_KEY with BTN_GAMEPAD range)
-- Axis ranges are queried via `EVIOCGABS` and used for normalization
-- No additional linking required beyond standard libc
-
-**Linking:**
-```bash
-gcc -o app main.c -lm -ldl -lpthread
-```
-
-### Windows (XInput)
-
-- Uses XInput API (supports Xbox-compatible controllers only)
-- Up to 4 controllers (XInput hardware limit)
-- Fixed standardized button/axis layout
-- No device names available (XInput limitation)
-- No vendor/product IDs available (XInput limitation)
-- Deadzones applied automatically using XInput recommended values
-- Hotplug detected via polling return codes
-
-**Linking (MinGW):**
-```bash
-gcc -o app.exe main.c -lopengl32 -lgdi32 -lwinmm -lxinput
-```
-
-**Linking (clang-cl):**
-```bash
-clang-cl main.c opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib xinput.lib
-```
-
-MinGW implicitly links `user32` and `shell32`. clang-cl requires them explicitly.
-
----
-
-## Updating the Controller Database
-
-The embedded database in `mkfw_joystick_gamedb.h` contains mappings for popular controllers. To support more controllers:
-
-1. Download the latest `gamecontrollerdb.txt` from [SDL_GameControllerDB](https://github.com/gabomdq/SDL_GameControllerDB)
-2. Convert to a C string and replace the `mkfw_gamecontrollerdb_data` array
-3. Only Linux entries are needed (Windows XInput is already standardized)
-
----
-
-## Stub Macros
-
-When `MKFW_JOYSTICK` is not defined, all joystick functions are replaced with no-op macros that return zero values. This allows code to compile without `#ifdef` guards.
-
-When `MKFW_JOYSTICK_GAMEDB` is not defined, the `mkfw_gamepad_*` functions are similarly stubbed out.
-
----
-
-## Troubleshooting
-
-### No controllers detected (Linux)
-
-1. Check permissions: `ls -la /dev/input/event*`
-2. Add user to input group: `sudo usermod -aG input $USER` (requires logout/login)
-3. Verify the device is recognized: `cat /proc/bus/input/devices`
-4. Check if evdev module is loaded: `lsmod | grep evdev`
-
-### No controllers detected (Windows)
-
-1. Ensure controller is Xbox-compatible or using XInput driver
-2. DirectInput-only controllers are not supported (use MKFW_JOYSTICK_GAMEDB won't help here - XInput is required)
-3. Check Windows Game Controllers settings
-
-### Mapped buttons return 0
-
-1. Controller may not be in the embedded database
-2. Check `mkfw_joystick_get_name()` to verify the controller is detected
-3. Raw API (`mkfw_joystick_get_button()`) should still work
-4. Update the database with the latest SDL_GameControllerDB entries
-
-### Axis values seem wrong on Linux
-
-1. Different controllers report axes in different orders
-2. Use `MKFW_JOYSTICK_GAMEDB` for standardized axis access
-3. Or enumerate axes manually to find the correct indices
-
----
-
-## See Also
-
-- `MKFW_API.md` - Main MKFW windowing API
-- `MKFW_AUDIO_API.md` - Audio subsystem documentation
-- `MKFW_TIMER_API.md` - Timer subsystem documentation
-- [SDL_GameControllerDB](https://github.com/gabomdq/SDL_GameControllerDB) - Community controller mapping database
-
----
-
-## License
-
-MIT License - See source files for full license text.
+A monthly GitHub Action
+([`.github/workflows/gamedb-refresh.yml`](../.github/workflows/gamedb-refresh.yml))
+runs the script on the first of each month, commits the result
+if anything changed, and tags the commit `gamedb-YYYY-MM`.
