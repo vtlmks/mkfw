@@ -27,21 +27,21 @@ static float mkfw_joystick_normalize_trigger(uint8_t value, uint8_t threshold) {
 }
 
 // [=]===^=[ mkfw_joystick_init ]=================================================================[=]
-static void mkfw_joystick_init(void) {
+MKFW_API void mkfw_joystick_init(void) {
 	memset(mkfw_joystick_pads, 0, sizeof(mkfw_joystick_pads));
 	mkfw_joystick_cb = 0;
 	mkfw_joystick_initialized = 1;
 }
 
 // [=]===^=[ mkfw_joystick_shutdown ]=============================================================[=]
-static void mkfw_joystick_shutdown(void) {
+MKFW_API void mkfw_joystick_shutdown(void) {
 	memset(mkfw_joystick_pads, 0, sizeof(mkfw_joystick_pads));
 	mkfw_joystick_cb = 0;
 	mkfw_joystick_initialized = 0;
 }
 
 // [=]===^=[ mkfw_joystick_update ]===============================================================[=]
-static void mkfw_joystick_update(void) {
+MKFW_API void mkfw_joystick_update(void) {
 	if(!mkfw_joystick_initialized) {
 		return;
 	}
@@ -128,7 +128,7 @@ static void mkfw_joystick_update(void) {
 }
 
 // [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
-static void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
 	(void)duration_ms;
 	XINPUT_VIBRATION vibration;
 	vibration.wLeftMotorSpeed = (WORD)(low_freq * 65535.0f);

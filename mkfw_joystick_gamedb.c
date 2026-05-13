@@ -357,7 +357,7 @@ static void mkfw_gamedb_ensure_mapping(int pad_index) {
 }
 
 // [=]===^=[ mkfw_gamepad_get_button ]================================================================[=]
-static int mkfw_gamepad_get_button(int pad_index, int gamepad_button) {
+MKFW_API int mkfw_gamepad_get_button(int pad_index, int gamepad_button) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
@@ -412,7 +412,7 @@ static int mkfw_gamepad_get_button(int pad_index, int gamepad_button) {
 }
 
 // [=]===^=[ mkfw_gamepad_is_button_pressed ]========================================================[=]
-static int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button) {
+MKFW_API int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
@@ -441,7 +441,7 @@ static int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button) {
 }
 
 // [=]===^=[ mkfw_gamepad_get_axis ]==================================================================[=]
-static float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis) {
+MKFW_API float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}

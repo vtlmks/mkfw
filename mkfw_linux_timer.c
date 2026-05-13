@@ -122,7 +122,7 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 }
 
 // [=]===^=[ mkfw_timer_create ]=====================================================================[=]
-static struct mkfw_timer_handle *mkfw_timer_create(uint64_t interval_ns) {
+MKFW_API struct mkfw_timer_handle *mkfw_timer_create(uint64_t interval_ns) {
 	struct mkfw_timer_handle *t = calloc(1, sizeof(struct mkfw_timer_handle));
 
 	t->interval_ns = interval_ns;
@@ -143,7 +143,7 @@ static struct mkfw_timer_handle *mkfw_timer_create(uint64_t interval_ns) {
 }
 
 // [=]===^=[ mkfw_timer_wait ]====================================================================[=]
-static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
+MKFW_API uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 	if(!t) {
 		return 0;
 	}
@@ -153,7 +153,7 @@ static uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 }
 
 // [=]===^=[ mkfw_timer_set_interval ]============================================================[=]
-static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
+MKFW_API void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
 	if(!t) {
 		return;
 	}
@@ -161,14 +161,14 @@ static void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interv
 }
 
 // [=]===^=[ mkfw_timer_set_spin ]================================================================[=]
-static void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
+MKFW_API void mkfw_timer_set_spin(struct mkfw_timer_handle *t, uint32_t enabled) {
 	if(!t) {
 		return;
 	}
 	__atomic_store_n(&t->spin, enabled ? 1 : 0, __ATOMIC_RELEASE);
 }
 
-static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
+MKFW_API void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
 	if(!t) {
 		return;
 	}
@@ -180,5 +180,5 @@ static void mkfw_timer_destroy(struct mkfw_timer_handle *t) {
 }
 
 // NOTE(peter): These are just stubs on linux, they are however needed in the windows implementation!
-static void mkfw_timer_init() { }
-static void mkfw_timer_shutdown() { }
+MKFW_API void mkfw_timer_init() { }
+MKFW_API void mkfw_timer_shutdown() { }

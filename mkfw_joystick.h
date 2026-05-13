@@ -45,6 +45,7 @@ typedef void (*mkfw_joystick_callback_t)(int pad_index, int connected);
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
+#if !defined(MKFW_BUILD_LIBRARY) && !defined(MKFW_USE_SHARED)
 #ifdef _WIN32
 #include "mkfw_win32_joystick.c"
 #elif defined(__linux__)
@@ -53,6 +54,7 @@ typedef void (*mkfw_joystick_callback_t)(int pad_index, int connected);
 
 #ifdef MKFW_JOYSTICK_GAMEDB
 #include "mkfw_joystick_gamedb.c"
+#endif
 #endif
 
 static inline uint32_t mkfw_joystick_is_connected(uint32_t pad_index) {

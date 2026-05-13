@@ -27,10 +27,12 @@
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
+#if !defined(MKFW_BUILD_LIBRARY) && !defined(MKFW_USE_SHARED)
 #ifdef _WIN32
 #include "mkfw_win32_audio.c"
 #elif defined(__linux__)
 #include "mkfw_linux_audio.c"
+#endif
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)

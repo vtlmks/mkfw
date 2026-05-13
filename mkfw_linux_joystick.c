@@ -257,7 +257,7 @@ static void mkfw_joystick_scan_devices(void) {
 }
 
 // [=]===^=[ mkfw_joystick_init ]=================================================================[=]
-static void mkfw_joystick_init(void) {
+MKFW_API void mkfw_joystick_init(void) {
 	memset(mkfw_joystick_pads, 0, sizeof(mkfw_joystick_pads));
 	memset(mkfw_joystick_linux, 0, sizeof(mkfw_joystick_linux));
 	mkfw_joystick_cb = 0;
@@ -277,7 +277,7 @@ static void mkfw_joystick_init(void) {
 }
 
 // [=]===^=[ mkfw_joystick_shutdown ]=============================================================[=]
-static void mkfw_joystick_shutdown(void) {
+MKFW_API void mkfw_joystick_shutdown(void) {
 	for(int i = 0; i < MKFW_JOYSTICK_MAX_PADS; i++) {
 		if(mkfw_joystick_linux[i].fd >= 0) {
 			close(mkfw_joystick_linux[i].fd);
@@ -340,7 +340,7 @@ static void mkfw_joystick_check_hotplug(void) {
 }
 
 // [=]===^=[ mkfw_joystick_update ]===============================================================[=]
-static void mkfw_joystick_update(void) {
+MKFW_API void mkfw_joystick_update(void) {
 	if(!mkfw_joystick_initialized) {
 		return;
 	}
@@ -424,7 +424,7 @@ static void mkfw_joystick_update(void) {
 }
 
 // [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
-static void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
 	struct mkfw_joystick_linux_pad *lpad = &mkfw_joystick_linux[pad_index];
 	if(lpad->fd < 0 || !lpad->has_rumble) {
 		return;

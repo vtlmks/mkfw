@@ -153,17 +153,50 @@ struct mkfw_window_options {
 	uint32_t flags;          // MKFW_WIN_*
 };
 
+/* Public-API linkage macro.
+ *
+ *   Default (header-only / unity build):    MKFW_API == static
+ *     The platform .c is #included from this header; every public
+ *     function is file-scope in the consumer's translation unit.
+ *
+ *   Static library build:                   MKFW_API == extern
+ *     Define MKFW_BUILD_LIBRARY when compiling the .c files into a
+ *     static .a / .lib.  Consumers link against the archive and the
+ *     public functions are referenced via the header declarations.
+ *
+ *   Shared library build (Windows DLL):     MKFW_API == __declspec(dllexport)
+ *     Define MKFW_BUILD_SHARED when compiling the DLL.
+ *
+ *   Shared library consumer (Windows DLL):  MKFW_API == __declspec(dllimport)
+ *     Define MKFW_USE_SHARED when including this header from a TU
+ *     that links against the import library.
+ *
+ * Internal helpers (file-scope to the implementation) stay marked
+ * `static` regardless of mode.
+ */
+#if defined(MKFW_BUILD_SHARED) && defined(_WIN32)
+   #define MKFW_API __declspec(dllexport)
+#elif defined(MKFW_USE_SHARED) && defined(_WIN32)
+   #define MKFW_API __declspec(dllimport)
+#elif defined(MKFW_BUILD_LIBRARY)
+   #define MKFW_API extern
+#else
+   #define MKFW_API static
+#endif
+
 /* Suppress unused-function warnings for API functions the user may not call */
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
-/* Platform-specific implementation includes */
+/* Platform-specific implementation includes (header-only / unity build only) */
+#if !defined(MKFW_BUILD_LIBRARY) && !defined(MKFW_USE_SHARED)
 #ifdef _WIN32
 #include "mkfw_win32.c"
 #elif defined(__linux__)
 #include "mkfw_linux.c"
+#endif
 #endif
 
 /* Thread abstraction */
