@@ -23,14 +23,14 @@ static void on_signal(int sig) {
 }
 
 // [=]===^=[ on_gamepad_connect ]=================================================================[=]
-static void on_gamepad_connect(int pad, int connected) {
+static void on_gamepad_connect(uint32_t pad, uint32_t connected) {
 	if(connected) {
-		printf("Pad %d connected: %s (vendor:%04x product:%04x)\n",
+		printf("Pad %u connected: %s (vendor:%04x product:%04x)\n",
 			pad, mkfw_joystick_get_name(pad),
 			mkfw_joystick_pads[pad].vendor_id,
 			mkfw_joystick_pads[pad].product_id);
 	} else {
-		printf("Pad %d disconnected\n", pad);
+		printf("Pad %u disconnected\n", pad);
 	}
 }
 
@@ -107,7 +107,7 @@ int main(void) {
 			/* Mapped gamepad (green header) */
 			printf("\033[32m  -- Mapped Gamepad --\033[0m\n");
 
-			struct { int32_t id; const char *name; } btn_names[] = {
+			struct { uint32_t id; const char *name; } btn_names[] = {
 				{ MKFW_GAMEPAD_A, "A" },
 				{ MKFW_GAMEPAD_B, "B" },
 				{ MKFW_GAMEPAD_X, "X" },

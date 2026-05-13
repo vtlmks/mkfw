@@ -12,6 +12,47 @@
 
 #include "mkfw_keys.h"
 
+/* Public-API linkage macros.
+ *
+ *   MKFW_API marks functions; MKFW_VAR marks the cross-TU variables
+ *   that the inline helpers in this header (and in companion
+ *   subsystem headers) reference.
+ *
+ *   Default (header-only / unity build):    MKFW_API == MKFW_VAR == static
+ *     The platform .c is #included from this header; every public
+ *     symbol is file-scope in the consumer's translation unit.
+ *
+ *   Static library build:                   MKFW_API == MKFW_VAR == extern
+ *     Define MKFW_BUILD_LIBRARY when compiling the .c files into a
+ *     static .a / .lib.  Consumers link against the archive and
+ *     reference the public symbols via the header declarations.
+ *     The library .c files each provide the storage for their
+ *     MKFW_VAR variables in a gated block.
+ *
+ *   Shared library build (Windows DLL):     MKFW_API == __declspec(dllexport)
+ *     Define MKFW_BUILD_SHARED when compiling the DLL.
+ *
+ *   Shared library consumer (Windows DLL):  MKFW_API == __declspec(dllimport)
+ *     Define MKFW_USE_SHARED when including this header from a TU
+ *     that links against the import library.
+ *
+ * Internal helpers (file-scope to one .c) stay marked `static`
+ * regardless of mode.
+ */
+#if defined(MKFW_BUILD_SHARED) && defined(_WIN32)
+   #define MKFW_API __declspec(dllexport)
+   #define MKFW_VAR __declspec(dllexport) extern
+#elif defined(MKFW_USE_SHARED) && defined(_WIN32)
+   #define MKFW_API __declspec(dllimport)
+   #define MKFW_VAR __declspec(dllimport) extern
+#elif defined(MKFW_BUILD_LIBRARY)
+   #define MKFW_API extern
+   #define MKFW_VAR extern
+#else
+   #define MKFW_API static
+   #define MKFW_VAR static
+#endif
+
 /* Forward declarations */
 struct mkfw_context;
 struct mkfw_window;
@@ -22,7 +63,7 @@ typedef void (*mkfw_key_callback_t)(struct mkfw_window *window, uint32_t key, ui
 typedef void (*mkfw_char_callback_t)(struct mkfw_window *window, uint32_t codepoint);
 typedef void (*mkfw_scroll_callback_t)(struct mkfw_window *window, double xoffset, double yoffset);
 typedef void (*mkfw_mouse_move_delta_callback_t)(struct mkfw_window *window, int32_t x, int32_t y);
-typedef void (*mkfw_mouse_button_callback_t)(struct mkfw_window *window, uint8_t button, int action);
+typedef void (*mkfw_mouse_button_callback_t)(struct mkfw_window *window, uint8_t button, uint32_t action);
 typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_window *window, int32_t width, int32_t height, float aspect_ratio);
 typedef void (*mkfw_focus_callback_t)(struct mkfw_window *window, uint8_t focused);
 typedef void (*mkfw_drop_callback_t)(uint32_t count, const char **paths);
@@ -79,7 +120,7 @@ struct mkfw_window {
  * into the same translation unit.  All sites that report failure
  * call mkfw_error() with a printf-style format string. */
 typedef void (*mkfw_error_callback_t)(const char *message);
-static mkfw_error_callback_t mkfw_error_callback;
+MKFW_VAR mkfw_error_callback_t mkfw_error_callback;
 
 #ifdef _WIN32
 	#define MKFW_THREAD_LOCAL __declspec(thread)
@@ -87,8 +128,8 @@ static mkfw_error_callback_t mkfw_error_callback;
 	#define MKFW_THREAD_LOCAL __thread
 #endif
 
-static MKFW_THREAD_LOCAL char mkfw_last_error_buf[512];
-static MKFW_THREAD_LOCAL uint8_t mkfw_last_error_set;
+MKFW_VAR MKFW_THREAD_LOCAL char mkfw_last_error_buf[512];
+MKFW_VAR MKFW_THREAD_LOCAL uint8_t mkfw_last_error_set;
 
 __attribute__((format(printf, 1, 2)))
 static inline void mkfw_error(const char *fmt, ...) {
@@ -226,37 +267,6 @@ struct mkfw_native_handles {
 	void     *gl_context;
 };
 
-/* Public-API linkage macro.
- *
- *   Default (header-only / unity build):    MKFW_API == static
- *     The platform .c is #included from this header; every public
- *     function is file-scope in the consumer's translation unit.
- *
- *   Static library build:                   MKFW_API == extern
- *     Define MKFW_BUILD_LIBRARY when compiling the .c files into a
- *     static .a / .lib.  Consumers link against the archive and the
- *     public functions are referenced via the header declarations.
- *
- *   Shared library build (Windows DLL):     MKFW_API == __declspec(dllexport)
- *     Define MKFW_BUILD_SHARED when compiling the DLL.
- *
- *   Shared library consumer (Windows DLL):  MKFW_API == __declspec(dllimport)
- *     Define MKFW_USE_SHARED when including this header from a TU
- *     that links against the import library.
- *
- * Internal helpers (file-scope to the implementation) stay marked
- * `static` regardless of mode.
- */
-#if defined(MKFW_BUILD_SHARED) && defined(_WIN32)
-   #define MKFW_API __declspec(dllexport)
-#elif defined(MKFW_USE_SHARED) && defined(_WIN32)
-   #define MKFW_API __declspec(dllimport)
-#elif defined(MKFW_BUILD_LIBRARY)
-   #define MKFW_API extern
-#else
-   #define MKFW_API static
-#endif
-
 /* Suppress unused-function warnings for API functions the user may not call */
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -302,6 +312,82 @@ struct mkfw_native_handles {
 		pthread_join(t, 0);
 	}
 #endif
+
+/* Forward declarations of every MKFW_API function defined in the
+ * platform .c.  In unity mode the .c above already declared them via
+ * its definitions; in library mode these are the only declarations
+ * the consumer's TU sees. */
+
+/* Context / library lifecycle */
+MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts);
+MKFW_API void                 mkfw_shutdown(struct mkfw_context *ctx);
+MKFW_API int32_t              mkfw_get_monitors(struct mkfw_context *ctx, struct mkfw_monitor *out, int32_t max);
+MKFW_API uint32_t             mkfw_query_max_gl_version(int32_t *major, int32_t *minor);
+
+/* Event pumping */
+MKFW_API void                 mkfw_poll_events(struct mkfw_context *ctx);
+MKFW_API void                 mkfw_wait_events(struct mkfw_context *ctx);
+MKFW_API void                 mkfw_wait_events_timeout(struct mkfw_context *ctx, uint64_t nanoseconds);
+
+/* Time */
+MKFW_API uint64_t             mkfw_get_time(void);
+MKFW_API void                 mkfw_sleep(uint64_t nanoseconds);
+
+/* Window lifecycle */
+MKFW_API struct mkfw_window  *mkfw_window_create(struct mkfw_context *ctx, struct mkfw_window_options *opts);
+MKFW_API void                 mkfw_window_destroy(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_show(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_hide(struct mkfw_window *state);
+MKFW_API uint32_t             mkfw_window_should_close(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_set_should_close(struct mkfw_window *state, int32_t value);
+
+/* Window attributes */
+MKFW_API void                 mkfw_window_set_title(struct mkfw_window *state, const char *title);
+MKFW_API void                 mkfw_window_set_size(struct mkfw_window *state, int32_t width, int32_t height);
+MKFW_API void                 mkfw_window_get_framebuffer_size(struct mkfw_window *state, int32_t *width, int32_t *height);
+MKFW_API void                 mkfw_window_set_position(struct mkfw_window *state, int32_t x, int32_t y);
+MKFW_API void                 mkfw_window_get_position(struct mkfw_window *state, int32_t *x, int32_t *y);
+MKFW_API void                 mkfw_window_set_size_limits(struct mkfw_window *state, int32_t min_w, int32_t min_h, int32_t max_w, int32_t max_h);
+MKFW_API void                 mkfw_window_set_aspect_ratio(struct mkfw_window *state, int32_t num, int32_t den);
+MKFW_API void                 mkfw_window_set_resizable(struct mkfw_window *state, int32_t resizable);
+MKFW_API void                 mkfw_window_set_decorated(struct mkfw_window *state, int32_t decorated);
+MKFW_API void                 mkfw_window_set_opacity(struct mkfw_window *state, float opacity);
+MKFW_API void                 mkfw_window_set_icon(struct mkfw_window *state, int32_t width, int32_t height, const uint8_t *rgba);
+MKFW_API void                 mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable);
+MKFW_API void                 mkfw_window_minimize(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_maximize(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_restore(struct mkfw_window *state);
+MKFW_API uint32_t             mkfw_window_is_minimized(struct mkfw_window *state);
+MKFW_API uint32_t             mkfw_window_is_maximized(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_request_attention(struct mkfw_window *state);
+MKFW_API float                mkfw_window_get_content_scale(struct mkfw_window *state);
+
+/* Rendering / GL */
+MKFW_API void                 mkfw_window_attach_context(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_detach_context(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_swap_buffers(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_set_swap_interval(struct mkfw_window *state, uint32_t interval);
+MKFW_API int32_t              mkfw_window_get_swap_interval(struct mkfw_window *state);
+
+/* Mouse + cursor */
+MKFW_API void                 mkfw_window_set_mouse_sensitivity(struct mkfw_window *state, double sensitivity);
+MKFW_API void                 mkfw_window_get_and_clear_mouse_delta(struct mkfw_window *state, int32_t *dx, int32_t *dy);
+MKFW_API void                 mkfw_window_get_cursor_position(struct mkfw_window *state, int32_t *x, int32_t *y);
+MKFW_API void                 mkfw_window_set_cursor_position(struct mkfw_window *state, int32_t x, int32_t y);
+MKFW_API void                 mkfw_window_set_cursor_visible(struct mkfw_window *state, uint32_t visible);
+MKFW_API void                 mkfw_window_set_cursor_locked(struct mkfw_window *state, uint32_t locked);
+MKFW_API uint32_t             mkfw_window_is_cursor_visible(struct mkfw_window *state);
+MKFW_API uint32_t             mkfw_window_is_cursor_locked(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_set_cursor_shape(struct mkfw_window *state, uint32_t cursor);
+MKFW_API struct mkfw_cursor  *mkfw_cursor_create_rgba(struct mkfw_context *ctx, uint32_t width, uint32_t height, uint8_t *rgba, int32_t hotspot_x, int32_t hotspot_y);
+MKFW_API void                 mkfw_cursor_destroy(struct mkfw_context *ctx, struct mkfw_cursor *cursor);
+MKFW_API void                 mkfw_window_set_custom_cursor(struct mkfw_window *state, struct mkfw_cursor *cursor);
+
+/* Clipboard, drop, native handles */
+MKFW_API void                 mkfw_window_set_clipboard_text(struct mkfw_window *state, const char *text);
+MKFW_API char                *mkfw_window_get_clipboard_text(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_enable_drop(struct mkfw_window *state, uint8_t enable);
+MKFW_API void                 mkfw_window_get_native_handles(struct mkfw_window *state, struct mkfw_native_handles *out);
 
 /* Inline helper functions - placed after platform includes so struct is defined */
 static inline void mkfw_window_update_input_state(struct mkfw_window *state) {

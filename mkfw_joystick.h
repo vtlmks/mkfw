@@ -29,8 +29,8 @@ struct mkfw_joystick_pad {
 	uint16_t vendor_id;
 	uint16_t product_id;
 
-	int button_count;
-	int axis_count;
+	uint32_t button_count;
+	uint32_t axis_count;
 	uint8_t buttons[MKFW_JOYSTICK_MAX_BUTTONS];
 	uint8_t prev_buttons[MKFW_JOYSTICK_MAX_BUTTONS];
 	float axes[MKFW_JOYSTICK_MAX_AXES];
@@ -38,7 +38,12 @@ struct mkfw_joystick_pad {
 	float hat_y;
 };
 
-typedef void (*mkfw_joystick_callback_t)(int pad_index, int connected);
+typedef void (*mkfw_joystick_callback_t)(uint32_t pad_index, uint32_t connected);
+
+/* Cross-TU storage: declared here, defined in the platform .c either
+ * via the unity include below or via the gated block in library mode. */
+MKFW_VAR struct mkfw_joystick_pad   mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS];
+MKFW_VAR mkfw_joystick_callback_t   mkfw_joystick_cb;
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -55,6 +60,19 @@ typedef void (*mkfw_joystick_callback_t)(int pad_index, int connected);
 #ifdef MKFW_JOYSTICK_GAMEDB
 #include "mkfw_joystick_gamedb.c"
 #endif
+#endif
+
+/* Forward declarations of every MKFW_API function defined in the
+ * platform .c.  Same rationale as in mkfw.h. */
+MKFW_API void mkfw_joystick_init(void);
+MKFW_API void mkfw_joystick_shutdown(void);
+MKFW_API void mkfw_joystick_update(void);
+MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms);
+
+#ifdef MKFW_JOYSTICK_GAMEDB
+MKFW_API uint32_t mkfw_gamepad_get_button(uint32_t pad_index, uint32_t gamepad_button);
+MKFW_API uint32_t mkfw_gamepad_is_button_pressed(uint32_t pad_index, uint32_t gamepad_button);
+MKFW_API float    mkfw_gamepad_get_axis(uint32_t pad_index, uint32_t gamepad_axis);
 #endif
 
 static inline uint32_t mkfw_joystick_is_connected(uint32_t pad_index) {

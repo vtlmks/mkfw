@@ -125,8 +125,8 @@ struct mkfw_joystick_pad {
     char     name[MKFW_JOYSTICK_NAME_LEN];       // device name (UTF-8)
     uint16_t vendor_id;                          // USB VID
     uint16_t product_id;                         // USB PID
-    int      button_count;                       // populated by update()
-    int      axis_count;                         // populated by update()
+    uint32_t button_count;                       // populated by update()
+    uint32_t axis_count;                         // populated by update()
     uint8_t  buttons[MKFW_JOYSTICK_MAX_BUTTONS]; // 1 = held
     uint8_t  prev_buttons[MKFW_JOYSTICK_MAX_BUTTONS];
     float    axes[MKFW_JOYSTICK_MAX_AXES];       // -1.0 .. 1.0
@@ -257,7 +257,7 @@ D-pad as a single hat instead of four buttons.
 ## Connect / disconnect callback
 
 ```c
-typedef void (*mkfw_joystick_callback_t)(int pad_index, int connected);
+typedef void (*mkfw_joystick_callback_t)(uint32_t pad_index, uint32_t connected);
 
 void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback);
 ```
@@ -267,11 +267,11 @@ pad's connection state transitions.  `connected` is `1` on
 plug-in, `0` on unplug.  Pass `0` to remove the callback.
 
 ```c
-static void on_pad(int pad, int connected) {
+static void on_pad(uint32_t pad, uint32_t connected) {
     if(connected) {
-        printf("Pad %d connected: %s\n", pad, mkfw_joystick_get_name(pad));
+        printf("Pad %u connected: %s\n", pad, mkfw_joystick_get_name(pad));
     } else {
-        printf("Pad %d disconnected\n", pad);
+        printf("Pad %u disconnected\n", pad);
     }
 }
 
@@ -318,7 +318,7 @@ expose pads in the standardised gamepad layout:
 ### `mkfw_gamepad_get_button`
 
 ```c
-int mkfw_gamepad_get_button(int pad_index, int gamepad_button);
+uint32_t mkfw_gamepad_get_button(uint32_t pad_index, uint32_t gamepad_button);
 ```
 
 Non-zero while the mapped button (`MKFW_GAMEPAD_A`,
@@ -327,7 +327,7 @@ Non-zero while the mapped button (`MKFW_GAMEPAD_A`,
 ### `mkfw_gamepad_is_button_pressed`
 
 ```c
-int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button);
+uint32_t mkfw_gamepad_is_button_pressed(uint32_t pad_index, uint32_t gamepad_button);
 ```
 
 Edge-detected rising-edge query.
@@ -335,7 +335,7 @@ Edge-detected rising-edge query.
 ### `mkfw_gamepad_get_axis`
 
 ```c
-float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis);
+float mkfw_gamepad_get_axis(uint32_t pad_index, uint32_t gamepad_axis);
 ```
 
 Mapped axis value (`MKFW_GAMEPAD_AXIS_LEFT_X`, `_RIGHT_X`,

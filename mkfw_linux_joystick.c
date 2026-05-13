@@ -1,6 +1,11 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
+// In unity mode this file is #included from mkfw_joystick.h.
+// In library mode it is compiled standalone; the include below pulls
+// in the public types, MKFW_API / MKFW_VAR macros, and the cross-TU
+// variable declarations.
+#include "mkfw_joystick.h"
 
 #include <linux/input.h>
 #include <sys/inotify.h>
@@ -9,6 +14,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <errno.h>
+#include <string.h>
 
 #define MKFW_JOYSTICK_DEVPATH_LEN 280
 
@@ -34,9 +40,15 @@ struct mkfw_joystick_linux_pad {
 	int16_t ff_id;
 };
 
-static struct mkfw_joystick_pad mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS];
+/* Cross-TU storage: declared as MKFW_VAR in mkfw_joystick.h.  In unity
+ * mode the header's static declaration is the definition; in library
+ * mode the storage block below provides it. */
+#if defined(MKFW_BUILD_SHARED) || defined(MKFW_BUILD_LIBRARY)
+struct mkfw_joystick_pad      mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS];
+mkfw_joystick_callback_t      mkfw_joystick_cb;
+#endif
+
 static struct mkfw_joystick_linux_pad mkfw_joystick_linux[MKFW_JOYSTICK_MAX_PADS];
-static mkfw_joystick_callback_t mkfw_joystick_cb;
 static int mkfw_inotify_fd = -1;
 static int mkfw_inotify_wd = -1;
 static uint8_t mkfw_joystick_initialized;
@@ -157,11 +169,11 @@ static void mkfw_joystick_try_open(const char *devpath) {
 	/* Axis codes in ascending order (0x00-0x05) to match SDL's sequential scan. */
 	static const int axis_codes[] = { ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ };
 	pad->axis_count = 0;
-	for(int a = 0; a < 6 && pad->axis_count < MKFW_JOYSTICK_MAX_AXES; a++) {
+	for(uint32_t a = 0; a < 6 && pad->axis_count < MKFW_JOYSTICK_MAX_AXES; a++) {
 		if(MKFW_JOYSTICK_BIT_TEST(absbits, axis_codes[a])) {
 			struct input_absinfo absinfo;
 			if(ioctl(fd, EVIOCGABS(axis_codes[a]), &absinfo) == 0) {
-				int idx = pad->axis_count++;
+				uint32_t idx = pad->axis_count++;
 				lpad->axis_map[idx].code = axis_codes[a];
 				lpad->axis_map[idx].minimum = absinfo.minimum;
 				lpad->axis_map[idx].maximum = absinfo.maximum;
@@ -187,9 +199,9 @@ static void mkfw_joystick_try_open(const char *devpath) {
 	};
 
 	pad->button_count = 0;
-	for(int b = 0; b < (int)(sizeof(btn_codes) / sizeof(btn_codes[0])) && pad->button_count < MKFW_JOYSTICK_MAX_BUTTONS; b++) {
+	for(uint32_t b = 0; b < sizeof(btn_codes) / sizeof(btn_codes[0]) && pad->button_count < MKFW_JOYSTICK_MAX_BUTTONS; b++) {
 		if(MKFW_JOYSTICK_BIT_TEST(keybits, btn_codes[b])) {
-			int idx = pad->button_count++;
+			uint32_t idx = pad->button_count++;
 			lpad->button_codes[idx] = btn_codes[b];
 		}
 	}
@@ -370,7 +382,7 @@ MKFW_API void mkfw_joystick_update(void) {
 
 		while(read(lpad->fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev)) {
 			if(ev.type == EV_KEY) {
-				for(int b = 0; b < pad->button_count; b++) {
+				for(uint32_t b = 0; b < pad->button_count; b++) {
 					if(lpad->button_codes[b] == (int)ev.code) {
 						pad->buttons[b] = ev.value ? 1 : 0;
 						break;
@@ -395,7 +407,7 @@ MKFW_API void mkfw_joystick_update(void) {
 				} else if(ev.code == ABS_HAT0Y) {
 					pad->hat_y = (float)ev.value;
 				} else {
-					for(int a = 0; a < pad->axis_count; a++) {
+					for(uint32_t a = 0; a < pad->axis_count; a++) {
 						if(lpad->axis_map[a].code == (int)ev.code) {
 							pad->axes[a] = mkfw_joystick_normalize_axis(
 								ev.value,

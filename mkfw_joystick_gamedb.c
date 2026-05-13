@@ -1,8 +1,14 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
+// In unity mode this file is #included from mkfw_joystick.h (which has
+// already pulled in mkfw_joystick.h itself).  In library mode the file
+// is compiled standalone; the includes below pull in the public
+// joystick types and MKFW_API macro.
+#include "mkfw_joystick.h"
 
 #include "mkfw_joystick_gamedb.h"
+#include <string.h>
 
 /* Mapping source types */
 #define MKFW_GAMEDB_SRC_NONE   0
@@ -357,11 +363,11 @@ static void mkfw_gamedb_ensure_mapping(int pad_index) {
 }
 
 // [=]===^=[ mkfw_gamepad_get_button ]================================================================[=]
-MKFW_API int mkfw_gamepad_get_button(int pad_index, int gamepad_button) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+MKFW_API uint32_t mkfw_gamepad_get_button(uint32_t pad_index, uint32_t gamepad_button) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
-	if(gamepad_button < 0 || gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) {
+	if(gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) {
 		return 0;
 	}
 	if(!mkfw_joystick_pads[pad_index].connected) {
@@ -379,12 +385,12 @@ MKFW_API int mkfw_gamepad_get_button(int pad_index, int gamepad_button) {
 
 	switch(bind->type) {
 	case MKFW_GAMEDB_SRC_BUTTON:
-		if(bind->index >= 0 && bind->index < pad->button_count) {
+		if(bind->index >= 0 && (uint32_t)bind->index < pad->button_count) {
 			return pad->buttons[bind->index];
 		}
 		return 0;
 	case MKFW_GAMEDB_SRC_AXIS:
-		if(bind->index >= 0 && bind->index < pad->axis_count) {
+		if(bind->index >= 0 && (uint32_t)bind->index < pad->axis_count) {
 			float v = pad->axes[bind->index];
 			return (v > 0.5f || v < -0.5f) ? 1 : 0;
 		}
@@ -412,11 +418,11 @@ MKFW_API int mkfw_gamepad_get_button(int pad_index, int gamepad_button) {
 }
 
 // [=]===^=[ mkfw_gamepad_is_button_pressed ]========================================================[=]
-MKFW_API int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+MKFW_API uint32_t mkfw_gamepad_is_button_pressed(uint32_t pad_index, uint32_t gamepad_button) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
-	if(gamepad_button < 0 || gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) {
+	if(gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) {
 		return 0;
 	}
 	if(!mkfw_joystick_pads[pad_index].connected) {
@@ -433,7 +439,7 @@ MKFW_API int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button) {
 	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
 
 	if(bind->type == MKFW_GAMEDB_SRC_BUTTON) {
-		if(bind->index >= 0 && bind->index < pad->button_count) {
+		if(bind->index >= 0 && (uint32_t)bind->index < pad->button_count) {
 			return pad->buttons[bind->index] && !pad->prev_buttons[bind->index];
 		}
 	}
@@ -441,11 +447,11 @@ MKFW_API int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button) {
 }
 
 // [=]===^=[ mkfw_gamepad_get_axis ]==================================================================[=]
-MKFW_API float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+MKFW_API float mkfw_gamepad_get_axis(uint32_t pad_index, uint32_t gamepad_axis) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}
-	if(gamepad_axis < 0 || gamepad_axis >= MKFW_GAMEPAD_AXIS_LAST) {
+	if(gamepad_axis >= MKFW_GAMEPAD_AXIS_LAST) {
 		return 0.0f;
 	}
 	if(!mkfw_joystick_pads[pad_index].connected) {
@@ -462,13 +468,13 @@ MKFW_API float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis) {
 	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
 
 	if(bind->type == MKFW_GAMEDB_SRC_AXIS) {
-		if(bind->index >= 0 && bind->index < pad->axis_count) {
+		if(bind->index >= 0 && (uint32_t)bind->index < pad->axis_count) {
 			float v = pad->axes[bind->index];
 			return bind->axis_invert ? -v : v;
 		}
 	} else if(bind->type == MKFW_GAMEDB_SRC_BUTTON) {
 		/* Button mapped to axis (e.g. triggers as buttons) */
-		if(bind->index >= 0 && bind->index < pad->button_count) {
+		if(bind->index >= 0 && (uint32_t)bind->index < pad->button_count) {
 			return pad->buttons[bind->index] ? 1.0f : 0.0f;
 		}
 	}
