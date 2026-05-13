@@ -493,6 +493,7 @@ MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	load_x11_functions();
 	Display *dpy = XOpenDisplay(0);
 	if(!dpy) {
+		mkfw_error("mkfw_query_max_gl_version: unable to open X display");
 		return 0;
 	}
 
@@ -507,6 +508,7 @@ MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 
 	XVisualInfo *vi = glXGetVisualFromFBConfig(dpy, fb_config);
 	if(!vi) {
+		mkfw_error("mkfw_query_max_gl_version: glXGetVisualFromFBConfig returned 0");
 		XCloseDisplay(dpy);
 		return 0;
 	}
@@ -527,6 +529,7 @@ MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 
 	GLXContext ctx = glXCreateContextAttribsARB(dpy, fb_config, 0, 1, ctx_attribs);
 	if(!ctx) {
+		mkfw_error("mkfw_query_max_gl_version: glXCreateContextAttribsARB failed to create probe context");
 		XDestroyWindow(dpy, win);
 		XFreeColormap(dpy, cmap);
 		XFree(vi);
@@ -574,10 +577,12 @@ MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 
 	struct mkfw_context *ctx = (struct mkfw_context *)calloc(1, sizeof(struct mkfw_context));
 	if(!ctx) {
+		mkfw_error("mkfw_init: out of memory");
 		return 0;
 	}
 	ctx->platform = calloc(1, sizeof(struct x11_mkfw_context));
 	if(!ctx->platform) {
+		mkfw_error("mkfw_init: out of memory");
 		free(ctx);
 		return 0;
 	}
@@ -610,7 +615,12 @@ MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 
 // [=]===^=[ mkfw_window_create ]=================================================================[=]
 MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct mkfw_window_options *opts) {
-	if(!ctx || ctx->window_count >= MKFW_MAX_WINDOWS) {
+	if(!ctx) {
+		mkfw_error("mkfw_window_create: ctx is null");
+		return 0;
+	}
+	if(ctx->window_count >= MKFW_MAX_WINDOWS) {
+		mkfw_error("mkfw_window_create: context already at MKFW_MAX_WINDOWS (%d)", MKFW_MAX_WINDOWS);
 		return 0;
 	}
 
@@ -633,12 +643,14 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 
 	struct mkfw_window *state = (struct mkfw_window *)calloc(1, sizeof(struct mkfw_window));
 	if(!state) {
+		mkfw_error("mkfw_window_create: out of memory");
 		return 0;
 	}
 	state->context = ctx;
 
 	state->platform = calloc(1, sizeof(struct x11_mkfw_window));
 	if(!state->platform) {
+		mkfw_error("mkfw_window_create: out of memory");
 		free(state);
 		return 0;
 	}
@@ -1710,6 +1722,7 @@ static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, 
 	Window root = DefaultRootWindow(dpy);
 	XRRScreenResources *sr = XRRGetScreenResourcesCurrent(dpy, root);
 	if(!sr) {
+		mkfw_error("monitor query: XRRGetScreenResourcesCurrent returned 0");
 		return 0;
 	}
 

@@ -43,16 +43,25 @@ static void *mkfw_audio_user_data;
 static mkfw_audio_device_lost_callback_t mkfw_audio_lost_cb;
 static void *mkfw_audio_lost_data;
 
+// Set to 1 while mkfw_audio_init's synchronous open is in flight.
+// Lets open_device_win32 fire descriptive mkfw_error() calls on the
+// first attempt without spamming the audio thread's background retry
+// loop with duplicate messages.
+static uint8_t mkfw_audio_init_phase;
+
 // [=]===^=[ mkfw_audio_open_device_win32 ]=======================================================[=]
 static int32_t mkfw_audio_open_device_win32(void) {
 	WAVEFORMATEX wf;
 	REFERENCE_TIME device_period;
 	uint32_t buffer_frames;
+	HRESULT hr;
 
-	if(FAILED(IMMDeviceEnumerator_GetDefaultAudioEndpoint(mkfw_audio_enumerator, eRender, eConsole, &mkfw_audio_device))) {
+	if(FAILED(hr = IMMDeviceEnumerator_GetDefaultAudioEndpoint(mkfw_audio_enumerator, eRender, eConsole, &mkfw_audio_device))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: GetDefaultAudioEndpoint failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		return -1;
 	}
-	if(FAILED(IMMDevice_Activate(mkfw_audio_device, &mkfw_IID_IAudioClient, CLSCTX_ALL, 0, (void**)&mkfw_audio_client))) {
+	if(FAILED(hr = IMMDevice_Activate(mkfw_audio_device, &mkfw_IID_IAudioClient, CLSCTX_ALL, 0, (void**)&mkfw_audio_client))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: IMMDevice::Activate(IAudioClient) failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		IMMDevice_Release(mkfw_audio_device);
 		mkfw_audio_device = 0;
 		return -1;
@@ -69,7 +78,8 @@ static int32_t mkfw_audio_open_device_win32(void) {
 	wf.nAvgBytesPerSec = wf.nSamplesPerSec * wf.nBlockAlign;
 	wf.cbSize = 0;
 
-	if(FAILED(IAudioClient_GetDevicePeriod(mkfw_audio_client, &device_period, 0))) {
+	if(FAILED(hr = IAudioClient_GetDevicePeriod(mkfw_audio_client, &device_period, 0))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: IAudioClient::GetDevicePeriod failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		goto fail;
 	}
 
@@ -79,19 +89,24 @@ static int32_t mkfw_audio_open_device_win32(void) {
 		requested_duration = ((REFERENCE_TIME)mkfw_audio_opts.preferred_buffer_frames * 10000000LL) / rate;
 	}
 
-	if(FAILED(IAudioClient_Initialize(mkfw_audio_client, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, requested_duration, 0, &wf, 0))) {
+	if(FAILED(hr = IAudioClient_Initialize(mkfw_audio_client, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, requested_duration, 0, &wf, 0))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: IAudioClient::Initialize(SHARED, f32 %uHz %uch) failed (HRESULT 0x%08lx)", rate, channels, (unsigned long)hr);
 		goto fail;
 	}
-	if(FAILED(IAudioClient_SetEventHandle(mkfw_audio_client, mkfw_audio_event))) {
+	if(FAILED(hr = IAudioClient_SetEventHandle(mkfw_audio_client, mkfw_audio_event))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: IAudioClient::SetEventHandle failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		goto fail;
 	}
-	if(FAILED(IAudioClient_GetService(mkfw_audio_client, &mkfw_IID_IAudioRenderClient, (void**)&mkfw_audio_render_client))) {
+	if(FAILED(hr = IAudioClient_GetService(mkfw_audio_client, &mkfw_IID_IAudioRenderClient, (void**)&mkfw_audio_render_client))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: IAudioClient::GetService(IAudioRenderClient) failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		goto fail;
 	}
-	if(FAILED(IAudioClient_GetBufferSize(mkfw_audio_client, &buffer_frames))) {
+	if(FAILED(hr = IAudioClient_GetBufferSize(mkfw_audio_client, &buffer_frames))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: IAudioClient::GetBufferSize failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		goto fail;
 	}
-	if(FAILED(IAudioClient_Start(mkfw_audio_client))) {
+	if(FAILED(hr = IAudioClient_Start(mkfw_audio_client))) {
+		if(mkfw_audio_init_phase) mkfw_error("WASAPI: IAudioClient::Start failed (HRESULT 0x%08lx)", (unsigned long)hr);
 		IAudioRenderClient_Release(mkfw_audio_render_client);
 		mkfw_audio_render_client = 0;
 		goto fail;
@@ -158,7 +173,9 @@ static void mkfw_audio_dispatch(float *buffer, uint32_t frames) {
 // [=]===^=[ mkfw_audio_thread_proc ]=============================================================[=]
 static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	(void)arg;
-	uint32_t buffer_size = 0;
+	// mkfw_audio_init opens the device synchronously before spawning us,
+	// so the negotiated buffer size is already populated on first entry.
+	uint32_t buffer_size = mkfw_audio_negotiated.frames_per_buffer;
 	uint32_t padding;
 	uint32_t available;
 	uint8_t *data;
@@ -260,10 +277,29 @@ MKFW_API uint32_t mkfw_audio_init(struct mkfw_audio_options *opts) {
 		mkfw_error("audio: CreateEvent failed");
 		return 0;
 	}
+
+	// Open the device synchronously so any failure surfaces a specific
+	// mkfw_error before init returns.  Once the thread is running, the
+	// retry loop is silent and the device-lost callback handles state
+	// transitions.
+	mkfw_audio_init_phase = 1;
+	if(mkfw_audio_open_device_win32() < 0) {
+		mkfw_audio_init_phase = 0;
+		CloseHandle(mkfw_audio_event);
+		mkfw_audio_event = 0;
+		IMMDeviceEnumerator_Release(mkfw_audio_enumerator);
+		mkfw_audio_enumerator = 0;
+		CoUninitialize();
+		return 0;
+	}
+	mkfw_audio_init_phase = 0;
+	__atomic_store_n(&mkfw_audio_alive, 1, __ATOMIC_RELEASE);
+
 	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
 	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_proc, 0);
 	if(!mkfw_audio_thread) {
 		__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
+		mkfw_audio_close_device_win32();
 		CloseHandle(mkfw_audio_event);
 		mkfw_audio_event = 0;
 		IMMDeviceEnumerator_Release(mkfw_audio_enumerator);

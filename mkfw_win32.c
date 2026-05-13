@@ -761,10 +761,12 @@ MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 
 	struct mkfw_context *ctx = (struct mkfw_context *)calloc(1, sizeof(struct mkfw_context));
 	if(!ctx) {
+		mkfw_error("mkfw_init: out of memory");
 		return 0;
 	}
 	ctx->platform = calloc(1, sizeof(struct win32_mkfw_context));
 	if(!ctx->platform) {
+		mkfw_error("mkfw_init: out of memory");
 		free(ctx);
 		return 0;
 	}
@@ -799,7 +801,12 @@ MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 
 // [=]===^=[ mkfw_window_create ]=================================================================[=]
 MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct mkfw_window_options *opts) {
-	if(!ctx || ctx->window_count >= MKFW_MAX_WINDOWS) {
+	if(!ctx) {
+		mkfw_error("mkfw_window_create: ctx is null");
+		return 0;
+	}
+	if(ctx->window_count >= MKFW_MAX_WINDOWS) {
+		mkfw_error("mkfw_window_create: context already at MKFW_MAX_WINDOWS (%d)", MKFW_MAX_WINDOWS);
 		return 0;
 	}
 
@@ -823,12 +830,14 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 
 	struct mkfw_window *state = (struct mkfw_window *)calloc(1, sizeof(struct mkfw_window));
 	if(!state) {
+		mkfw_error("mkfw_window_create: out of memory");
 		return 0;
 	}
 	state->context = ctx;
 
 	state->platform = calloc(1, sizeof(struct win32_mkfw_window));
 	if(!state->platform) {
+		mkfw_error("mkfw_window_create: out of memory");
 		free(state);
 		return 0;
 	}
