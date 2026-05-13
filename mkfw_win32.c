@@ -62,6 +62,10 @@ struct win32_mkfw_window {
 	double mouse_sensitivity;
 	int32_t min_width;
 	int32_t min_height;
+	int32_t max_width;
+	int32_t max_height;
+	int32_t aspect_num;
+	int32_t aspect_den;
 	HCURSOR hidden_cursor;
 	uint8_t is_fullscreen;
 	uint8_t aspect_ratio_enabled;
@@ -69,6 +73,7 @@ struct win32_mkfw_window {
 
 	HCURSOR cursors[MKFW_CURSOR_LAST];
 	uint32_t current_cursor;
+	HCURSOR active_custom_cursor;
 	uint16_t high_surrogate;
 	uint8_t mouse_tracked;
 
@@ -77,8 +82,60 @@ struct win32_mkfw_window {
 	uint8_t last_minimized;
 };
 
+// USB HID Usage Page 7 scancode for each PS/2 set-1 scancode that is *not*
+// preceded by the 0xE0 extended prefix.  Entries are 0 for codes outside the
+// standard PC101 + extended layout.
+static const uint8_t mkfw_ps2_to_hid[128] = {
+	[0x01] = 0x29,                                       // ESC
+	[0x02] = 0x1e, [0x03] = 0x1f, [0x04] = 0x20, [0x05] = 0x21, [0x06] = 0x22,
+	[0x07] = 0x23, [0x08] = 0x24, [0x09] = 0x25, [0x0a] = 0x26, [0x0b] = 0x27, // 1..0
+	[0x0c] = 0x2d, [0x0d] = 0x2e, [0x0e] = 0x2a, [0x0f] = 0x2b,                // - = BS Tab
+	[0x10] = 0x14, [0x11] = 0x1a, [0x12] = 0x08, [0x13] = 0x15, [0x14] = 0x17,
+	[0x15] = 0x1c, [0x16] = 0x18, [0x17] = 0x0c, [0x18] = 0x12, [0x19] = 0x13, // Q..P
+	[0x1a] = 0x2f, [0x1b] = 0x30, [0x1c] = 0x28, [0x1d] = 0xe0,                // [ ] Enter LCtrl
+	[0x1e] = 0x04, [0x1f] = 0x16, [0x20] = 0x07, [0x21] = 0x09, [0x22] = 0x0a,
+	[0x23] = 0x0b, [0x24] = 0x0d, [0x25] = 0x0e, [0x26] = 0x0f,                // A..L
+	[0x27] = 0x33, [0x28] = 0x34, [0x29] = 0x35, [0x2a] = 0xe1, [0x2b] = 0x31, // ; apostrophe grave LShift backslash
+	[0x2c] = 0x1d, [0x2d] = 0x1b, [0x2e] = 0x06, [0x2f] = 0x19, [0x30] = 0x05,
+	[0x31] = 0x11, [0x32] = 0x10,                                              // Z..M
+	[0x33] = 0x36, [0x34] = 0x37, [0x35] = 0x38, [0x36] = 0xe5,                // , . / RShift
+	[0x37] = 0x55, [0x38] = 0xe2, [0x39] = 0x2c, [0x3a] = 0x39,                // KP* LAlt Space Caps
+	[0x3b] = 0x3a, [0x3c] = 0x3b, [0x3d] = 0x3c, [0x3e] = 0x3d, [0x3f] = 0x3e,
+	[0x40] = 0x3f, [0x41] = 0x40, [0x42] = 0x41, [0x43] = 0x42, [0x44] = 0x43, // F1..F10
+	[0x45] = 0x53, [0x46] = 0x47,                                              // NumLock ScrollLock
+	[0x47] = 0x5f, [0x48] = 0x60, [0x49] = 0x61, [0x4a] = 0x56,                // KP7 KP8 KP9 KP-
+	[0x4b] = 0x5c, [0x4c] = 0x5d, [0x4d] = 0x5e, [0x4e] = 0x57,                // KP4 KP5 KP6 KP+
+	[0x4f] = 0x59, [0x50] = 0x5a, [0x51] = 0x5b, [0x52] = 0x62, [0x53] = 0x63, // KP1..KP0 KP.
+	[0x57] = 0x44, [0x58] = 0x45,                                              // F11 F12
+};
+
+// USB HID scancode for each PS/2 scancode that *is* preceded by 0xE0.
+// (The extended bit is set in bit 24 of lParam.)
+static const uint8_t mkfw_ps2_extended_to_hid[128] = {
+	[0x1c] = 0x58, [0x1d] = 0xe4,                                              // KPEnter RCtrl
+	[0x35] = 0x54,                                                             // KP/
+	[0x37] = 0x46,                                                             // PrintScreen
+	[0x38] = 0xe6,                                                             // RAlt
+	[0x47] = 0x4a, [0x48] = 0x52, [0x49] = 0x4b,                               // Home Up PageUp
+	[0x4b] = 0x50, [0x4d] = 0x4f,                                              // Left Right
+	[0x4f] = 0x4d, [0x50] = 0x51, [0x51] = 0x4e,                               // End Down PageDown
+	[0x52] = 0x49, [0x53] = 0x4c,                                              // Insert Delete
+	[0x5b] = 0xe3, [0x5c] = 0xe7, [0x5d] = 0x65,                               // LSuper RSuper Menu
+};
+
+// [=]===^=[ win32_update_scancode ]==============================================================[=]
+static void win32_update_scancode(struct mkfw_window *state, LPARAM lParam, uint32_t down) {
+	uint32_t scancode = (lParam >> 16) & 0xff;
+	uint32_t extended = (lParam & 0x01000000) ? 1 : 0;
+	uint8_t hid = extended ? mkfw_ps2_extended_to_hid[scancode] : mkfw_ps2_to_hid[scancode];
+	if(hid) {
+		state->scancode_state[hid] = down ? 1 : 0;
+	}
+}
+
 // [=]===^=[ map_vk_to_scancode ]=================================================================[=]
 static uint32_t map_vk_to_scancode(struct mkfw_window *state, WPARAM wParam, LPARAM lParam, int key_down) {
+	win32_update_scancode(state, lParam, (uint32_t)key_down);
 	uint32_t keycode = 0;
 
 	// Special handling for ambiguous keys (VK_SHIFT, VK_CONTROL, VK_MENU)
@@ -327,29 +384,34 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 			LONG style = GetWindowLong(hwnd, GWL_STYLE);
 			LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
 
-			// Check if the window is in fullscreen mode
+			// No min/max restrictions in fullscreen.
 			if(style & WS_POPUP) {
-				return 0; // No min/max restrictions in fullscreen
+				return 0;
 			}
 
-			// Get the monitor info
 			HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
 			MONITORINFO mi = { 0 };
 			mi.cbSize = sizeof(MONITORINFO);
 			GetMonitorInfo(monitor, &mi);
 
-			// Convert min client size to actual window size
-			RECT adjusted = { 0, 0, PLATFORM(state)->min_width, (int)(PLATFORM(state)->min_width / PLATFORM(state)->aspect_ratio) };
+			int32_t monitor_w = mi.rcWork.right - mi.rcWork.left;
+			int32_t monitor_h = mi.rcWork.bottom - mi.rcWork.top;
+
+			int32_t min_w = PLATFORM(state)->min_width;
+			int32_t min_h = PLATFORM(state)->min_height;
+			int32_t max_w = PLATFORM(state)->max_width  > 0 ? PLATFORM(state)->max_width  : monitor_w;
+			int32_t max_h = PLATFORM(state)->max_height > 0 ? PLATFORM(state)->max_height : monitor_h;
+
+			RECT adjusted = { 0, 0, min_w, min_h };
 			AdjustWindowRectEx(&adjusted, style, FALSE, exStyle);
+			mmi->ptMinTrackSize.x = adjusted.right  - adjusted.left;
+			mmi->ptMinTrackSize.y = adjusted.bottom - adjusted.top;
 
-			int min_w = adjusted.right - adjusted.left;
-			int min_h = adjusted.bottom - adjusted.top;
-
-			mmi->ptMaxTrackSize.x = mi.rcWork.right - mi.rcWork.left; // No max limit in windowed mode
-			mmi->ptMaxTrackSize.y = mi.rcWork.bottom - mi.rcWork.top;
-
-			mmi->ptMinTrackSize.x = min_w; // Apply min size based on adjusted window size
-			mmi->ptMinTrackSize.y = min_h;
+			adjusted.left = 0; adjusted.top = 0;
+			adjusted.right = max_w; adjusted.bottom = max_h;
+			AdjustWindowRectEx(&adjusted, style, FALSE, exStyle);
+			mmi->ptMaxTrackSize.x = adjusted.right  - adjusted.left;
+			mmi->ptMaxTrackSize.y = adjusted.bottom - adjusted.top;
 
 			return 0;
 		} break;
@@ -556,11 +618,9 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 					WideCharToMultiByte(CP_UTF8, 0, wpath, -1, paths[i], utf8_len, 0, 0);
 					free(wpath);
 				}
+				// Ownership of `paths` and its contents passes to the callback;
+				// the consumer must release with mkfw_drop_paths_free or equivalent.
 				state->drop_callback(count, (const char **)paths);
-				for(uint32_t i = 0; i < count; ++i) {
-					free(paths[i]);
-				}
-				free(paths);
 			}
 			DragFinish(hdrop);
 			return 0;
@@ -572,7 +632,10 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 					SetCursor(0);
 					return TRUE;
 				}
-				SetCursor(PLATFORM(state)->cursors[PLATFORM(state)->current_cursor]);
+				HCURSOR c = PLATFORM(state)->active_custom_cursor
+					? PLATFORM(state)->active_custom_cursor
+					: PLATFORM(state)->cursors[PLATFORM(state)->current_cursor];
+				SetCursor(c);
 				return TRUE;
 			}
 			break;
@@ -997,45 +1060,45 @@ MKFW_API void mkfw_window_swap_buffers(struct mkfw_window *state) {
 	SwapBuffers(PLATFORM(state)->hdc);
 }
 
-// [=]===^=[ mkfw_window_set_min_size_and_aspect ]================================================[=]
-MKFW_API void mkfw_window_set_min_size_and_aspect(struct mkfw_window *state, int32_t min_width, int32_t min_height, float aspect_width, float aspect_height) {
-	PLATFORM(state)->aspect_ratio_enabled = 1;
-
-	PLATFORM(state)->aspect_ratio = aspect_width / aspect_height;
-	PLATFORM(state)->min_width = min_width;
+// [=]===^=[ mkfw_window_set_size_limits ]========================================================[=]
+MKFW_API void mkfw_window_set_size_limits(struct mkfw_window *state, int32_t min_width, int32_t min_height, int32_t max_width, int32_t max_height) {
+	PLATFORM(state)->min_width  = min_width;
 	PLATFORM(state)->min_height = min_height;
+	PLATFORM(state)->max_width  = max_width;
+	PLATFORM(state)->max_height = max_height;
+	SetWindowPos(PLATFORM(state)->hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
 
-	RECT window_rect, client_rect;
-	GetWindowRect(PLATFORM(state)->hwnd, &window_rect);
-	GetClientRect(PLATFORM(state)->hwnd, &client_rect);
+// [=]===^=[ mkfw_window_set_aspect_ratio ]=======================================================[=]
+MKFW_API void mkfw_window_set_aspect_ratio(struct mkfw_window *state, int32_t num, int32_t den) {
+	PLATFORM(state)->aspect_num = num;
+	PLATFORM(state)->aspect_den = den;
+	if(num > 0 && den > 0) {
+		PLATFORM(state)->aspect_ratio_enabled = 1;
+		PLATFORM(state)->aspect_ratio = (float)num / (float)den;
 
-	int window_width = window_rect.right - window_rect.left;
-	int window_height = window_rect.bottom - window_rect.top;
+		RECT window_rect, client_rect;
+		GetWindowRect(PLATFORM(state)->hwnd, &window_rect);
+		GetClientRect(PLATFORM(state)->hwnd, &client_rect);
 
-	int client_width = client_rect.right - client_rect.left;
-	int client_height = client_rect.bottom - client_rect.top;
+		int window_width  = window_rect.right - window_rect.left;
+		int window_height = window_rect.bottom - window_rect.top;
+		int client_width  = client_rect.right - client_rect.left;
+		int client_height = client_rect.bottom - client_rect.top;
+		int border_width  = window_width - client_width;
+		int border_height = window_height - client_height;
 
-	// Calculate the exact border size dynamically
-	int border_width = window_width - client_width;
-	int border_height = window_height - client_height;
+		if((float)client_width / client_height > PLATFORM(state)->aspect_ratio) {
+			client_width = (int)(client_height * PLATFORM(state)->aspect_ratio);
+		} else {
+			client_height = (int)(client_width / PLATFORM(state)->aspect_ratio);
+		}
 
-	// Apply aspect ratio correction based on client area
-	if((float)client_width / client_height > PLATFORM(state)->aspect_ratio) {
-		client_width = (int)(client_height * PLATFORM(state)->aspect_ratio);
+		SetWindowPos(PLATFORM(state)->hwnd, 0, window_rect.left, window_rect.top, client_width + border_width, client_height + border_height, SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 	} else {
-		client_height = (int)(client_width / PLATFORM(state)->aspect_ratio);
+		PLATFORM(state)->aspect_ratio_enabled = 0;
+		PLATFORM(state)->aspect_ratio = 0.0f;
 	}
-
-	// Convert back to window size
-	int new_window_width = client_width + border_width;
-	int new_window_height = client_height + border_height;
-
-	// Get current position to prevent accidental movement
-	int x = window_rect.left;
-	int y = window_rect.top;
-
-	// Resize without moving the window
-	SetWindowPos(PLATFORM(state)->hwnd, 0, x, y, new_window_width, new_window_height, SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
 // [=]===^=[ mkfw_window_set_size ]===============================================================[=]
@@ -1442,8 +1505,95 @@ MKFW_API void mkfw_window_set_cursor_shape(struct mkfw_window *state, uint32_t c
 		cursor = MKFW_CURSOR_ARROW;
 	}
 	PLATFORM(state)->current_cursor = cursor;
+	PLATFORM(state)->active_custom_cursor = 0;
 	if(PLATFORM(state)->cursor_visible) {
 		SetCursor(PLATFORM(state)->cursors[cursor]);
+	}
+}
+
+struct mkfw_cursor {
+	HCURSOR handle;
+};
+
+// [=]===^=[ mkfw_cursor_create_rgba ]============================================================[=]
+MKFW_API struct mkfw_cursor *mkfw_cursor_create_rgba(struct mkfw_context *ctx, uint32_t width, uint32_t height, uint8_t *rgba, int32_t hotspot_x, int32_t hotspot_y) {
+	(void)ctx;
+
+	BITMAPV5HEADER bi = {0};
+	bi.bV5Size        = sizeof(BITMAPV5HEADER);
+	bi.bV5Width       = (LONG)width;
+	bi.bV5Height      = -(LONG)height;   // top-down
+	bi.bV5Planes      = 1;
+	bi.bV5BitCount    = 32;
+	bi.bV5Compression = BI_BITFIELDS;
+	bi.bV5RedMask     = 0x00ff0000;
+	bi.bV5GreenMask   = 0x0000ff00;
+	bi.bV5BlueMask    = 0x000000ff;
+	bi.bV5AlphaMask   = 0xff000000;
+
+	void *target_bits = 0;
+	HDC hdc = GetDC(0);
+	HBITMAP color_bm = CreateDIBSection(hdc, (BITMAPINFO *)&bi, DIB_RGB_COLORS, &target_bits, 0, 0);
+	ReleaseDC(0, hdc);
+	if(!color_bm || !target_bits) {
+		if(color_bm) {
+			DeleteObject(color_bm);
+		}
+		return 0;
+	}
+
+	// RGBA bytes in -> BGRA in the DIB section.
+	uint8_t *dst = (uint8_t *)target_bits;
+	for(uint32_t i = 0; i < width * height; ++i) {
+		dst[i * 4 + 0] = rgba[i * 4 + 2];   // B
+		dst[i * 4 + 1] = rgba[i * 4 + 1];   // G
+		dst[i * 4 + 2] = rgba[i * 4 + 0];   // R
+		dst[i * 4 + 3] = rgba[i * 4 + 3];   // A
+	}
+
+	HBITMAP mask_bm = CreateBitmap((LONG)width, (LONG)height, 1, 1, 0);
+
+	ICONINFO info = {0};
+	info.fIcon    = FALSE;
+	info.xHotspot = (DWORD)hotspot_x;
+	info.yHotspot = (DWORD)hotspot_y;
+	info.hbmMask  = mask_bm;
+	info.hbmColor = color_bm;
+	HCURSOR hcur = CreateIconIndirect(&info);
+
+	DeleteObject(mask_bm);
+	DeleteObject(color_bm);
+	if(!hcur) {
+		return 0;
+	}
+
+	struct mkfw_cursor *c = (struct mkfw_cursor *)malloc(sizeof(struct mkfw_cursor));
+	if(!c) {
+		DestroyCursor(hcur);
+		return 0;
+	}
+	c->handle = hcur;
+	return c;
+}
+
+// [=]===^=[ mkfw_cursor_destroy ]================================================================[=]
+MKFW_API void mkfw_cursor_destroy(struct mkfw_context *ctx, struct mkfw_cursor *cursor) {
+	(void)ctx;
+	if(!cursor) {
+		return;
+	}
+	DestroyCursor(cursor->handle);
+	free(cursor);
+}
+
+// [=]===^=[ mkfw_window_set_custom_cursor ]======================================================[=]
+MKFW_API void mkfw_window_set_custom_cursor(struct mkfw_window *state, struct mkfw_cursor *cursor) {
+	PLATFORM(state)->active_custom_cursor = cursor ? cursor->handle : 0;
+	if(PLATFORM(state)->cursor_visible) {
+		HCURSOR c = PLATFORM(state)->active_custom_cursor
+			? PLATFORM(state)->active_custom_cursor
+			: PLATFORM(state)->cursors[PLATFORM(state)->current_cursor];
+		SetCursor(c);
 	}
 }
 
@@ -1487,28 +1637,28 @@ MKFW_API void mkfw_window_set_clipboard_text(struct mkfw_window *state, const ch
 }
 
 // [=]===^=[ mkfw_window_get_clipboard_text ]===========================================================[=]
-MKFW_API const char *mkfw_window_get_clipboard_text(struct mkfw_window *state) {
-	static char *buf = 0;
+// Returns a malloc'd UTF-8 string the caller must release with free(),
+// or 0 if the clipboard is empty / unavailable.
+MKFW_API char *mkfw_window_get_clipboard_text(struct mkfw_window *state) {
 	if(!OpenClipboard(PLATFORM(state)->hwnd)) {
-		return "";
+		return 0;
 	}
 	HANDLE hg = GetClipboardData(CF_UNICODETEXT);
 	if(!hg) {
 		CloseClipboard();
-		return "";
+		return 0;
 	}
 	const wchar_t *src = (const wchar_t *)GlobalLock(hg);
 	if(!src) {
 		CloseClipboard();
-		return "";
+		return 0;
 	}
 	int len = WideCharToMultiByte(CP_UTF8, 0, src, -1, 0, 0, 0, 0);
-	free(buf);
-	buf = (char *)malloc(len);
-	WideCharToMultiByte(CP_UTF8, 0, src, -1, buf, len, 0, 0);
+	char *out = (char *)malloc(len);
+	WideCharToMultiByte(CP_UTF8, 0, src, -1, out, len, 0, 0);
 	GlobalUnlock(hg);
 	CloseClipboard();
-	return buf;
+	return out;
 }
 
 // [=]===^=[ mkfw_window_enable_drop ]===================================================================[=]

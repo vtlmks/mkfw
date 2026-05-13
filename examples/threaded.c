@@ -106,7 +106,7 @@ int main(void) {
 		return 1;
 	}
 
-	mkfw_window_set_min_size_and_aspect(app.window, 640, 360, 0.0f, 0.0f);
+	mkfw_window_set_size_limits(app.window, 640, 360, 0, 0);
 	mkfw_window_set_user_data(app.window, &app);
 	mkfw_window_set_key_callback(app.window, on_key);
 	mkfw_window_set_framebuffer_size_callback(app.window, on_resize);

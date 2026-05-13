@@ -262,27 +262,38 @@ mkfw_window_set_title(window, "My Game v1.0");
 
 ---
 
-### `mkfw_window_set_min_size_and_aspect`
+### `mkfw_window_set_size_limits`
 
 ```c
-void mkfw_window_set_min_size_and_aspect(struct mkfw_window *state,
-                                          int min_width, int min_height,
-                                          float aspect_width, float aspect_height)
+void mkfw_window_set_size_limits(struct mkfw_window *state,
+                                  int32_t min_width, int32_t min_height,
+                                  int32_t max_width, int32_t max_height)
 ```
 
-Set minimum window size and enforce aspect ratio.
-
-**Parameters:**
-- `state` - Window state pointer
-- `min_width` - Minimum window width in pixels
-- `min_height` - Minimum window height in pixels
-- `aspect_width` - Aspect ratio numerator
-- `aspect_height` - Aspect ratio denominator
+Constrain the resizable range of the window.  Pass `0` for any
+field to leave that bound unset (no minimum / no maximum).
 
 **Example:**
 ```c
-// 4:3 aspect ratio, minimum 640x480
-mkfw_window_set_min_size_and_aspect(window, 640, 480, 4.0f, 3.0f);
+mkfw_window_set_size_limits(window, 640, 360, 0, 0);   // min only
+mkfw_window_set_size_limits(window, 0, 0, 1920, 1080); // max only
+```
+
+---
+
+### `mkfw_window_set_aspect_ratio`
+
+```c
+void mkfw_window_set_aspect_ratio(struct mkfw_window *state, int32_t num, int32_t den)
+```
+
+Lock the window aspect ratio to `num:den`.  Pass `0` for both
+to clear the constraint.
+
+**Example:**
+```c
+mkfw_window_set_aspect_ratio(window, 16, 9);   // widescreen
+mkfw_window_set_aspect_ratio(window, 0, 0);    // unconstrained
 ```
 
 ---
@@ -671,19 +682,20 @@ Manually set the close flag.
 float mkfw_window_get_content_scale(struct mkfw_window *state)
 ```
 
-Query the DPI scale factor for the window's display.
+Query the OS-reported DPI scale factor for the window's display.
 
 **Parameters:**
-- `state` - Window state pointer
+- `state` - Window pointer
 
 **Returns:**
 - Scale factor as a float (1.0 = standard 96 DPI, 2.0 = Retina / 200%)
 
 **Notes:**
-- Use this to scale UI elements, font sizes, and other resolution-dependent content
+- Informational only.  The framebuffer size and pixel coordinates
+  reported by mkfw are always in **physical pixels** regardless of
+  this scale (see "HiDPI contract" below).
 - On Linux, reads `Xft.dpi` from the X resource database, falls back to computing from physical display dimensions
 - On Windows, uses `GetDpiForWindow` (Windows 10 1607+) with `GetDeviceCaps` fallback
-- On Emscripten, returns `window.devicePixelRatio`
 - Call after `mkfw_init()`, and again after receiving a framebuffer size callback if DPI may have changed (e.g. dragging window between monitors)
 
 **Example:**
@@ -692,6 +704,33 @@ float scale = mkfw_window_get_content_scale(window);
 int font_size = (int)(14.0f * scale);
 printf("DPI scale: %.2f, font size: %d\n", scale, font_size);
 ```
+
+---
+
+### HiDPI contract
+
+mkfw is built for OpenGL/Vulkan applications, not UI toolkits.
+The contract is "the framebuffer you asked for is the framebuffer
+you get, in physical pixels."  Anything else is the application's
+problem.
+
+- `mkfw_window_options.width` / `.height` are **physical pixels**.
+  A 1280 by 720 window is a 1280 by 720 framebuffer regardless of
+  the display's DPI scaling.
+- `mkfw_window_get_framebuffer_size` returns physical pixels.  The
+  framebuffer callback delivers physical pixels on resize.
+- Cursor position, mouse deltas, scroll offsets, and every other
+  integer pixel coordinate in the API live in the same coordinate
+  system as the framebuffer (i.e. physical pixels).
+- `mkfw_window_get_content_scale` returns the OS's reported scale
+  factor as a hint.  Acting on it is the application's choice (e.g.
+  scaling a UI overlay or font atlas).  mkfw does not scale window
+  decorations, cursor sizes, or pixel content for you; the OS may
+  scale decorations on Win32 because `SetProcessDPIAware` is
+  enabled at init time.
+
+This is the GLFW model and is the right one for GL / Vulkan apps.
+Logical pixels are a UI-toolkit concept; mkfw is not a UI toolkit.
 
 ---
 
@@ -859,7 +898,7 @@ Check if a key was just released (edge detection).
 void mkfw_window_update_input_state(struct mkfw_window *state)
 ```
 
-Update previous keyboard and mouse button state. Call once per frame after processing input. Required for edge-detection functions (`mkfw_window_is_key_pressed`, `mkfw_window_was_key_released`, `mkfw_window_is_button_pressed`, `mkfw_window_was_button_released`).
+Update previous keyboard, scancode, and mouse button state. Call once per frame after processing input. Required for edge-detection functions (`mkfw_window_is_key_pressed`, `mkfw_window_was_key_released`, `mkfw_window_is_scancode_pressed`, `mkfw_window_was_scancode_released`, `mkfw_window_is_button_pressed`, `mkfw_window_was_button_released`).
 
 **Parameters:**
 - `state` - Window state pointer
@@ -870,6 +909,35 @@ mkfw_poll_events(window);
 // ... handle input ...
 mkfw_window_update_input_state(window);
 ```
+
+---
+
+### Scancodes (physical key positions)
+
+Scancodes identify a key by its **physical location** on the
+keyboard, independent of locale or layout.  Use them when binding
+movement keys ("the key in the W position regardless of
+QWERTY/AZERTY"); use `MKFW_KEY_*` keysyms when interpreting the
+text meaning of input.
+
+mkfw exposes `MKFW_SCANCODE_*` values matching the USB HID Usage
+Page 7 codes (e.g. `MKFW_SCANCODE_W == 0x1a`), and maintains
+`state->scancode_state[256]` parallel to `keyboard_state`.
+
+```c
+uint32_t mkfw_window_is_scancode_down(struct mkfw_window *state, uint8_t scancode);
+uint32_t mkfw_window_is_scancode_pressed(struct mkfw_window *state, uint8_t scancode);
+uint32_t mkfw_window_was_scancode_released(struct mkfw_window *state, uint8_t scancode);
+```
+
+**Example (WASD on AZERTY):**
+```c
+if(mkfw_window_is_scancode_down(window, MKFW_SCANCODE_W)) { camera_y += dt; }
+if(mkfw_window_is_scancode_down(window, MKFW_SCANCODE_S)) { camera_y -= dt; }
+```
+
+The same code runs on AZERTY (where the physical key labelled "Z"
+is in the W position) and QWERTY (where it is labelled "W").
 
 ---
 
@@ -1297,6 +1365,50 @@ Set the mouse cursor shape.
 mkfw_window_set_cursor_shape(window, MKFW_CURSOR_HAND);
 ```
 
+**Note**: setting a stock shape clears any custom cursor previously
+installed with `mkfw_window_set_custom_cursor`.
+
+---
+
+### `mkfw_cursor_create_rgba`
+
+```c
+struct mkfw_cursor *mkfw_cursor_create_rgba(struct mkfw_context *ctx,
+                                            uint32_t width, uint32_t height,
+                                            uint8_t *rgba,
+                                            int32_t hotspot_x, int32_t hotspot_y)
+```
+
+Build a custom cursor from a top-down 32-bit RGBA pixel buffer
+(byte order R, G, B, A; non-premultiplied).  The hotspot is the
+pixel offset, from the top-left of the image, that the OS uses as
+the "click point".  Returns 0 on failure (libXcursor missing on
+Linux, allocation failure, etc.); see `mkfw_get_last_error`.
+
+The pixel buffer is consumed during the call and may be released
+immediately after.  The returned cursor is owned by the caller
+and must be released with `mkfw_cursor_destroy`.
+
+### `mkfw_cursor_destroy`
+
+```c
+void mkfw_cursor_destroy(struct mkfw_context *ctx, struct mkfw_cursor *cursor)
+```
+
+Release a cursor previously created with `mkfw_cursor_create_rgba`.
+Cursor handles outlive any window they were attached to; destroy
+when the application no longer needs them.
+
+### `mkfw_window_set_custom_cursor`
+
+```c
+void mkfw_window_set_custom_cursor(struct mkfw_window *state, struct mkfw_cursor *cursor)
+```
+
+Replace the active cursor for this window with `cursor`.  Pass `0`
+to revert to the stock shape last set with
+`mkfw_window_set_cursor_shape`.
+
 ---
 
 ## Cursor Position
@@ -1376,17 +1488,18 @@ Set the system clipboard to a UTF-8 string.
 ### `mkfw_window_get_clipboard_text`
 
 ```c
-const char *mkfw_window_get_clipboard_text(struct mkfw_window *state)
+char *mkfw_window_get_clipboard_text(struct mkfw_window *state)
 ```
 
 Get the current system clipboard text as UTF-8.
 
 **Parameters:**
-- `state` - Window state pointer
+- `state` - Window pointer
 
 **Returns:**
-- Pointer to a UTF-8 string owned by mkfw. Do not free. Valid until the next call to `mkfw_window_get_clipboard_text` or `mkfw_window_set_clipboard_text`.
-- Returns `""` (empty string) if clipboard is empty or unavailable.
+- A malloc'd, NUL-terminated UTF-8 string.  **The caller must
+  release it with `free()`.**
+- Returns `0` if the clipboard is empty or unavailable.
 
 **Notes:**
 - On Linux: requests the CLIPBOARD selection via `XConvertSelection`. Blocks briefly (up to ~500ms) waiting for the selection owner to respond.
@@ -1395,8 +1508,11 @@ Get the current system clipboard text as UTF-8.
 **Example:**
 ```c
 mkfw_window_set_clipboard_text(window, "Hello clipboard");
-const char *text = mkfw_window_get_clipboard_text(window);
-printf("Clipboard: %s\n", text);
+char *text = mkfw_window_get_clipboard_text(window);
+if(text) {
+    printf("Clipboard: %s\n", text);
+    free(text);
+}
 ```
 
 ---
@@ -1443,9 +1559,14 @@ Register a callback for file drag-and-drop events. Setting a callback enables dr
 
 **Callback Parameters:**
 - `count` - Number of files dropped
-- `paths` - Array of `count` null-terminated UTF-8 file paths
+- `paths` - malloc'd array of `count` malloc'd, NUL-terminated UTF-8
+  file paths.
 
-**Important:** mkfw owns the `paths` array and all strings in it. Both the array and every path string are freed immediately after the callback returns. If you need to keep any paths, you must copy them (e.g. with `strdup`) inside the callback.
+**Memory ownership**: the array and every path string are
+**owned by the callback**.  The callback must release them
+before returning, or store them and release them later.  Use
+`mkfw_drop_paths_free(count, paths)` to release everything in
+one call.
 
 **Platform details:**
 - Linux: implements the XDND protocol (version 5), accepting `text/uri-list` drops. Paths are percent-decoded and `file://` prefixes are stripped.
@@ -1455,11 +1576,9 @@ Register a callback for file drag-and-drop events. Setting a callback enables dr
 ```c
 void on_drop(uint32_t count, const char **paths) {
     for(uint32_t i = 0; i < count; ++i) {
-        // paths[i] is only valid for the duration of this callback
-        char *copy = strdup(paths[i]);
-        printf("Dropped: %s\n", copy);
-        // ... store copy somewhere, free it later ...
+        printf("Dropped: %s\n", paths[i]);
     }
+    mkfw_drop_paths_free(count, paths);  // release ownership
 }
 
 mkfw_window_set_drop_callback(window, on_drop);

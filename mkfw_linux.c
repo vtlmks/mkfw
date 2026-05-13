@@ -36,6 +36,44 @@ struct x11_mkfw_context {
 	uint8_t signal_handlers_installed;
 };
 
+/* libXcursor minimal loader.  Used by mkfw_cursor_create_rgba; missing
+ * libXcursor is non-fatal and simply makes custom cursor creation
+ * return 0. */
+typedef struct mkfw_xcursor_image {
+	unsigned int version;
+	unsigned int size;
+	unsigned int width;
+	unsigned int height;
+	unsigned int xhot;
+	unsigned int yhot;
+	unsigned int delay;
+	unsigned int *pixels;
+} mkfw_xcursor_image;
+
+typedef mkfw_xcursor_image *(*PFN_XcursorImageCreate)(int, int);
+typedef void                (*PFN_XcursorImageDestroy)(mkfw_xcursor_image *);
+typedef Cursor              (*PFN_XcursorImageLoadCursor)(Display *, const mkfw_xcursor_image *);
+
+static PFN_XcursorImageCreate     mkfw_XcursorImageCreate;
+static PFN_XcursorImageDestroy    mkfw_XcursorImageDestroy;
+static PFN_XcursorImageLoadCursor mkfw_XcursorImageLoadCursor;
+
+// [=]===^=[ load_xcursor_functions ]=============================================================[=]
+static uint32_t load_xcursor_functions(void) {
+	void *lib = dlopen("libXcursor.so.1", RTLD_LAZY);
+	if(!lib) {
+		return 0;
+	}
+	*(void **)&mkfw_XcursorImageCreate     = dlsym(lib, "XcursorImageCreate");
+	*(void **)&mkfw_XcursorImageDestroy    = dlsym(lib, "XcursorImageDestroy");
+	*(void **)&mkfw_XcursorImageLoadCursor = dlsym(lib, "XcursorImageLoadCursor");
+	return mkfw_XcursorImageCreate && mkfw_XcursorImageDestroy && mkfw_XcursorImageLoadCursor;
+}
+
+struct mkfw_cursor {
+	Cursor x_cursor;
+};
+
 struct x11_mkfw_window {
 	Display *display;
 	Window   window;
@@ -52,6 +90,10 @@ struct x11_mkfw_window {
 	int32_t win_saved_y;
 	int32_t min_width;
 	int32_t min_height;
+	int32_t max_width;
+	int32_t max_height;
+	int32_t aspect_num;
+	int32_t aspect_den;
 	Atom wm_delete_window;
 	Cursor hidden_cursor;
 	uint8_t should_close;
@@ -78,6 +120,7 @@ struct x11_mkfw_window {
 	// Cursor shapes
 	Cursor cursors[MKFW_CURSOR_LAST];
 	uint32_t current_cursor;
+	Cursor active_custom_cursor;
 
 	// Clipboard
 	Atom clipboard_atom;
@@ -109,6 +152,56 @@ struct x11_mkfw_window {
 	uint8_t last_maximized;
 	uint8_t last_minimized;
 };
+
+// USB HID Usage Page 7 scancode for each evdev key code (X11 keycode minus 8,
+// on modern Linux with the evdev/libinput driver).  Entries are 0 for codes
+// outside the standard PC101 + extended layout, which mkfw does not map.
+static const uint8_t mkfw_evdev_to_hid[128] = {
+	[1]   = 0x29,                                   // ESC
+	[2]   = 0x1e, [3]  = 0x1f, [4]  = 0x20, [5]  = 0x21, [6]  = 0x22,
+	[7]   = 0x23, [8]  = 0x24, [9]  = 0x25, [10] = 0x26, [11] = 0x27, // 1..0
+	[12]  = 0x2d, [13] = 0x2e, [14] = 0x2a, [15] = 0x2b,             // - = BS Tab
+	[16]  = 0x14, [17] = 0x1a, [18] = 0x08, [19] = 0x15, [20] = 0x17,
+	[21]  = 0x1c, [22] = 0x18, [23] = 0x0c, [24] = 0x12, [25] = 0x13, // Q..P
+	[26]  = 0x2f, [27] = 0x30, [28] = 0x28, [29] = 0xe0,             // [ ] Enter LCtrl
+	[30]  = 0x04, [31] = 0x16, [32] = 0x07, [33] = 0x09, [34] = 0x0a,
+	[35]  = 0x0b, [36] = 0x0d, [37] = 0x0e, [38] = 0x0f,             // A..L
+	[39]  = 0x33, [40] = 0x34, [41] = 0x35, [42] = 0xe1, [43] = 0x31, // ; apostrophe grave LShift backslash
+	[44]  = 0x1d, [45] = 0x1b, [46] = 0x06, [47] = 0x19, [48] = 0x05,
+	[49]  = 0x11, [50] = 0x10,                                       // Z..M
+	[51]  = 0x36, [52] = 0x37, [53] = 0x38, [54] = 0xe5,             // , . / RShift
+	[55]  = 0x55, [56] = 0xe2, [57] = 0x2c, [58] = 0x39,             // KP* LAlt Space Caps
+	[59]  = 0x3a, [60] = 0x3b, [61] = 0x3c, [62] = 0x3d, [63] = 0x3e,
+	[64]  = 0x3f, [65] = 0x40, [66] = 0x41, [67] = 0x42, [68] = 0x43,// F1..F10
+	[69]  = 0x53, [70] = 0x47,                                       // NumLock ScrollLock
+	[71]  = 0x5f, [72] = 0x60, [73] = 0x61, [74] = 0x56,             // KP7 KP8 KP9 KP-
+	[75]  = 0x5c, [76] = 0x5d, [77] = 0x5e, [78] = 0x57,             // KP4 KP5 KP6 KP+
+	[79]  = 0x59, [80] = 0x5a, [81] = 0x5b, [82] = 0x62, [83] = 0x63,// KP1..KP0 KP.
+	[87]  = 0x44, [88] = 0x45,                                       // F11 F12
+	[96]  = 0x58, [97] = 0xe4, [98] = 0x54, [99] = 0x46,             // KPEnter RCtrl KP/ PrtScr
+	[100] = 0xe6,                                                    // RAlt
+	[102] = 0x4a, [103] = 0x52, [104] = 0x4b,                        // Home Up PageUp
+	[105] = 0x50, [106] = 0x4f,                                      // Left Right
+	[107] = 0x4d, [108] = 0x51, [109] = 0x4e,                        // End Down PageDown
+	[110] = 0x49, [111] = 0x4c,                                      // Insert Delete
+	[119] = 0x48,                                                    // Pause
+	[125] = 0xe3, [126] = 0xe7, [127] = 0x65,                        // LSuper RSuper Menu
+};
+
+// [=]===^=[ x11_update_scancode ]================================================================[=]
+static void x11_update_scancode(struct mkfw_window *state, uint32_t keycode, uint32_t down) {
+	if(keycode < 8) {
+		return;
+	}
+	uint32_t evdev = keycode - 8;
+	if(evdev >= 128) {
+		return;
+	}
+	uint8_t hid = mkfw_evdev_to_hid[evdev];
+	if(hid) {
+		state->scancode_state[hid] = down ? 1 : 0;
+	}
+}
 
 // [=]===^=[ map_x11_keysym ]=====================================================================[=]
 static uint32_t map_x11_keysym(struct mkfw_window *state, KeySym keysym, int key_down) {
@@ -470,6 +563,7 @@ MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 	load_x11_functions();
 	load_xrandr_functions();
 	load_xinput2_functions();
+	load_xcursor_functions();   // optional: missing libXcursor disables custom cursors
 	CTX_PLATFORM(ctx)->libs_loaded = 1;
 
 	XInitThreads();
@@ -685,11 +779,19 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	return state;
 }
 
+// [=]===^=[ x11_active_cursor ]==================================================================[=]
+static Cursor x11_active_cursor(struct mkfw_window *state) {
+	if(PLATFORM(state)->active_custom_cursor) {
+		return PLATFORM(state)->active_custom_cursor;
+	}
+	return PLATFORM(state)->cursors[PLATFORM(state)->current_cursor];
+}
+
 // [=]===^=[ mkfw_window_set_cursor_visible ]=====================================================[=]
 MKFW_API void mkfw_window_set_cursor_visible(struct mkfw_window *state, uint32_t visible) {
 	PLATFORM(state)->cursor_visible = visible ? 1 : 0;
 	if(visible) {
-		XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->cursors[PLATFORM(state)->current_cursor]);
+		XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, x11_active_cursor(state));
 	} else {
 		if(!PLATFORM(state)->hidden_cursor) {
 			Pixmap pixmap = XCreatePixmap(PLATFORM(state)->display, PLATFORM(state)->window, 1, 1, 1);
@@ -874,13 +976,15 @@ static void xdnd_parse_uri_list(struct mkfw_window *state, const char *data, uin
 	free(decoded);
 
 	if(count > 0 && state->drop_callback) {
+		// Ownership of `paths` and its contents passes to the callback;
+		// the consumer must release with mkfw_drop_paths_free or equivalent.
 		state->drop_callback(count, (const char **)paths);
+	} else {
+		for(uint32_t i = 0; i < count; ++i) {
+			free(paths[i]);
+		}
+		free(paths);
 	}
-
-	for(uint32_t i = 0; i < count; ++i) {
-		free(paths[i]);
-	}
-	free(paths);
 }
 
 // [=]===^=[ mkfw_window_is_minimized ]=================================================================[=]
@@ -1045,6 +1149,7 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 			} break;
 
 			case KeyPress: {
+				x11_update_scancode(state, event.xkey.keycode, 1);
 				map_x11_keysym(state, XLookupKeysym(&event.xkey, 0), 1);
 
 				if(state->char_callback) {
@@ -1106,6 +1211,7 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 			} break;
 
 			case KeyRelease: {
+				x11_update_scancode(state, event.xkey.keycode, 0);
 				map_x11_keysym(state, XLookupKeysym(&event.xkey, 0), 0);
 			} break;
 
@@ -1368,29 +1474,51 @@ MKFW_API void mkfw_window_swap_buffers(struct mkfw_window *state) {
 	glXSwapBuffers(PLATFORM(state)->display, PLATFORM(state)->window);
 }
 
-// [=]===^=[ mkfw_window_set_min_size_and_aspect ]================================================[=]
-MKFW_API void mkfw_window_set_min_size_and_aspect(struct mkfw_window *state, int32_t min_width, int32_t min_height, float aspect_width, float aspect_height) {
+// [=]===^=[ x11_apply_size_hints ]===============================================================[=]
+static void x11_apply_size_hints(struct mkfw_window *state) {
 	XSizeHints *hints = XAllocSizeHints();
 	if(!hints) {
 		mkfw_error("failed to allocate XSizeHints");
 		return;
 	}
 
-	PLATFORM(state)->aspect_ratio = aspect_width / aspect_height;
-	PLATFORM(state)->min_width = min_width;
-	PLATFORM(state)->min_height = min_height;
-
-	// Set both minimum size and aspect ratio
-	hints->flags = PMinSize | PAspect;
-	hints->min_width = min_width;
-	hints->min_height = min_height;
-	hints->min_aspect.x = aspect_width;
-	hints->min_aspect.y = aspect_height;
-	hints->max_aspect.x = aspect_width;
-	hints->max_aspect.y = aspect_height;
+	if(PLATFORM(state)->min_width > 0 || PLATFORM(state)->min_height > 0) {
+		hints->flags |= PMinSize;
+		hints->min_width  = PLATFORM(state)->min_width;
+		hints->min_height = PLATFORM(state)->min_height;
+	}
+	if(PLATFORM(state)->max_width > 0 || PLATFORM(state)->max_height > 0) {
+		hints->flags |= PMaxSize;
+		hints->max_width  = PLATFORM(state)->max_width  > 0 ? PLATFORM(state)->max_width  : 0x7fffffff;
+		hints->max_height = PLATFORM(state)->max_height > 0 ? PLATFORM(state)->max_height : 0x7fffffff;
+	}
+	if(PLATFORM(state)->aspect_num > 0 && PLATFORM(state)->aspect_den > 0) {
+		hints->flags |= PAspect;
+		hints->min_aspect.x = PLATFORM(state)->aspect_num;
+		hints->min_aspect.y = PLATFORM(state)->aspect_den;
+		hints->max_aspect.x = PLATFORM(state)->aspect_num;
+		hints->max_aspect.y = PLATFORM(state)->aspect_den;
+	}
 
 	XSetWMNormalHints(PLATFORM(state)->display, PLATFORM(state)->window, hints);
 	XFree(hints);
+}
+
+// [=]===^=[ mkfw_window_set_size_limits ]========================================================[=]
+MKFW_API void mkfw_window_set_size_limits(struct mkfw_window *state, int32_t min_width, int32_t min_height, int32_t max_width, int32_t max_height) {
+	PLATFORM(state)->min_width  = min_width;
+	PLATFORM(state)->min_height = min_height;
+	PLATFORM(state)->max_width  = max_width;
+	PLATFORM(state)->max_height = max_height;
+	x11_apply_size_hints(state);
+}
+
+// [=]===^=[ mkfw_window_set_aspect_ratio ]=======================================================[=]
+MKFW_API void mkfw_window_set_aspect_ratio(struct mkfw_window *state, int32_t num, int32_t den) {
+	PLATFORM(state)->aspect_num = num;
+	PLATFORM(state)->aspect_den = den;
+	PLATFORM(state)->aspect_ratio = (num > 0 && den > 0) ? ((float)num / (float)den) : 0.0f;
+	x11_apply_size_hints(state);
 }
 
 // [=]===^=[ mkfw_window_set_title ]==============================================================[=]
@@ -1413,35 +1541,28 @@ MKFW_API void mkfw_window_set_title(struct mkfw_window *state, const char *title
 
 // [=]===^=[ mkfw_window_set_resizable ]==========================================================[=]
 MKFW_API void mkfw_window_set_resizable(struct mkfw_window *state, int32_t resizable) {
+	if(resizable) {
+		// Restore caller-supplied size/aspect constraints, if any.
+		x11_apply_size_hints(state);
+		XFlush(PLATFORM(state)->display);
+		return;
+	}
+
+	// Non-resizable: pin to the current size by setting min == max.
 	XSizeHints *hints = XAllocSizeHints();
 	if(!hints) {
 		mkfw_error("failed to allocate XSizeHints");
 		return;
 	}
 
-	if(resizable) {	// Make window resizable - set minimum size only
-		hints->flags = PMinSize;
-		hints->min_width = PLATFORM(state)->min_width > 0 ? PLATFORM(state)->min_width : 100;
-		hints->min_height = PLATFORM(state)->min_height > 0 ? PLATFORM(state)->min_height : 100;
+	XWindowAttributes attrs;
+	XGetWindowAttributes(PLATFORM(state)->display, PLATFORM(state)->window, &attrs);
 
-		if(PLATFORM(state)->aspect_ratio > 0.0f) {		// Preserve aspect ratio if it was set
-			hints->flags |= PAspect;
-			hints->min_aspect.x = (int)(PLATFORM(state)->aspect_ratio * 1000);
-			hints->min_aspect.y = 1000;
-			hints->max_aspect.x = (int)(PLATFORM(state)->aspect_ratio * 1000);
-			hints->max_aspect.y = 1000;
-		}
-
-	} else {				// Make window non-resizable - set min and max to current size
-		XWindowAttributes attrs;
-		XGetWindowAttributes(PLATFORM(state)->display, PLATFORM(state)->window, &attrs);
-
-		hints->flags = PMinSize | PMaxSize;
-		hints->min_width = attrs.width;
-		hints->min_height = attrs.height;
-		hints->max_width = attrs.width;
-		hints->max_height = attrs.height;
-	}
+	hints->flags = PMinSize | PMaxSize;
+	hints->min_width  = attrs.width;
+	hints->min_height = attrs.height;
+	hints->max_width  = attrs.width;
+	hints->max_height = attrs.height;
 
 	XSetWMNormalHints(PLATFORM(state)->display, PLATFORM(state)->window, hints);
 	XFree(hints);
@@ -1877,8 +1998,69 @@ MKFW_API void mkfw_window_set_cursor_shape(struct mkfw_window *state, uint32_t c
 		cursor = MKFW_CURSOR_ARROW;
 	}
 	PLATFORM(state)->current_cursor = cursor;
-	XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->cursors[cursor]);
-	XFlush(PLATFORM(state)->display);
+	PLATFORM(state)->active_custom_cursor = 0;
+	if(PLATFORM(state)->cursor_visible) {
+		XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->cursors[cursor]);
+		XFlush(PLATFORM(state)->display);
+	}
+}
+
+// [=]===^=[ mkfw_cursor_create_rgba ]============================================================[=]
+MKFW_API struct mkfw_cursor *mkfw_cursor_create_rgba(struct mkfw_context *ctx, uint32_t width, uint32_t height, uint8_t *rgba, int32_t hotspot_x, int32_t hotspot_y) {
+	if(!mkfw_XcursorImageCreate) {
+		mkfw_error("libXcursor not loaded; custom cursors unavailable");
+		return 0;
+	}
+	mkfw_xcursor_image *img = mkfw_XcursorImageCreate((int)width, (int)height);
+	if(!img) {
+		return 0;
+	}
+	img->xhot = (unsigned int)hotspot_x;
+	img->yhot = (unsigned int)hotspot_y;
+
+	// libXcursor pixels are 0xAARRGGBB premultiplied alpha.
+	for(uint32_t i = 0; i < width * height; ++i) {
+		uint32_t r = rgba[i * 4 + 0];
+		uint32_t g = rgba[i * 4 + 1];
+		uint32_t b = rgba[i * 4 + 2];
+		uint32_t a = rgba[i * 4 + 3];
+		uint32_t pr = (r * a) / 255;
+		uint32_t pg = (g * a) / 255;
+		uint32_t pb = (b * a) / 255;
+		img->pixels[i] = (a << 24) | (pr << 16) | (pg << 8) | pb;
+	}
+
+	Cursor xc = mkfw_XcursorImageLoadCursor(CTX_PLATFORM(ctx)->display, img);
+	mkfw_XcursorImageDestroy(img);
+	if(!xc) {
+		return 0;
+	}
+
+	struct mkfw_cursor *c = (struct mkfw_cursor *)malloc(sizeof(struct mkfw_cursor));
+	if(!c) {
+		XFreeCursor(CTX_PLATFORM(ctx)->display, xc);
+		return 0;
+	}
+	c->x_cursor = xc;
+	return c;
+}
+
+// [=]===^=[ mkfw_cursor_destroy ]================================================================[=]
+MKFW_API void mkfw_cursor_destroy(struct mkfw_context *ctx, struct mkfw_cursor *cursor) {
+	if(!cursor) {
+		return;
+	}
+	XFreeCursor(CTX_PLATFORM(ctx)->display, cursor->x_cursor);
+	free(cursor);
+}
+
+// [=]===^=[ mkfw_window_set_custom_cursor ]======================================================[=]
+MKFW_API void mkfw_window_set_custom_cursor(struct mkfw_window *state, struct mkfw_cursor *cursor) {
+	PLATFORM(state)->active_custom_cursor = cursor ? cursor->x_cursor : 0;
+	if(PLATFORM(state)->cursor_visible) {
+		XDefineCursor(PLATFORM(state)->display, PLATFORM(state)->window, x11_active_cursor(state));
+		XFlush(PLATFORM(state)->display);
+	}
 }
 
 // [=]===^=[ mkfw_window_get_cursor_position ]===========================================================[=]
@@ -1915,14 +2097,22 @@ MKFW_API void mkfw_window_set_clipboard_text(struct mkfw_window *state, const ch
 }
 
 // [=]===^=[ mkfw_window_get_clipboard_text ]===========================================================[=]
-MKFW_API const char *mkfw_window_get_clipboard_text(struct mkfw_window *state) {
+// Returns a malloc'd UTF-8 string the caller must release with free(),
+// or 0 if the clipboard is empty / unavailable.
+MKFW_API char *mkfw_window_get_clipboard_text(struct mkfw_window *state) {
 	Window owner = XGetSelectionOwner(PLATFORM(state)->display, PLATFORM(state)->clipboard_atom);
 	if(owner == None) {
-		return "";
+		return 0;
 	}
 
 	if(owner == PLATFORM(state)->window) {
-		return PLATFORM(state)->clipboard_text ? PLATFORM(state)->clipboard_text : "";
+		if(!PLATFORM(state)->clipboard_text) {
+			return 0;
+		}
+		size_t len = strlen(PLATFORM(state)->clipboard_text);
+		char *copy = (char *)malloc(len + 1);
+		memcpy(copy, PLATFORM(state)->clipboard_text, len + 1);
+		return copy;
 	}
 
 	XConvertSelection(PLATFORM(state)->display, PLATFORM(state)->clipboard_atom, PLATFORM(state)->utf8_string_atom, PLATFORM(state)->mkfw_clipboard_atom, PLATFORM(state)->window, CurrentTime);
@@ -1932,7 +2122,7 @@ MKFW_API const char *mkfw_window_get_clipboard_text(struct mkfw_window *state) {
 	for(uint32_t i = 0; i < 50; ++i) {
 		if(XCheckTypedWindowEvent(PLATFORM(state)->display, PLATFORM(state)->window, SelectionNotify, &ev)) {
 			if(ev.xselection.property == None) {
-				return "";
+				return 0;
 			}
 
 			Atom actual_type;
@@ -1943,21 +2133,20 @@ MKFW_API const char *mkfw_window_get_clipboard_text(struct mkfw_window *state) {
 			XGetWindowProperty(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->mkfw_clipboard_atom, 0, 1024 * 1024, True, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &data);
 
 			if(data) {
-				free(PLATFORM(state)->clipboard_text);
 				size_t len = nitems * (actual_format / 8);
-				PLATFORM(state)->clipboard_text = (char *)malloc(len + 1);
-				memcpy(PLATFORM(state)->clipboard_text, data, len);
-				PLATFORM(state)->clipboard_text[len] = 0;
+				char *copy = (char *)malloc(len + 1);
+				memcpy(copy, data, len);
+				copy[len] = 0;
 				XFree(data);
-				return PLATFORM(state)->clipboard_text;
+				return copy;
 			}
 
-			return "";
+			return 0;
 		}
 		struct timespec ts = { 0, 10000000 };
 		nanosleep(&ts, 0);
 	}
 
-	return "";
+	return 0;
 }
 

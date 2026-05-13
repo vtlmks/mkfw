@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "mkfw_keys.h"
@@ -14,6 +15,7 @@
 /* Forward declarations */
 struct mkfw_context;
 struct mkfw_window;
+struct mkfw_cursor;
 
 /* Callback function pointers */
 typedef void (*mkfw_key_callback_t)(struct mkfw_window *window, uint32_t key, uint32_t action, uint32_t modifier_bits);
@@ -34,6 +36,8 @@ struct mkfw_window {
 	// Input state
 	uint8_t keyboard_state[MKFW_KEY_LAST];
 	uint8_t prev_keyboard_state[MKFW_KEY_LAST];
+	uint8_t scancode_state[256];
+	uint8_t prev_scancode_state[256];
 	uint8_t mouse_buttons[5];
 	uint8_t previous_mouse_buttons[5];
 	int32_t mouse_x;
@@ -302,7 +306,22 @@ struct mkfw_native_handles {
 /* Inline helper functions - placed after platform includes so struct is defined */
 static inline void mkfw_window_update_input_state(struct mkfw_window *state) {
 	memcpy(state->prev_keyboard_state, state->keyboard_state, sizeof(state->keyboard_state));
+	memcpy(state->prev_scancode_state, state->scancode_state, sizeof(state->scancode_state));
 	memcpy(state->previous_mouse_buttons, state->mouse_buttons, sizeof(state->mouse_buttons));
+}
+
+/* Release a drop-callback path array.  The drop callback receives a
+ * malloc'd array of malloc'd UTF-8 strings; this helper frees them in
+ * the canonical way.  Callers may instead free each path and the array
+ * directly if they want to retain a path without copying it first. */
+static inline void mkfw_drop_paths_free(uint32_t count, const char **paths) {
+	if(!paths) {
+		return;
+	}
+	for(uint32_t i = 0; i < count; ++i) {
+		free((char *)paths[i]);
+	}
+	free((char **)paths);
 }
 
 static inline uint32_t mkfw_window_get_modifiers(struct mkfw_window *state) {
@@ -330,6 +349,9 @@ static inline void mkfw_window_set_drop_callback(struct mkfw_window *state, mkfw
 static inline void mkfw_window_set_state_callback(struct mkfw_window *state, mkfw_window_state_callback_t callback) { state->window_state_callback = callback; }
 static inline uint32_t mkfw_window_is_key_pressed(struct mkfw_window *state, uint8_t key) { return state->keyboard_state[key] && !state->prev_keyboard_state[key]; }
 static inline uint32_t mkfw_window_was_key_released(struct mkfw_window *state, uint8_t key) { return !state->keyboard_state[key] && state->prev_keyboard_state[key]; }
+static inline uint32_t mkfw_window_is_scancode_down(struct mkfw_window *state, uint8_t scancode) { return state->scancode_state[scancode]; }
+static inline uint32_t mkfw_window_is_scancode_pressed(struct mkfw_window *state, uint8_t scancode) { return state->scancode_state[scancode] && !state->prev_scancode_state[scancode]; }
+static inline uint32_t mkfw_window_was_scancode_released(struct mkfw_window *state, uint8_t scancode) { return !state->scancode_state[scancode] && state->prev_scancode_state[scancode]; }
 static inline uint32_t mkfw_window_is_button_pressed(struct mkfw_window *state, uint8_t button) { return state->mouse_buttons[button] && !state->previous_mouse_buttons[button]; }
 static inline uint32_t mkfw_window_was_button_released(struct mkfw_window *state, uint8_t button) { return !state->mouse_buttons[button] && state->previous_mouse_buttons[button]; }
 
