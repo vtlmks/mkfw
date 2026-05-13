@@ -181,6 +181,37 @@ Detailed API documentation for each subsystem is in the [documentation/](documen
 - [MKFW_TIMER_API.md](documentation/MKFW_TIMER_API.md) — high-precision timing
 - [MKFW_JOYSTICK_API.md](documentation/MKFW_JOYSTICK_API.md) — gamepad input
 
+## Joystick gamedb
+
+When `MKFW_JOYSTICK_GAMEDB` is defined before including
+`mkfw_joystick.h`, mkfw resolves a connected controller's
+vendor/product ID against a snapshot of the SDL
+[`SDL_GameControllerDB`](https://github.com/mdqinc/SDL_GameControllerDB)
+mappings shipped in [mkfw_joystick_gamedb.h](mkfw_joystick_gamedb.h).
+This is what gives `mkfw_gamepad_get_button(pad, MKFW_GAMEPAD_A)`
+its layout-agnostic meaning.
+
+The data block in that header is regenerated from upstream by
+[tools/gen_joystick_gamedb.py](tools/gen_joystick_gamedb.py).  A
+GitHub Action ([gamedb-refresh.yml](.github/workflows/gamedb-refresh.yml))
+runs it on the first of each month, commits the result if anything
+changed, and tags the commit as `gamedb-YYYY-MM`.
+
+To refresh manually:
+
+```sh
+python3 tools/gen_joystick_gamedb.py             # fetch and rewrite
+python3 tools/gen_joystick_gamedb.py --dry-run   # preview only
+python3 tools/gen_joystick_gamedb.py --from-file gamecontrollerdb.txt
+```
+
+The script only touches the text between the `BEGIN GENERATED
+gamedb` / `END GENERATED gamedb` markers inside
+`mkfw_joystick_gamedb.h`; the button/axis enums and file header
+are preserved.  Entries are filtered to `platform:Linux` and
+`platform:Windows` (mkfw's targets), deduplicated by GUID +
+platform, and emitted as one big C string literal.
+
 ## OpenGL function loader
 
 `mkfw_gl_loader.h` is an optional, freestanding OpenGL function loader included in the repository. It has no dependency on mkfw — you can use it in any project, or swap it for your own loader (or the full `GL/gl.h`).

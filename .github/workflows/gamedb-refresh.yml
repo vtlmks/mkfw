@@ -1,0 +1,55 @@
+name: Refresh joystick gamedb
+
+# Pulls upstream SDL_GameControllerDB on the first of each month,
+# regenerates the data block in mkfw_joystick_gamedb.h, and (if
+# anything actually changed) commits the result and tags it as
+# gamedb-YYYY-MM.
+#
+# Trigger manually with the "Run workflow" button on the Actions tab.
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'   # 06:00 UTC on the 1st of each month
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Regenerate gamedb
+        run: python3 tools/gen_joystick_gamedb.py
+
+      - name: Commit and tag if changed
+        run: |
+          set -euo pipefail
+          if [[ -z "$(git status --porcelain mkfw_joystick_gamedb.h)" ]]; then
+            echo "No gamedb changes; nothing to do."
+            exit 0
+          fi
+
+          git config user.name 'mkfw-gamedb-bot'
+          git config user.email 'mkfw-gamedb-bot@users.noreply.github.com'
+
+          tag="gamedb-$(date -u +%Y-%m)"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists; bumping with timestamp suffix."
+            tag="${tag}-$(date -u +%H%M)"
+          fi
+
+          git add mkfw_joystick_gamedb.h
+          git commit -m "Refresh joystick gamedb from SDL_GameControllerDB"
+          git tag "${tag}"
+          git push origin HEAD:master
+          git push origin "${tag}"
+          echo "Tagged ${tag}"
