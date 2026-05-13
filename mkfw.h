@@ -314,19 +314,19 @@ static inline const char *mkfw_get_key_name(uint32_t key) {
 
 /* Joystick query helpers */
 #ifdef MKFW_JOYSTICK
-static inline int mkfw_joystick_connected(int pad_index) {
+static inline int mkfw_joystick_is_connected(int pad_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
 	return mkfw_joystick_pads[pad_index].connected;
 }
-static inline const char *mkfw_joystick_name(int pad_index) {
+static inline const char *mkfw_joystick_get_name(int pad_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return "";
 	}
 	return mkfw_joystick_pads[pad_index].name;
 }
-static inline int mkfw_joystick_button(int pad_index, int button_index) {
+static inline int mkfw_joystick_get_button(int pad_index, int button_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
@@ -335,7 +335,7 @@ static inline int mkfw_joystick_button(int pad_index, int button_index) {
 	}
 	return mkfw_joystick_pads[pad_index].buttons[button_index];
 }
-static inline int mkfw_joystick_button_pressed(int pad_index, int button_index) {
+static inline int mkfw_joystick_is_button_pressed(int pad_index, int button_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
@@ -345,7 +345,7 @@ static inline int mkfw_joystick_button_pressed(int pad_index, int button_index) 
 	return mkfw_joystick_pads[pad_index].buttons[button_index] &&
 	       !mkfw_joystick_pads[pad_index].prev_buttons[button_index];
 }
-static inline int mkfw_joystick_button_released(int pad_index, int button_index) {
+static inline int mkfw_joystick_was_button_released(int pad_index, int button_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
@@ -355,7 +355,7 @@ static inline int mkfw_joystick_button_released(int pad_index, int button_index)
 	return !mkfw_joystick_pads[pad_index].buttons[button_index] &&
 	       mkfw_joystick_pads[pad_index].prev_buttons[button_index];
 }
-static inline float mkfw_joystick_axis(int pad_index, int axis_index) {
+static inline float mkfw_joystick_get_axis(int pad_index, int axis_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}
@@ -364,25 +364,25 @@ static inline float mkfw_joystick_axis(int pad_index, int axis_index) {
 	}
 	return mkfw_joystick_pads[pad_index].axes[axis_index];
 }
-static inline float mkfw_joystick_hat_x(int pad_index) {
+static inline float mkfw_joystick_get_hat_x(int pad_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}
 	return mkfw_joystick_pads[pad_index].hat_x;
 }
-static inline float mkfw_joystick_hat_y(int pad_index) {
+static inline float mkfw_joystick_get_hat_y(int pad_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}
 	return mkfw_joystick_pads[pad_index].hat_y;
 }
-static inline int mkfw_joystick_button_count(int pad_index) {
+static inline int mkfw_joystick_get_button_count(int pad_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
 	return mkfw_joystick_pads[pad_index].button_count;
 }
-static inline int mkfw_joystick_axis_count(int pad_index) {
+static inline int mkfw_joystick_get_axis_count(int pad_index) {
 	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
@@ -403,23 +403,23 @@ static inline void mkfw_joystick_rumble(int pad_index, float low_freq, float hig
 #define mkfw_joystick_shutdown() ((void)0)
 #define mkfw_joystick_update() ((void)0)
 #define mkfw_joystick_rumble(idx, low, high, ms) ((void)0)
-#define mkfw_joystick_connected(idx) (0)
-#define mkfw_joystick_name(idx) ("")
-#define mkfw_joystick_button(idx, btn) (0)
-#define mkfw_joystick_button_pressed(idx, btn) (0)
-#define mkfw_joystick_button_released(idx, btn) (0)
-#define mkfw_joystick_axis(idx, axis) (0.0f)
-#define mkfw_joystick_hat_x(idx) (0.0f)
-#define mkfw_joystick_hat_y(idx) (0.0f)
-#define mkfw_joystick_button_count(idx) (0)
-#define mkfw_joystick_axis_count(idx) (0)
+#define mkfw_joystick_is_connected(idx) (0)
+#define mkfw_joystick_get_name(idx) ("")
+#define mkfw_joystick_get_button(idx, btn) (0)
+#define mkfw_joystick_is_button_pressed(idx, btn) (0)
+#define mkfw_joystick_was_button_released(idx, btn) (0)
+#define mkfw_joystick_get_axis(idx, axis) (0.0f)
+#define mkfw_joystick_get_hat_x(idx) (0.0f)
+#define mkfw_joystick_get_hat_y(idx) (0.0f)
+#define mkfw_joystick_get_button_count(idx) (0)
+#define mkfw_joystick_get_axis_count(idx) (0)
 #define mkfw_joystick_set_callback(cb) ((void)0)
 #endif
 
 #ifndef MKFW_JOYSTICK_GAMEDB
-#define mkfw_gamepad_button(idx, btn) (0)
-#define mkfw_gamepad_button_pressed(idx, btn) (0)
-#define mkfw_gamepad_axis(idx, axis) (0.0f)
+#define mkfw_gamepad_get_button(idx, btn) (0)
+#define mkfw_gamepad_is_button_pressed(idx, btn) (0)
+#define mkfw_gamepad_get_axis(idx, axis) (0.0f)
 #endif
 
 

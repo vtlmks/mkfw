@@ -26,7 +26,7 @@ static void on_signal(int sig) {
 static void on_gamepad_connect(int pad, int connected) {
 	if(connected) {
 		printf("Pad %d connected: %s (vendor:%04x product:%04x)\n",
-			pad, mkfw_joystick_name(pad),
+			pad, mkfw_joystick_get_name(pad),
 			mkfw_joystick_pads[pad].vendor_id,
 			mkfw_joystick_pads[pad].product_id);
 	} else {
@@ -67,20 +67,20 @@ int main(void) {
 		uint32_t any_connected = 0;
 
 		for(uint32_t p = 0; p < MKFW_JOYSTICK_MAX_PADS; ++p) {
-			if(!mkfw_joystick_connected(p)) {
+			if(!mkfw_joystick_is_connected(p)) {
 				continue;
 			}
 			any_connected = 1;
 
 			/* Pad header (cyan) */
-			printf("\033[36m--- Pad %u: %s ---\033[0m\n", p, mkfw_joystick_name(p));
+			printf("\033[36m--- Pad %u: %s ---\033[0m\n", p, mkfw_joystick_get_name(p));
 
 			/* Raw buttons */
-			uint32_t bc = (uint32_t)mkfw_joystick_button_count(p);
+			uint32_t bc = (uint32_t)mkfw_joystick_get_button_count(p);
 			printf("  Buttons: ");
 			uint32_t any_btn = 0;
 			for(uint32_t b = 0; b < bc; ++b) {
-				if(mkfw_joystick_button(p, b)) {
+				if(mkfw_joystick_get_button(p, b)) {
 					printf("%u ", b);
 					any_btn = 1;
 				}
@@ -91,17 +91,17 @@ int main(void) {
 			printf("\n");
 
 			/* Raw axes */
-			uint32_t ac = (uint32_t)mkfw_joystick_axis_count(p);
+			uint32_t ac = (uint32_t)mkfw_joystick_get_axis_count(p);
 			printf("  Axes:    ");
 			for(uint32_t a = 0; a < ac; ++a) {
-				float v = mkfw_joystick_axis(p, a);
+				float v = mkfw_joystick_get_axis(p, a);
 				printf("%u:% .3f  ", a, (double)v);
 			}
 			printf("\n");
 
 			/* Hat / D-pad */
-			float hx = mkfw_joystick_hat_x(p);
-			float hy = mkfw_joystick_hat_y(p);
+			float hx = mkfw_joystick_get_hat_x(p);
+			float hy = mkfw_joystick_get_hat_y(p);
 			printf("  D-Pad:   x=% .0f  y=% .0f\n", (double)hx, (double)hy);
 
 			/* Mapped gamepad (green header) */
@@ -127,7 +127,7 @@ int main(void) {
 			printf("    ");
 			uint32_t any_mapped = 0;
 			for(uint32_t b = 0; b < 15; ++b) {
-				if(mkfw_gamepad_button(p, btn_names[b].id)) {
+				if(mkfw_gamepad_get_button(p, btn_names[b].id)) {
 					printf("\033[1m[%s]\033[0m ", btn_names[b].name);
 					any_mapped = 1;
 				}
@@ -137,12 +137,12 @@ int main(void) {
 			}
 			printf("\n");
 
-			float lx = mkfw_gamepad_axis(p, MKFW_GAMEPAD_AXIS_LEFT_X);
-			float ly = mkfw_gamepad_axis(p, MKFW_GAMEPAD_AXIS_LEFT_Y);
-			float rx = mkfw_gamepad_axis(p, MKFW_GAMEPAD_AXIS_RIGHT_X);
-			float ry = mkfw_gamepad_axis(p, MKFW_GAMEPAD_AXIS_RIGHT_Y);
-			float lt = mkfw_gamepad_axis(p, MKFW_GAMEPAD_AXIS_LEFT_TRIGGER);
-			float rt = mkfw_gamepad_axis(p, MKFW_GAMEPAD_AXIS_RIGHT_TRIGGER);
+			float lx = mkfw_gamepad_get_axis(p, MKFW_GAMEPAD_AXIS_LEFT_X);
+			float ly = mkfw_gamepad_get_axis(p, MKFW_GAMEPAD_AXIS_LEFT_Y);
+			float rx = mkfw_gamepad_get_axis(p, MKFW_GAMEPAD_AXIS_RIGHT_X);
+			float ry = mkfw_gamepad_get_axis(p, MKFW_GAMEPAD_AXIS_RIGHT_Y);
+			float lt = mkfw_gamepad_get_axis(p, MKFW_GAMEPAD_AXIS_LEFT_TRIGGER);
+			float rt = mkfw_gamepad_get_axis(p, MKFW_GAMEPAD_AXIS_RIGHT_TRIGGER);
 
 			printf("    LStick: (% .2f, % .2f)  RStick: (% .2f, % .2f)\n",
 				(double)lx, (double)ly, (double)rx, (double)ry);

@@ -148,10 +148,10 @@ while (running) {
 
 ## Query API
 
-### `mkfw_joystick_connected`
+### `mkfw_joystick_is_connected`
 
 ```c
-int mkfw_joystick_connected(int pad_index)
+int mkfw_joystick_is_connected(int pad_index)
 ```
 
 Check if a controller is connected.
@@ -160,10 +160,10 @@ Check if a controller is connected.
 
 ---
 
-### `mkfw_joystick_name`
+### `mkfw_joystick_get_name`
 
 ```c
-const char *mkfw_joystick_name(int pad_index)
+const char *mkfw_joystick_get_name(int pad_index)
 ```
 
 Get the controller name string.
@@ -176,10 +176,10 @@ Get the controller name string.
 
 ---
 
-### `mkfw_joystick_button`
+### `mkfw_joystick_get_button`
 
 ```c
-int mkfw_joystick_button(int pad_index, int button_index)
+int mkfw_joystick_get_button(int pad_index, int button_index)
 ```
 
 Check if a button is currently held down.
@@ -188,10 +188,10 @@ Check if a button is currently held down.
 
 ---
 
-### `mkfw_joystick_button_pressed`
+### `mkfw_joystick_is_button_pressed`
 
 ```c
-int mkfw_joystick_button_pressed(int pad_index, int button_index)
+int mkfw_joystick_is_button_pressed(int pad_index, int button_index)
 ```
 
 Check if a button was pressed this frame (edge detection).
@@ -200,10 +200,10 @@ Check if a button was pressed this frame (edge detection).
 
 ---
 
-### `mkfw_joystick_button_released`
+### `mkfw_joystick_was_button_released`
 
 ```c
-int mkfw_joystick_button_released(int pad_index, int button_index)
+int mkfw_joystick_was_button_released(int pad_index, int button_index)
 ```
 
 Check if a button was released this frame (edge detection).
@@ -212,10 +212,10 @@ Check if a button was released this frame (edge detection).
 
 ---
 
-### `mkfw_joystick_axis`
+### `mkfw_joystick_get_axis`
 
 ```c
-float mkfw_joystick_axis(int pad_index, int axis_index)
+float mkfw_joystick_get_axis(int pad_index, int axis_index)
 ```
 
 Get a normalized axis value.
@@ -229,11 +229,11 @@ Get a normalized axis value.
 
 ---
 
-### `mkfw_joystick_hat_x` / `mkfw_joystick_hat_y`
+### `mkfw_joystick_get_hat_x` / `mkfw_joystick_get_hat_y`
 
 ```c
-float mkfw_joystick_hat_x(int pad_index)
-float mkfw_joystick_hat_y(int pad_index)
+float mkfw_joystick_get_hat_x(int pad_index)
+float mkfw_joystick_get_hat_y(int pad_index)
 ```
 
 Get D-pad state.
@@ -244,11 +244,11 @@ Get D-pad state.
 
 ---
 
-### `mkfw_joystick_button_count` / `mkfw_joystick_axis_count`
+### `mkfw_joystick_get_button_count` / `mkfw_joystick_get_axis_count`
 
 ```c
-int mkfw_joystick_button_count(int pad_index)
-int mkfw_joystick_axis_count(int pad_index)
+int mkfw_joystick_get_button_count(int pad_index)
+int mkfw_joystick_get_axis_count(int pad_index)
 ```
 
 Get the number of buttons/axes on a controller.
@@ -280,7 +280,7 @@ void callback(int pad_index, int connected)
 void on_gamepad(int pad, int connected) {
     printf("Pad %d %s: %s\n", pad,
            connected ? "connected" : "disconnected",
-           mkfw_joystick_name(pad));
+           mkfw_joystick_get_name(pad));
 }
 
 mkfw_joystick_set_callback(on_gamepad);
@@ -396,10 +396,10 @@ MKFW_GAMEPAD_AXIS_LEFT_TRIGGER   // L2 / LT
 MKFW_GAMEPAD_AXIS_RIGHT_TRIGGER  // R2 / RT
 ```
 
-### `mkfw_gamepad_button`
+### `mkfw_gamepad_get_button`
 
 ```c
-int mkfw_gamepad_button(int pad_index, int gamepad_button)
+int mkfw_gamepad_get_button(int pad_index, int gamepad_button)
 ```
 
 Query a button by standardized name.
@@ -408,20 +408,20 @@ Query a button by standardized name.
 
 ---
 
-### `mkfw_gamepad_button_pressed`
+### `mkfw_gamepad_is_button_pressed`
 
 ```c
-int mkfw_gamepad_button_pressed(int pad_index, int gamepad_button)
+int mkfw_gamepad_is_button_pressed(int pad_index, int gamepad_button)
 ```
 
 Check if a mapped button was pressed this frame.
 
 ---
 
-### `mkfw_gamepad_axis`
+### `mkfw_gamepad_get_axis`
 
 ```c
-float mkfw_gamepad_axis(int pad_index, int gamepad_axis)
+float mkfw_gamepad_get_axis(int pad_index, int gamepad_axis)
 ```
 
 Query an axis by standardized name.
@@ -457,17 +457,17 @@ int main(void) {
         mkfw_joystick_update();
 
         for (int p = 0; p < 4; p++) {
-            if (!mkfw_joystick_connected(p)) continue;
+            if (!mkfw_joystick_is_connected(p)) continue;
 
-            float lx = mkfw_joystick_axis(p, 0);
-            float ly = mkfw_joystick_axis(p, 1);
+            float lx = mkfw_joystick_get_axis(p, 0);
+            float ly = mkfw_joystick_get_axis(p, 1);
 
-            if (mkfw_joystick_button_pressed(p, 0)) {
+            if (mkfw_joystick_is_button_pressed(p, 0)) {
                 printf("Pad %d: button A pressed!\n", p);
             }
 
-            float dpad_x = mkfw_joystick_hat_x(p);
-            float dpad_y = mkfw_joystick_hat_y(p);
+            float dpad_x = mkfw_joystick_get_hat_x(p);
+            float dpad_y = mkfw_joystick_get_hat_y(p);
         }
 
         mkfw_window_update_input_state(window);
@@ -496,19 +496,19 @@ int main(void) {
         mkfw_poll_events(window);
         mkfw_joystick_update();
 
-        if (mkfw_joystick_connected(0)) {
+        if (mkfw_joystick_is_connected(0)) {
             // Use standardized names - works across controller brands
-            if (mkfw_gamepad_button_pressed(0, MKFW_GAMEPAD_A)) {
+            if (mkfw_gamepad_is_button_pressed(0, MKFW_GAMEPAD_A)) {
                 printf("Jump!\n");
             }
-            if (mkfw_gamepad_button(0, MKFW_GAMEPAD_RIGHT_BUMPER)) {
+            if (mkfw_gamepad_get_button(0, MKFW_GAMEPAD_RIGHT_BUMPER)) {
                 printf("Shooting...\n");
             }
 
-            float move_x = mkfw_gamepad_axis(0, MKFW_GAMEPAD_AXIS_LEFT_X);
-            float move_y = mkfw_gamepad_axis(0, MKFW_GAMEPAD_AXIS_LEFT_Y);
-            float aim_x  = mkfw_gamepad_axis(0, MKFW_GAMEPAD_AXIS_RIGHT_X);
-            float aim_y  = mkfw_gamepad_axis(0, MKFW_GAMEPAD_AXIS_RIGHT_Y);
+            float move_x = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_LEFT_X);
+            float move_y = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_LEFT_Y);
+            float aim_x  = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_RIGHT_X);
+            float aim_y  = mkfw_gamepad_get_axis(0, MKFW_GAMEPAD_AXIS_RIGHT_Y);
         }
 
         mkfw_window_update_input_state(window);
@@ -525,7 +525,7 @@ int main(void) {
 ```c
 void on_gamepad(int pad, int connected) {
     if (connected) {
-        printf("Controller %d connected: %s\n", pad, mkfw_joystick_name(pad));
+        printf("Controller %d connected: %s\n", pad, mkfw_joystick_get_name(pad));
     } else {
         printf("Controller %d disconnected\n", pad);
     }
@@ -614,8 +614,8 @@ When `MKFW_JOYSTICK_GAMEDB` is not defined, the `mkfw_gamepad_*` functions are s
 ### Mapped buttons return 0
 
 1. Controller may not be in the embedded database
-2. Check `mkfw_joystick_name()` to verify the controller is detected
-3. Raw API (`mkfw_joystick_button()`) should still work
+2. Check `mkfw_joystick_get_name()` to verify the controller is detected
+3. Raw API (`mkfw_joystick_get_button()`) should still work
 4. Update the database with the latest SDL_GameControllerDB entries
 
 ### Axis values seem wrong on Linux
