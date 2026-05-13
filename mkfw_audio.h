@@ -9,11 +9,9 @@
 //   #include "mkfw.h"
 //   #include "mkfw_audio.h"
 //
-// On Linux, link with -lm -ldl.  Platform libraries (libasound) are
-// loaded at runtime via dlopen.
-//
-// On Windows, link with ole32.lib, avrt.lib, uuid.lib in addition to
-// the base mkfw libraries.
+// See the Linking section in README.md for the canonical list of
+// required libraries on each platform (Audio adds ole32, avrt,
+// and uuid on Windows; nothing extra on Linux).
 //
 // Format contract.  The audio callback always receives interleaved
 // 32-bit IEEE float samples in the [-1.0, 1.0] range.  Sample rate

@@ -65,7 +65,7 @@ void mkfw_timer_init(void)
 Initialize the timer subsystem. Must be called before creating any timers.
 
 **Notes:**
-- On Windows: Sets timer resolution to 1ms via `timeBeginPeriod()` and requests 0.5ms via `NtSetTimerResolution()`
+- On Windows: Sets timer resolution to 1 ms via `timeBeginPeriod()` and requests 0.5 ms via `NtSetTimerResolution()`.  On Windows 10 version 2004 and newer `timeBeginPeriod` is scoped **per-process for foreground apps** (older Windows applies it system-wide), so the call is well-behaved on modern systems and does not slow other processes' timer cadence.
 - On Windows: Caches QueryPerformanceCounter frequency for efficient time queries
 - On Windows: Loads `NtDelayExecution` from ntdll.dll for high-precision sleep
 - On Linux: No-op (stub function for API compatibility)
@@ -204,15 +204,16 @@ Change the interval of a running timer without destroying and recreating it.
 
 **Example:**
 ```c
-// NES emulator: nudge frame time to keep audio buffer healthy
-#define NES_NTSC_FRAME_NS 16639267  // ~60.0988 Hz
+// NES emulator: nudge frame time to keep audio buffer healthy.
+// NTSC field rate is 60.0988 Hz = ~16639090 ns/frame.
+#define NES_NTSC_FRAME_NS 16639090
 
 struct mkfw_timer_handle *timer = mkfw_timer_create(NES_NTSC_FRAME_NS);
 
-// Audio callback notices buffer is getting thin — speed up slightly
+// Audio callback notices buffer is getting thin -- speed up slightly
 mkfw_timer_set_interval(timer, NES_NTSC_FRAME_NS - 50000);
 
-// Audio buffer is getting full — slow down slightly
+// Audio buffer is getting full -- slow down slightly
 mkfw_timer_set_interval(timer, NES_NTSC_FRAME_NS + 50000);
 ```
 

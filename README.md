@@ -65,25 +65,25 @@ int main(void) {
 }
 ```
 
-Compile on Linux:
+### Building
+
+See [Linking](#linking) below for the single, canonical table of
+required libraries on each platform.  In short:
 
 ```sh
-gcc main.c -lm -ldl -o app
-```
+# Linux
+gcc main.c -lm -ldl -lpthread -o app
 
-Compile on Windows (MinGW):
-
-```sh
+# Windows, MinGW
 gcc main.c -lopengl32 -lgdi32 -lwinmm -o app.exe
-```
 
-Compile on Windows (clang-cl):
-
-```sh
+# Windows, clang-cl
 clang-cl main.c opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib
 ```
 
-MinGW implicitly links `user32` and `shell32`. clang-cl requires them explicitly. When using optional subsystems, additional libraries are needed -- see the subsystem documentation for details.
+Audio adds `ole32 avrt uuid` on Windows; everything else is
+already covered.  No flag changes are required to enable joystick
+or timer.
 
 ## Optional subsystems
 
@@ -180,12 +180,28 @@ It provides all GL types, constants, and function declarations up to OpenGL 4.6,
 mkfw_gl_loader();
 ```
 
-## Dependencies
+## Linking
 
-None beyond platform libraries:
+All optional subsystems link into the same translation unit as the
+core.  The table below is the **single, canonical** reference;
+the per-subsystem docs do not repeat it.
 
-- **Linux:** m, dl (all standard). Platform libraries (X11, GL, Xi, Xrandr, ALSA) are loaded at runtime via dlopen, so they are not link-time dependencies. X11/GL/ALSA development headers are still needed at compile time.
-- **Windows:** opengl32, gdi32, winmm (all standard). clang-cl additionally requires explicit linking of user32 and shell32, which MinGW links implicitly. Audio subsystem adds ole32, avrt, and uuid.
+| Platform / build | Core | Joystick | Timer | Audio |
+|------------------|------|----------|-------|-------|
+| Linux, any compiler | `-lm -ldl -lpthread` | (no extra) | (no extra) | (no extra) |
+| Windows, MinGW | `-lopengl32 -lgdi32 -lwinmm` | (no extra) | (no extra) | `-lole32 -lavrt -luuid` |
+| Windows, clang-cl | `opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib` | (no extra) | (no extra) | `ole32.lib avrt.lib uuid.lib` |
+| Windows, MSVC | same as clang-cl | (no extra) | (no extra) | `ole32.lib avrt.lib uuid.lib` |
+
+Notes:
+
+- **Linux platform libraries** (X11, GL, Xi, Xrandr, libasound, libXcursor)
+  are loaded at runtime via `dlopen`, never with `-l<name>`.  Their
+  development headers are still needed at compile time.  libXcursor
+  is optional at runtime: missing it disables `mkfw_cursor_create_rgba`
+  but leaves the rest of mkfw working.
+- **clang-cl** requires explicit linking of `user32` and `shell32`;
+  MinGW links them implicitly.
 
 ## License
 

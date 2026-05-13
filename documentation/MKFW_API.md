@@ -45,13 +45,93 @@ MKFW is a minimal, single-header windowing and input library for OpenGL applicat
 
 ## Core Concepts
 
-MKFW uses explicit state passing for all operations. Each window is represented by a `struct mkfw_window *` pointer, which is returned from `mkfw_init()` and must be passed to all subsequent API calls.
+mkfw splits library state from window state.  `mkfw_init` returns
+a `struct mkfw_context *` that owns the platform display
+connection, loaded function pointers, the monitor cache, and any
+windows you create against it.  `mkfw_window_create` returns a
+`struct mkfw_window *` whose lifetime is bounded by the context.
 
-This design allows:
-- Multiple independent windows in a single application
-- No global state conflicts
-- Thread-safe operation (when using separate states)
-- Clear ownership semantics
+```c
+struct mkfw_context *ctx = mkfw_init(0);
+struct mkfw_window  *w1  = mkfw_window_create(ctx, &opts);
+struct mkfw_window  *w2  = mkfw_window_create(ctx, &opts);   // multi-window OK
+
+while(running) {
+    mkfw_poll_events(ctx);   // dispatches to w1 and w2 both
+    /* render w1, w2 */
+    mkfw_window_swap_buffers(w1);
+    mkfw_window_swap_buffers(w2);
+}
+mkfw_window_destroy(w2);
+mkfw_window_destroy(w1);
+mkfw_shutdown(ctx);
+```
+
+---
+
+## Memory ownership
+
+> Any pointer returned from an mkfw function, or passed to a
+> callback by mkfw, is owned by the **caller / callback** and must
+> be released with `free()` (or the matching `mkfw_*_destroy` when
+> one is documented).  mkfw never returns library-owned scratch
+> memory.
+
+Specific instances:
+
+- `mkfw_window_get_clipboard_text` returns a malloc'd UTF-8 string;
+  the caller calls `free()`, or receives `0` on empty / error.
+- The drop callback receives a malloc'd array of malloc'd UTF-8
+  strings.  Release with `mkfw_drop_paths_free(count, paths)` (or
+  free each path and the array directly).
+- `mkfw_cursor_create_rgba` returns a `struct mkfw_cursor *`; release
+  with `mkfw_cursor_destroy`.
+
+Two explicit **exceptions**:
+
+- `mkfw_joystick_get_name(idx)` returns a borrowed pointer into
+  library state; valid until that pad disconnects.
+- `mkfw_get_monitors(ctx, out, max)` writes into a caller-supplied
+  array and does not allocate; the array's lifetime is the
+  caller's.
+
+**Windows static-CRT note:** link the consuming binary against the
+same CRT as the mkfw build, or use mkfw header-only.  The
+cross-CRT `free()` mismatch is the only configuration where the
+rule above fails.
+
+---
+
+## Threading
+
+`mkfw_init` is the **owning thread**.  All `mkfw_*` calls on the
+context (`mkfw_poll_events`, `mkfw_get_monitors`, error callback
+firing, joystick state updates) and on its windows
+(`mkfw_window_set_*`, `mkfw_window_show`, etc.) must run on that
+thread.  Calls onto the context from other threads are undefined.
+
+Specific exceptions:
+
+- **GL rendering**: `mkfw_window_swap_buffers` runs on whichever
+  thread currently holds the GL context current via
+  `mkfw_window_attach_context`.  The threaded-rendering pattern in
+  `examples/threaded.c` shows the supported way to put rendering
+  on a second thread.
+- **Audio**: the audio callback fires on the audio thread (high
+  priority, MMCSS Pro Audio on Windows; SCHED_FIFO when
+  `realtime_priority` is requested on Linux).  Do not touch GL,
+  X11, or Win32 windowing from the audio callback.  Communicate
+  with the main thread via atomics or a lock-free queue.
+- **Timer**: timer callbacks fire from the thread that calls
+  `mkfw_timer_wait`.  The internal helper thread is invisible to
+  the caller.
+- **Joystick**: joystick callbacks fire inside
+  `mkfw_poll_events(ctx)`, so they share the owning thread.
+- **Input-state reads**: reading
+  `state->keyboard_state[k]`, `state->scancode_state[k]`, or
+  `state->mouse_buttons[b]` from another thread is safe at the
+  hardware level (byte writes are atomic on x86-64); the values
+  are eventually consistent with the most recent `poll_events`.
 
 ---
 

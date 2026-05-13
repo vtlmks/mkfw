@@ -27,12 +27,9 @@ mkfw_audio ships as a header next to `mkfw.h`. Include both:
 #include "mkfw_audio.h"
 ```
 
-Link:
-- Linux: `-lpthread -ldl -lm`
-- Windows: `ole32.lib avrt.lib uuid.lib` plus the base mkfw libs.
-
-ALSA on Linux is loaded at runtime via `dlopen` from
-`libasound.so.2`; do not link `-lasound`.
+For required linker flags see the **Linking** section in the
+project README.  ALSA on Linux is loaded at runtime via `dlopen`
+from `libasound.so.2`; do not link `-lasound`.
 
 ---
 
