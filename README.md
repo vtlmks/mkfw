@@ -41,7 +41,7 @@ mkfw is a set of headers and source files you include directly into your project
 #include "mkfw.h"
 
 int main() {
-    struct mkfw_state *mkfw = mkfw_init(1280, 720);
+    struct mkfw_window *mkfw = mkfw_init(1280, 720);
     mkfw_window_set_title(mkfw, "Hello mkfw");
     mkfw_window_show(mkfw);
 
@@ -106,7 +106,7 @@ mkfw_query_max_gl_version(&major, &minor);
 
 // Request a specific version before mkfw_init
 mkfw_set_gl_version(4, 6);
-struct mkfw_state *mkfw = mkfw_init(1280, 720);
+struct mkfw_window *mkfw = mkfw_init(1280, 720);
 ```
 
 See [MKFW_API.md](documentation/MKFW_API.md#opengl-version-configuration) for details.

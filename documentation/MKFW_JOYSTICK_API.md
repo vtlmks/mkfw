@@ -447,7 +447,7 @@ On Windows, XInput provides a fixed standardized layout, so the mapping is alway
 #include "mkfw.h"
 
 int main(void) {
-    struct mkfw_state *window = mkfw_init(1280, 720);
+    struct mkfw_window *window = mkfw_init(1280, 720);
     mkfw_window_show(window);
 
     mkfw_joystick_init();
@@ -487,7 +487,7 @@ int main(void) {
 #include "mkfw.h"
 
 int main(void) {
-    struct mkfw_state *window = mkfw_init(1280, 720);
+    struct mkfw_window *window = mkfw_init(1280, 720);
     mkfw_window_show(window);
 
     mkfw_joystick_init();

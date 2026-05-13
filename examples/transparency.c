@@ -18,7 +18,7 @@
 #include "../mkfw.h"
 
 struct app_state {
-	struct mkfw_state *window;
+	struct mkfw_window *window;
 	int32_t running;
 	float time;
 	int32_t fb_width;
@@ -26,7 +26,7 @@ struct app_state {
 };
 
 // [=]===^=[ on_key ]=============================================================================[=]
-static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uint32_t mods) {
+static void on_key(struct mkfw_window *window, uint32_t key, uint32_t action, uint32_t mods) {
 	(void)mods;
 	struct app_state *app = (struct app_state *)mkfw_window_get_user_data(window);
 
@@ -36,7 +36,7 @@ static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uin
 }
 
 // [=]===^=[ on_resize ]==========================================================================[=]
-static void on_resize(struct mkfw_state *window, int32_t w, int32_t h, float aspect) {
+static void on_resize(struct mkfw_window *window, int32_t w, int32_t h, float aspect) {
 	(void)aspect;
 	struct app_state *app = (struct app_state *)mkfw_window_get_user_data(window);
 	app->fb_width = w;

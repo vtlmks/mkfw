@@ -45,7 +45,7 @@ MKFW is a minimal, single-header windowing and input library for OpenGL applicat
 
 ## Core Concepts
 
-MKFW uses explicit state passing for all operations. Each window is represented by a `struct mkfw_state *` pointer, which is returned from `mkfw_init()` and must be passed to all subsequent API calls.
+MKFW uses explicit state passing for all operations. Each window is represented by a `struct mkfw_window *` pointer, which is returned from `mkfw_init()` and must be passed to all subsequent API calls.
 
 This design allows:
 - Multiple independent windows in a single application
@@ -80,7 +80,7 @@ Set the OpenGL version to request when creating the context. Call before `mkfw_i
 **Example:**
 ```c
 mkfw_set_gl_version(4, 6);
-struct mkfw_state *window = mkfw_init(1280, 720);
+struct mkfw_window *window = mkfw_init(1280, 720);
 if (!window) {
     // 4.6 not available — try a lower version
     mkfw_set_gl_version(4, 3);
@@ -121,7 +121,7 @@ if (mkfw_query_max_gl_version(&max_major, &max_minor)) {
     // No OpenGL support — mkfw_init will also fail
 }
 
-struct mkfw_state *window = mkfw_init(1280, 720);
+struct mkfw_window *window = mkfw_init(1280, 720);
 ```
 
 ---
@@ -149,7 +149,7 @@ Enable per-pixel transparency for the window. Call before `mkfw_init()`.
 **Example:**
 ```c
 mkfw_set_transparent(1);
-struct mkfw_state *window = mkfw_init(800, 600);
+struct mkfw_window *window = mkfw_init(800, 600);
 
 // In render loop:
 glEnable(GL_BLEND);
@@ -166,7 +166,7 @@ glClear(GL_COLOR_BUFFER_BIT);
 ### `mkfw_init`
 
 ```c
-struct mkfw_state *mkfw_init(int width, int height)
+struct mkfw_window *mkfw_init(int width, int height)
 ```
 
 Initialize the windowing system and create a window.
@@ -189,7 +189,7 @@ Initialize the windowing system and create a window.
 
 **Example:**
 ```c
-struct mkfw_state *window = mkfw_init(1280, 720);
+struct mkfw_window *window = mkfw_init(1280, 720);
 if (!window) {
     fprintf(stderr, "Failed to create window\n");
     return -1;
@@ -201,7 +201,7 @@ if (!window) {
 ### `mkfw_window_show`
 
 ```c
-void mkfw_window_show(struct mkfw_state *state)
+void mkfw_window_show(struct mkfw_window *state)
 ```
 
 Show the window on screen. The window is created hidden by `mkfw_init()` and must be shown explicitly.
@@ -211,7 +211,7 @@ Show the window on screen. The window is created hidden by `mkfw_init()` and mus
 
 **Example:**
 ```c
-struct mkfw_state *window = mkfw_init(1280, 720);
+struct mkfw_window *window = mkfw_init(1280, 720);
 mkfw_window_show(window);
 ```
 
@@ -220,7 +220,7 @@ mkfw_window_show(window);
 ### `mkfw_shutdown`
 
 ```c
-void mkfw_shutdown(struct mkfw_state *state)
+void mkfw_shutdown(struct mkfw_window *state)
 ```
 
 Clean up resources and close the window.
@@ -246,7 +246,7 @@ mkfw_shutdown(window);
 ### `mkfw_window_set_title`
 
 ```c
-void mkfw_window_set_title(struct mkfw_state *state, const char *title)
+void mkfw_window_set_title(struct mkfw_window *state, const char *title)
 ```
 
 Set the window title text.
@@ -265,7 +265,7 @@ mkfw_window_set_title(window, "My Game v1.0");
 ### `mkfw_window_set_min_size_and_aspect`
 
 ```c
-void mkfw_window_set_min_size_and_aspect(struct mkfw_state *state,
+void mkfw_window_set_min_size_and_aspect(struct mkfw_window *state,
                                           int min_width, int min_height,
                                           float aspect_width, float aspect_height)
 ```
@@ -290,7 +290,7 @@ mkfw_window_set_min_size_and_aspect(window, 640, 480, 4.0f, 3.0f);
 ### `mkfw_window_set_resizable`
 
 ```c
-void mkfw_window_set_resizable(struct mkfw_state *state, int resizable)
+void mkfw_window_set_resizable(struct mkfw_window *state, int resizable)
 ```
 
 Enable or disable window resizing.
@@ -320,7 +320,7 @@ mkfw_window_set_resizable(window, 1);
 ### `mkfw_window_set_icon`
 
 ```c
-void mkfw_window_set_icon(struct mkfw_state *state, int32_t width, int32_t height, const uint8_t *rgba)
+void mkfw_window_set_icon(struct mkfw_window *state, int32_t width, int32_t height, const uint8_t *rgba)
 ```
 
 Set the window icon from RGBA pixel data.
@@ -349,7 +349,7 @@ mkfw_window_set_icon(window, w, h, icon_rgba);
 ### `mkfw_window_set_position`
 
 ```c
-void mkfw_window_set_position(struct mkfw_state *state, int32_t x, int32_t y)
+void mkfw_window_set_position(struct mkfw_window *state, int32_t x, int32_t y)
 ```
 
 Set the window position on screen.
@@ -364,7 +364,7 @@ Set the window position on screen.
 ### `mkfw_window_get_position`
 
 ```c
-void mkfw_window_get_position(struct mkfw_state *state, int32_t *x, int32_t *y)
+void mkfw_window_get_position(struct mkfw_window *state, int32_t *x, int32_t *y)
 ```
 
 Get the current window position.
@@ -379,7 +379,7 @@ Get the current window position.
 ### `mkfw_window_maximize`
 
 ```c
-void mkfw_window_maximize(struct mkfw_state *state)
+void mkfw_window_maximize(struct mkfw_window *state)
 ```
 
 Maximize the window.
@@ -393,7 +393,7 @@ Maximize the window.
 ### `mkfw_window_minimize`
 
 ```c
-void mkfw_window_minimize(struct mkfw_state *state)
+void mkfw_window_minimize(struct mkfw_window *state)
 ```
 
 Minimize (iconify) the window.
@@ -403,7 +403,7 @@ Minimize (iconify) the window.
 ### `mkfw_window_restore`
 
 ```c
-void mkfw_window_restore(struct mkfw_state *state)
+void mkfw_window_restore(struct mkfw_window *state)
 ```
 
 Restore the window from maximized or minimized state.
@@ -413,7 +413,7 @@ Restore the window from maximized or minimized state.
 ### `mkfw_window_get_framebuffer_size`
 
 ```c
-void mkfw_window_get_framebuffer_size(struct mkfw_state *state, int *width, int *height)
+void mkfw_window_get_framebuffer_size(struct mkfw_window *state, int *width, int *height)
 ```
 
 Query the current framebuffer dimensions.
@@ -434,7 +434,7 @@ mkfw_window_get_framebuffer_size(window, &w, &h);
 ### `mkfw_window_set_size`
 
 ```c
-void mkfw_window_set_size(struct mkfw_state *state, int32_t width, int32_t height)
+void mkfw_window_set_size(struct mkfw_window *state, int32_t width, int32_t height)
 ```
 
 Resize the window's client area to the specified dimensions.
@@ -459,7 +459,7 @@ mkfw_window_set_size(window, 1920, 1080);
 ### `mkfw_window_hide`
 
 ```c
-void mkfw_window_hide(struct mkfw_state *state)
+void mkfw_window_hide(struct mkfw_window *state)
 ```
 
 Hide the window. The window remains valid and can be shown again with `mkfw_window_show()`.
@@ -484,7 +484,7 @@ mkfw_window_show(window);
 ### `mkfw_window_is_minimized`
 
 ```c
-int32_t mkfw_window_is_minimized(struct mkfw_state *state)
+int32_t mkfw_window_is_minimized(struct mkfw_window *state)
 ```
 
 Check if the window is currently minimized (iconified).
@@ -501,7 +501,7 @@ Check if the window is currently minimized (iconified).
 ### `mkfw_window_is_maximized`
 
 ```c
-int32_t mkfw_window_is_maximized(struct mkfw_state *state)
+int32_t mkfw_window_is_maximized(struct mkfw_window *state)
 ```
 
 Check if the window is currently maximized.
@@ -518,7 +518,7 @@ Check if the window is currently maximized.
 ### `mkfw_window_set_decorated`
 
 ```c
-void mkfw_window_set_decorated(struct mkfw_state *state, int32_t decorated)
+void mkfw_window_set_decorated(struct mkfw_window *state, int32_t decorated)
 ```
 
 Enable or disable window decorations (title bar, borders) at runtime.
@@ -543,7 +543,7 @@ mkfw_window_set_decorated(window, 1); // Restore decorations
 ### `mkfw_window_set_opacity`
 
 ```c
-void mkfw_window_set_opacity(struct mkfw_state *state, float opacity)
+void mkfw_window_set_opacity(struct mkfw_window *state, float opacity)
 ```
 
 Set whole-window opacity (not per-pixel transparency).
@@ -568,7 +568,7 @@ mkfw_window_set_opacity(window, 0.8f); // 80% opaque
 ### `mkfw_window_set_fullscreen`
 
 ```c
-void mkfw_window_set_fullscreen(struct mkfw_state *state, int enable)
+void mkfw_window_set_fullscreen(struct mkfw_window *state, int enable)
 ```
 
 Toggle fullscreen mode.
@@ -587,7 +587,7 @@ Toggle fullscreen mode.
 ### `mkfw_get_monitors`
 
 ```c
-int32_t mkfw_get_monitors(struct mkfw_state *state, struct mkfw_monitor *out, int32_t max)
+int32_t mkfw_get_monitors(struct mkfw_window *state, struct mkfw_monitor *out, int32_t max)
 ```
 
 Enumerate connected monitors.
@@ -631,7 +631,7 @@ for (int32_t i = 0; i < count; i++) {
 ### `mkfw_window_should_close`
 
 ```c
-int mkfw_window_should_close(struct mkfw_state *state)
+int mkfw_window_should_close(struct mkfw_window *state)
 ```
 
 Check if the window should close.
@@ -654,7 +654,7 @@ while (!mkfw_window_should_close(window)) {
 ### `mkfw_window_set_should_close`
 
 ```c
-void mkfw_window_set_should_close(struct mkfw_state *state, int value)
+void mkfw_window_set_should_close(struct mkfw_window *state, int value)
 ```
 
 Manually set the close flag.
@@ -668,7 +668,7 @@ Manually set the close flag.
 ### `mkfw_window_get_content_scale`
 
 ```c
-float mkfw_window_get_content_scale(struct mkfw_state *state)
+float mkfw_window_get_content_scale(struct mkfw_window *state)
 ```
 
 Query the DPI scale factor for the window's display.
@@ -698,7 +698,7 @@ printf("DPI scale: %.2f, font size: %d\n", scale, font_size);
 ### `mkfw_window_request_attention`
 
 ```c
-void mkfw_window_request_attention(struct mkfw_state *state)
+void mkfw_window_request_attention(struct mkfw_window *state)
 ```
 
 Request user attention by flashing the taskbar/dock entry.
@@ -725,14 +725,14 @@ if(!mkfw_has_focus(window)) {
 ### `mkfw_window_set_state_callback`
 
 ```c
-void mkfw_window_set_state_callback(struct mkfw_state *state, mkfw_window_state_callback_t callback)
+void mkfw_window_set_state_callback(struct mkfw_window *state, mkfw_window_state_callback_t callback)
 ```
 
 Register a callback that fires when the window transitions between normal, maximized, and minimized states.
 
 **Parameters:**
 - `state` - Window state pointer
-- `callback` - Function pointer matching `void (*)(struct mkfw_state *state, uint8_t maximized, uint8_t minimized)`, or NULL to remove
+- `callback` - Function pointer matching `void (*)(struct mkfw_window *state, uint8_t maximized, uint8_t minimized)`, or NULL to remove
 
 **Callback parameters:**
 - `maximized` - 1 if the window is now maximized, 0 otherwise
@@ -746,7 +746,7 @@ Register a callback that fires when the window transitions between normal, maxim
 
 **Example:**
 ```c
-void on_window_state(struct mkfw_state *window, uint8_t maximized, uint8_t minimized) {
+void on_window_state(struct mkfw_window *window, uint8_t maximized, uint8_t minimized) {
     if(minimized) {
         pause_audio();
     } else {
@@ -815,7 +815,7 @@ Each window state contains a `keyboard_state` array tracking current key states.
 ### `mkfw_window_is_key_pressed`
 
 ```c
-int mkfw_window_is_key_pressed(struct mkfw_state *state, uint8_t key)
+int mkfw_window_is_key_pressed(struct mkfw_window *state, uint8_t key)
 ```
 
 Check if a key was just pressed (edge detection).
@@ -839,7 +839,7 @@ if (mkfw_window_is_key_pressed(window, MKFW_KEY_SPACE)) {
 ### `mkfw_window_was_key_released`
 
 ```c
-int mkfw_window_was_key_released(struct mkfw_state *state, uint8_t key)
+int mkfw_window_was_key_released(struct mkfw_window *state, uint8_t key)
 ```
 
 Check if a key was just released (edge detection).
@@ -856,7 +856,7 @@ Check if a key was just released (edge detection).
 ### `mkfw_window_update_input_state`
 
 ```c
-void mkfw_window_update_input_state(struct mkfw_state *state)
+void mkfw_window_update_input_state(struct mkfw_window *state)
 ```
 
 Update previous keyboard and mouse button state. Call once per frame after processing input. Required for edge-detection functions (`mkfw_window_is_key_pressed`, `mkfw_window_was_key_released`, `mkfw_window_is_button_pressed`, `mkfw_window_was_button_released`).
@@ -895,7 +895,7 @@ Get a human-readable name for a key code.
 
 **Example:**
 ```c
-void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
+void on_key(struct mkfw_window *state, uint32_t key, uint32_t action, uint32_t mods) {
     if(action == MKFW_PRESSED) {
         printf("Pressed: %s\n", mkfw_get_key_name(key));
     }
@@ -907,8 +907,8 @@ void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mo
 ### `mkfw_window_set_key_callback`
 
 ```c
-typedef void (*mkfw_key_callback_t)(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods);
-void mkfw_window_set_key_callback(struct mkfw_state *state, mkfw_key_callback_t callback)
+typedef void (*mkfw_key_callback_t)(struct mkfw_window *state, uint32_t key, uint32_t action, uint32_t mods);
+void mkfw_window_set_key_callback(struct mkfw_window *state, mkfw_key_callback_t callback)
 ```
 
 Register a callback for keyboard events.
@@ -924,7 +924,7 @@ Register a callback for keyboard events.
 
 **Example:**
 ```c
-void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
+void on_key(struct mkfw_window *state, uint32_t key, uint32_t action, uint32_t mods) {
     if (key == MKFW_KEY_W && action == MKFW_PRESSED) {
         if (mods & MKFW_MOD_CTRL) {
             close_file();
@@ -965,7 +965,7 @@ Each window state contains a mouse button state array.
 ### `mkfw_window_is_button_pressed`
 
 ```c
-uint8_t mkfw_window_is_button_pressed(struct mkfw_state *state, uint8_t button)
+uint8_t mkfw_window_is_button_pressed(struct mkfw_window *state, uint8_t button)
 ```
 
 Check if a mouse button was just pressed.
@@ -982,7 +982,7 @@ Check if a mouse button was just pressed.
 ### `mkfw_window_was_button_released`
 
 ```c
-uint8_t mkfw_window_was_button_released(struct mkfw_state *state, uint8_t button)
+uint8_t mkfw_window_was_button_released(struct mkfw_window *state, uint8_t button)
 ```
 
 Check if a mouse button was just released.
@@ -999,7 +999,7 @@ Check if a mouse button was just released.
 ### `mkfw_window_set_mouse_cursor`
 
 ```c
-void mkfw_window_set_mouse_cursor(struct mkfw_state *state, int visible)
+void mkfw_window_set_mouse_cursor(struct mkfw_window *state, int visible)
 ```
 
 Show or hide the mouse cursor.
@@ -1018,7 +1018,7 @@ Show or hide the mouse cursor.
 ### `mkfw_window_constrain_mouse`
 
 ```c
-void mkfw_window_constrain_mouse(struct mkfw_state *state, int constrain)
+void mkfw_window_constrain_mouse(struct mkfw_window *state, int constrain)
 ```
 
 Constrain mouse to window (grab pointer).
@@ -1036,8 +1036,8 @@ Constrain mouse to window (grab pointer).
 ### `mkfw_window_set_mouse_move_delta_callback`
 
 ```c
-typedef void (*mkfw_mouse_move_delta_callback_t)(struct mkfw_state *state, int32_t dx, int32_t dy);
-void mkfw_window_set_mouse_move_delta_callback(struct mkfw_state *state, mkfw_mouse_move_delta_callback_t callback)
+typedef void (*mkfw_mouse_move_delta_callback_t)(struct mkfw_window *state, int32_t dx, int32_t dy);
+void mkfw_window_set_mouse_move_delta_callback(struct mkfw_window *state, mkfw_mouse_move_delta_callback_t callback)
 ```
 
 Register a callback for raw mouse motion.
@@ -1056,7 +1056,7 @@ Register a callback for raw mouse motion.
 
 **Example:**
 ```c
-void on_mouse_move(struct mkfw_state *state, int32_t dx, int32_t dy) {
+void on_mouse_move(struct mkfw_window *state, int32_t dx, int32_t dy) {
     camera_rotate(dx * 0.1f, dy * 0.1f);
 }
 
@@ -1068,8 +1068,8 @@ mkfw_window_set_mouse_move_delta_callback(window, on_mouse_move);
 ### `mkfw_window_set_mouse_button_callback`
 
 ```c
-typedef void (*mkfw_mouse_button_callback_t)(struct mkfw_state *state, uint8_t button, int action);
-void mkfw_window_set_mouse_button_callback(struct mkfw_state *state, mkfw_mouse_button_callback_t callback)
+typedef void (*mkfw_mouse_button_callback_t)(struct mkfw_window *state, uint8_t button, int action);
+void mkfw_window_set_mouse_button_callback(struct mkfw_window *state, mkfw_mouse_button_callback_t callback)
 ```
 
 Register a callback for mouse button events.
@@ -1084,7 +1084,7 @@ Register a callback for mouse button events.
 
 **Example:**
 ```c
-void on_mouse_button(struct mkfw_state *state, uint8_t button, int action) {
+void on_mouse_button(struct mkfw_window *state, uint8_t button, int action) {
     if (button == MKFW_MOUSE_LEFT && action == MKFW_PRESSED) {
         handle_click();
     }
@@ -1098,8 +1098,8 @@ mkfw_window_set_mouse_button_callback(window, on_mouse_button);
 ### `mkfw_window_set_char_callback`
 
 ```c
-typedef void (*mkfw_char_callback_t)(struct mkfw_state *state, uint32_t codepoint);
-void mkfw_window_set_char_callback(struct mkfw_state *state, mkfw_char_callback_t callback)
+typedef void (*mkfw_char_callback_t)(struct mkfw_window *state, uint32_t codepoint);
+void mkfw_window_set_char_callback(struct mkfw_window *state, mkfw_char_callback_t callback)
 ```
 
 Register a callback for character input events.
@@ -1124,8 +1124,8 @@ Register a callback for character input events.
 ### `mkfw_window_set_scroll_callback`
 
 ```c
-typedef void (*mkfw_scroll_callback_t)(struct mkfw_state *state, double xoffset, double yoffset);
-void mkfw_window_set_scroll_callback(struct mkfw_state *state, mkfw_scroll_callback_t callback)
+typedef void (*mkfw_scroll_callback_t)(struct mkfw_window *state, double xoffset, double yoffset);
+void mkfw_window_set_scroll_callback(struct mkfw_window *state, mkfw_scroll_callback_t callback)
 ```
 
 Register a callback for mouse scroll events.
@@ -1143,7 +1143,7 @@ Register a callback for mouse scroll events.
 ### `mkfw_window_set_mouse_sensitivity`
 
 ```c
-void mkfw_window_set_mouse_sensitivity(struct mkfw_state *state, double sensitivity)
+void mkfw_window_set_mouse_sensitivity(struct mkfw_window *state, double sensitivity)
 ```
 
 Set mouse sensitivity multiplier for the accumulated delta API.
@@ -1157,7 +1157,7 @@ Set mouse sensitivity multiplier for the accumulated delta API.
 ### `mkfw_window_get_and_clear_mouse_delta`
 
 ```c
-void mkfw_window_get_and_clear_mouse_delta(struct mkfw_state *state, int32_t *dx, int32_t *dy)
+void mkfw_window_get_and_clear_mouse_delta(struct mkfw_window *state, int32_t *dx, int32_t *dy)
 ```
 
 Get accumulated mouse delta since last call, then reset the accumulator. Keeps fractional remainder for sub-pixel precision over time.
@@ -1179,7 +1179,7 @@ Get accumulated mouse delta since last call, then reset the accumulator. Keeps f
 ### `mkfw_window_set_cursor_shape`
 
 ```c
-void mkfw_window_set_cursor_shape(struct mkfw_state *state, uint32_t cursor)
+void mkfw_window_set_cursor_shape(struct mkfw_window *state, uint32_t cursor)
 ```
 
 Set the mouse cursor shape.
@@ -1216,7 +1216,7 @@ mkfw_window_set_cursor_shape(window, MKFW_CURSOR_HAND);
 ### `mkfw_window_get_cursor_position`
 
 ```c
-void mkfw_window_get_cursor_position(struct mkfw_state *state, int32_t *x, int32_t *y)
+void mkfw_window_get_cursor_position(struct mkfw_window *state, int32_t *x, int32_t *y)
 ```
 
 Get the cursor position relative to the window's client area.
@@ -1236,7 +1236,7 @@ Get the cursor position relative to the window's client area.
 ### `mkfw_window_set_cursor_position`
 
 ```c
-void mkfw_window_set_cursor_position(struct mkfw_state *state, int32_t x, int32_t y)
+void mkfw_window_set_cursor_position(struct mkfw_window *state, int32_t x, int32_t y)
 ```
 
 Warp the cursor to a position relative to the window's client area.
@@ -1270,7 +1270,7 @@ mkfw_window_set_cursor_position(window, w / 2, h / 2);
 ### `mkfw_window_set_clipboard_text`
 
 ```c
-void mkfw_window_set_clipboard_text(struct mkfw_state *state, const char *text)
+void mkfw_window_set_clipboard_text(struct mkfw_window *state, const char *text)
 ```
 
 Set the system clipboard to a UTF-8 string.
@@ -1288,7 +1288,7 @@ Set the system clipboard to a UTF-8 string.
 ### `mkfw_window_get_clipboard_text`
 
 ```c
-const char *mkfw_window_get_clipboard_text(struct mkfw_state *state)
+const char *mkfw_window_get_clipboard_text(struct mkfw_window *state)
 ```
 
 Get the current system clipboard text as UTF-8.
@@ -1318,8 +1318,8 @@ printf("Clipboard: %s\n", text);
 ### `mkfw_window_set_focus_callback`
 
 ```c
-typedef void (*mkfw_focus_callback_t)(struct mkfw_state *state, uint8_t focused);
-void mkfw_window_set_focus_callback(struct mkfw_state *state, mkfw_focus_callback_t callback)
+typedef void (*mkfw_focus_callback_t)(struct mkfw_window *state, uint8_t focused);
+void mkfw_window_set_focus_callback(struct mkfw_window *state, mkfw_focus_callback_t callback)
 ```
 
 Register a callback for window focus changes.
@@ -1334,7 +1334,7 @@ Register a callback for window focus changes.
 
 ### Window State Fields
 
-The `mkfw_state` struct exposes:
+The `mkfw_window` struct exposes:
 - `state->has_focus` - Non-zero if window currently has keyboard focus
 - `state->mouse_in_window` - Non-zero if mouse cursor is inside the window client area
 
@@ -1348,7 +1348,7 @@ These are updated automatically by `mkfw_poll_events()`.
 
 ```c
 typedef void (*mkfw_drop_callback_t)(uint32_t count, const char **paths);
-void mkfw_window_set_drop_callback(struct mkfw_state *state, mkfw_drop_callback_t callback)
+void mkfw_window_set_drop_callback(struct mkfw_window *state, mkfw_drop_callback_t callback)
 ```
 
 Register a callback for file drag-and-drop events. Setting a callback enables drop acceptance on the window. Setting it to `NULL` disables drops.
@@ -1384,7 +1384,7 @@ mkfw_window_set_drop_callback(window, on_drop);
 ### `mkfw_window_attach_context`
 
 ```c
-void mkfw_window_attach_context(struct mkfw_state *state)
+void mkfw_window_attach_context(struct mkfw_window *state)
 ```
 
 Make the OpenGL context current on the calling thread.
@@ -1401,7 +1401,7 @@ Make the OpenGL context current on the calling thread.
 ### `mkfw_window_detach_context`
 
 ```c
-void mkfw_window_detach_context(struct mkfw_state *state)
+void mkfw_window_detach_context(struct mkfw_window *state)
 ```
 
 Release the OpenGL context from the calling thread.
@@ -1414,7 +1414,7 @@ Release the OpenGL context from the calling thread.
 ### `mkfw_window_swap_buffers`
 
 ```c
-void mkfw_window_swap_buffers(struct mkfw_state *state)
+void mkfw_window_swap_buffers(struct mkfw_window *state)
 ```
 
 Swap front and back buffers (present frame).
@@ -1435,7 +1435,7 @@ mkfw_window_swap_buffers(window);
 ### `mkfw_window_set_swap_interval`
 
 ```c
-void mkfw_window_set_swap_interval(struct mkfw_state *state, uint32_t interval)
+void mkfw_window_set_swap_interval(struct mkfw_window *state, uint32_t interval)
 ```
 
 Control VSync behavior.
@@ -1456,7 +1456,7 @@ mkfw_window_set_swap_interval(window, 0); // Disable VSync
 ### `mkfw_window_get_swap_interval`
 
 ```c
-int32_t mkfw_window_get_swap_interval(struct mkfw_state *state)
+int32_t mkfw_window_get_swap_interval(struct mkfw_window *state)
 ```
 
 Query the current swap interval (VSync setting).
@@ -1483,8 +1483,8 @@ printf("VSync: %s\n", vsync ? "on" : "off");
 ### `mkfw_window_set_framebuffer_size_callback`
 
 ```c
-typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_state *state, int32_t width, int32_t height, float aspect_ratio);
-void mkfw_window_set_framebuffer_size_callback(struct mkfw_state *state, mkfw_framebuffer_callback_t callback)
+typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_window *state, int32_t width, int32_t height, float aspect_ratio);
+void mkfw_window_set_framebuffer_size_callback(struct mkfw_window *state, mkfw_framebuffer_callback_t callback)
 ```
 
 Register a callback for framebuffer size changes.
@@ -1504,7 +1504,7 @@ Register a callback for framebuffer size changes.
 
 **Example:**
 ```c
-void on_resize(struct mkfw_state *state, int32_t w, int32_t h, float aspect) {
+void on_resize(struct mkfw_window *state, int32_t w, int32_t h, float aspect) {
     glViewport(0, 0, w, h);
     update_projection_matrix(w, h);
 }
@@ -1519,7 +1519,7 @@ mkfw_window_set_framebuffer_size_callback(window, on_resize);
 ### `mkfw_get_time`
 
 ```c
-uint64_t mkfw_get_time(struct mkfw_state *state)
+uint64_t mkfw_get_time(struct mkfw_window *state)
 ```
 
 Get high-resolution monotonic time.
@@ -1576,7 +1576,7 @@ mkfw_sleep(5000000); // ~5ms
 ### `mkfw_poll_events`
 
 ```c
-void mkfw_poll_events(struct mkfw_state *state)
+void mkfw_poll_events(struct mkfw_window *state)
 ```
 
 Process pending window and input events.
@@ -1617,7 +1617,7 @@ while (!mkfw_window_should_close(window)) {
 ### `mkfw_wait_events`
 
 ```c
-void mkfw_wait_events(struct mkfw_state *state)
+void mkfw_wait_events(struct mkfw_window *state)
 ```
 
 Block until at least one event is available, then process all pending events.
@@ -1647,7 +1647,7 @@ while (!mkfw_window_should_close(window)) {
 ### `mkfw_wait_events_timeout`
 
 ```c
-void mkfw_wait_events_timeout(struct mkfw_state *state, uint64_t nanoseconds)
+void mkfw_wait_events_timeout(struct mkfw_window *state, uint64_t nanoseconds)
 ```
 
 Block until an event arrives or the timeout expires, then process all pending events.
@@ -1681,13 +1681,13 @@ while (!mkfw_window_should_close(window)) {
 #include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
-void on_key(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
+void on_key(struct mkfw_window *state, uint32_t key, uint32_t action, uint32_t mods) {
     if (key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
         mkfw_window_set_should_close(state, 1);
     }
 }
 
-void on_resize(struct mkfw_state *state, int32_t w, int32_t h, float aspect) {
+void on_resize(struct mkfw_window *state, int32_t w, int32_t h, float aspect) {
     glViewport(0, 0, w, h);
 }
 
@@ -1696,7 +1696,7 @@ int main(void) {
     // mkfw_set_gl_version(4, 6);
 
     // Initialize
-    struct mkfw_state *window = mkfw_init(1280, 720);
+    struct mkfw_window *window = mkfw_init(1280, 720);
     if (!window) {
         fprintf(stderr, "Failed to create window\n");
         return -1;
@@ -1748,19 +1748,19 @@ int main(void) {
 #include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
-void on_key_main(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
+void on_key_main(struct mkfw_window *state, uint32_t key, uint32_t action, uint32_t mods) {
     if (key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
         mkfw_window_set_should_close(state, 1);
     }
 }
 
-void on_key_options(struct mkfw_state *state, uint32_t key, uint32_t action, uint32_t mods) {
+void on_key_options(struct mkfw_window *state, uint32_t key, uint32_t action, uint32_t mods) {
     // Handle options window keyboard
 }
 
 int main(void) {
     // Create main window
-    struct mkfw_state *main_window = mkfw_init(1280, 720);
+    struct mkfw_window *main_window = mkfw_init(1280, 720);
     if (!main_window) return -1;
 
     mkfw_window_set_title(main_window, "Main Window");
@@ -1768,7 +1768,7 @@ int main(void) {
     mkfw_window_set_key_callback(main_window, on_key_main);
 
     // Create options window
-    struct mkfw_state *options_window = mkfw_init(800, 600);
+    struct mkfw_window *options_window = mkfw_init(800, 600);
     if (!options_window) {
         mkfw_shutdown(main_window);
         return -1;
@@ -1828,7 +1828,7 @@ MKFW supports multi-threaded rendering with context management:
 
 **Example:**
 ```c
-struct mkfw_state *window = mkfw_init(1280, 720);
+struct mkfw_window *window = mkfw_init(1280, 720);
 mkfw_window_show(window);
 
 mkfw_window_detach_context(window);
@@ -1924,7 +1924,7 @@ MKFW is simpler than GLFW:
 
 ### Added/Different Features
 
-- **Explicit state passing** - All functions take `struct mkfw_state *`
+- **Explicit state passing** - All functions take `struct mkfw_window *`
 - **Multiple independent windows** - Full support with isolated state
 - **Modifier state arrays** - Simpler modifier tracking
 - **Aspect ratio enforcement** - Integrated with minimum size

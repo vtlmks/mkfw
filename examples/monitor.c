@@ -15,7 +15,7 @@
 
 // [=]===^=[ main ]===============================================================================[=]
 int main(void) {
-	struct mkfw_state *window = mkfw_init(1, 1);
+	struct mkfw_window *window = mkfw_init(1, 1);
 	if(!window) {
 		fprintf(stderr, "Failed to initialize mkfw\n");
 		return 1;
