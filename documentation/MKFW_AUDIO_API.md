@@ -60,6 +60,22 @@ lost (USB unplug, driver crash, user changed default device).
 mkfw will continue retrying the default endpoint in the
 background; this hook only exists so the application can react.
 
+### `mkfw_audio_device_acquired_callback_t`
+
+```c
+typedef void (*mkfw_audio_device_acquired_callback_t)(void *userdata);
+```
+
+Fired once each time the audio device transitions from lost back
+to playing (the background retry loop successfully reopened the
+default device).  Does **not** fire for the initial open at
+`mkfw_audio_init` time -- callers learn about that from the init
+return value.
+
+The negotiated rate / channel count / buffer size may differ from
+the previous device.  Re-read `mkfw_audio_info()` before relying
+on values you cached from before the loss.
+
 ### `struct mkfw_audio_options`
 
 ```c
@@ -140,6 +156,15 @@ void mkfw_audio_set_device_lost_callback(mkfw_audio_device_lost_callback_t cb, v
 
 Install (or replace) the device-lost hook. Same swap semantics
 as `mkfw_audio_set_callback`.
+
+### `mkfw_audio_set_device_acquired_callback`
+
+```c
+void mkfw_audio_set_device_acquired_callback(mkfw_audio_device_acquired_callback_t cb, void *userdata);
+```
+
+Install (or replace) the device-acquired hook fired on every
+re-open after a loss.  Same swap semantics as the others.
 
 ### `mkfw_audio_info`
 

@@ -42,6 +42,8 @@ static mkfw_audio_callback_t mkfw_audio_user_cb;
 static void *mkfw_audio_user_data;
 static mkfw_audio_device_lost_callback_t mkfw_audio_lost_cb;
 static void *mkfw_audio_lost_data;
+static mkfw_audio_device_acquired_callback_t mkfw_audio_acquired_cb;
+static void *mkfw_audio_acquired_data;
 
 // Set to 1 while mkfw_audio_init's synchronous open is in flight.
 // Lets open_device_win32 fire descriptive mkfw_error() calls on the
@@ -160,6 +162,18 @@ static void mkfw_audio_notify_lost(void) {
 	}
 }
 
+// [=]===^=[ mkfw_audio_notify_acquired ]=========================================================[=]
+// Fired by the audio-thread retry loop after a successful re-open.
+// The initial open in mkfw_audio_init does not call this (callers
+// learn about successful init from the init return value).
+static void mkfw_audio_notify_acquired(void) {
+	mkfw_audio_device_acquired_callback_t cb;
+	__atomic_load(&mkfw_audio_acquired_cb, &cb, __ATOMIC_ACQUIRE);
+	if(cb) {
+		cb(mkfw_audio_acquired_data);
+	}
+}
+
 // [=]===^=[ mkfw_audio_dispatch ]================================================================[=]
 static void mkfw_audio_dispatch(float *buffer, uint32_t frames) {
 	memset(buffer, 0, (size_t)frames * mkfw_audio_negotiated.channels * sizeof(float));
@@ -197,6 +211,7 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 			}
 			buffer_size = mkfw_audio_negotiated.frames_per_buffer;
 			__atomic_store_n(&mkfw_audio_alive, 1, __ATOMIC_RELEASE);
+			mkfw_audio_notify_acquired();
 		}
 
 		WaitForSingleObject(mkfw_audio_event, 500);
@@ -245,6 +260,12 @@ MKFW_API void mkfw_audio_set_callback(mkfw_audio_callback_t cb, void *userdata) 
 MKFW_API void mkfw_audio_set_device_lost_callback(mkfw_audio_device_lost_callback_t cb, void *userdata) {
 	mkfw_audio_lost_data = userdata;
 	__atomic_store(&mkfw_audio_lost_cb, &cb, __ATOMIC_RELEASE);
+}
+
+// [=]===^=[ mkfw_audio_set_device_acquired_callback ]============================================[=]
+MKFW_API void mkfw_audio_set_device_acquired_callback(mkfw_audio_device_acquired_callback_t cb, void *userdata) {
+	mkfw_audio_acquired_data = userdata;
+	__atomic_store(&mkfw_audio_acquired_cb, &cb, __ATOMIC_RELEASE);
 }
 
 // [=]===^=[ mkfw_audio_info ]====================================================================[=]

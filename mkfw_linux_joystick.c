@@ -14,6 +14,8 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define MKFW_JOYSTICK_DEVPATH_LEN 280
@@ -38,6 +40,11 @@ struct mkfw_joystick_linux_pad {
 	/* Force feedback */
 	uint8_t has_rumble;
 	int16_t ff_id;
+
+	/* Cached sysfs path to the controller's battery capacity file
+	 * (e.g. /sys/class/power_supply/sony_controller_battery_XX/capacity).
+	 * Empty string when no battery was found at open time. */
+	char battery_path[280];
 };
 
 /* Cross-TU storage: declared as MKFW_VAR in mkfw_joystick.h.  In unity
@@ -115,6 +122,52 @@ static int mkfw_joystick_find_by_devpath(const char *devpath) {
 		}
 	}
 	return -1;
+}
+
+// [=]===^=[ mkfw_joystick_find_battery ]=========================================================[=]
+// Best-effort walk up the controller's sysfs ancestry looking for a
+// power_supply node.  Writes the capacity file path into
+// lpad->battery_path, or leaves it empty when no battery is found.
+static void mkfw_joystick_find_battery(struct mkfw_joystick_linux_pad *lpad) {
+	const char *base = strrchr(lpad->devpath, '/');
+	if(!base) {
+		return;
+	}
+
+	char sys_event[280];
+	snprintf(sys_event, sizeof(sys_event), "/sys/class/input/%s", base + 1);
+
+	char abs_target[PATH_MAX];
+	if(!realpath(sys_event, abs_target)) {
+		return;
+	}
+
+	char *slash;
+	while((slash = strrchr(abs_target, '/')) != 0 && strcmp(abs_target, "/sys") != 0) {
+		char ps_dir[PATH_MAX];
+		int n = snprintf(ps_dir, sizeof(ps_dir), "%s/power_supply", abs_target);
+		if(n < 0 || (size_t)n >= sizeof(ps_dir)) {
+			*slash = 0;
+			continue;
+		}
+		DIR *d = opendir(ps_dir);
+		if(d) {
+			struct dirent *e;
+			while((e = readdir(d)) != 0) {
+				if(e->d_name[0] == '.') {
+					continue;
+				}
+				int w = snprintf(lpad->battery_path, sizeof(lpad->battery_path), "%s/%s/capacity", ps_dir, e->d_name);
+				if(w < 0 || (size_t)w >= sizeof(lpad->battery_path)) {
+					lpad->battery_path[0] = 0;
+				}
+				closedir(d);
+				return;
+			}
+			closedir(d);
+		}
+		*slash = 0;
+	}
 }
 
 // [=]===^=[ mkfw_joystick_try_open ]=============================================================[=]
@@ -219,6 +272,9 @@ static void mkfw_joystick_try_open(const char *devpath) {
 			lpad->has_rumble = 1;
 		}
 	}
+
+	/* Locate the controller's battery in sysfs, if any. */
+	mkfw_joystick_find_battery(lpad);
 
 	pad->connected = 1;
 
@@ -435,19 +491,17 @@ MKFW_API void mkfw_joystick_update(void) {
 	}
 }
 
-// [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
-MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
-	struct mkfw_joystick_linux_pad *lpad = &mkfw_joystick_linux[pad_index];
-	if(lpad->fd < 0 || !lpad->has_rumble) {
-		return;
-	}
-
+// [=]===^=[ mkfw_joystick_rumble_upload ]========================================================[=]
+// Shared upload+play path for both the time-limited and continuous
+// rumble variants.  duration_ms == 0 means "run until stopped" (the
+// kernel treats replay.length == 0 as infinite play).
+static void mkfw_joystick_rumble_upload(struct mkfw_joystick_linux_pad *lpad, float low_freq, float high_freq, uint32_t duration_ms) {
 	struct ff_effect effect;
 	memset(&effect, 0, sizeof(effect));
 	effect.type = FF_RUMBLE;
 	effect.id = lpad->ff_id;
-	effect.u.rumble.strong_magnitude = (uint16_t)(low_freq * 65535.0f);
-	effect.u.rumble.weak_magnitude = (uint16_t)(high_freq * 65535.0f);
+	effect.u.rumble.strong_magnitude = (uint16_t)(low_freq  * 65535.0f);
+	effect.u.rumble.weak_magnitude   = (uint16_t)(high_freq * 65535.0f);
 	effect.replay.length = (uint16_t)(duration_ms > 65535 ? 65535 : duration_ms);
 	effect.replay.delay = 0;
 
@@ -458,8 +512,79 @@ MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, 
 
 	struct input_event play;
 	memset(&play, 0, sizeof(play));
-	play.type = EV_FF;
-	play.code = (uint16_t)effect.id;
+	play.type  = EV_FF;
+	play.code  = (uint16_t)effect.id;
 	play.value = 1;
 	write(lpad->fd, &play, sizeof(play));
+}
+
+// [=]===^=[ mkfw_joystick_rumble_stop ]==========================================================[=]
+static void mkfw_joystick_rumble_stop(struct mkfw_joystick_linux_pad *lpad) {
+	if(lpad->ff_id < 0) {
+		return;
+	}
+	struct input_event stop;
+	memset(&stop, 0, sizeof(stop));
+	stop.type  = EV_FF;
+	stop.code  = (uint16_t)lpad->ff_id;
+	stop.value = 0;
+	write(lpad->fd, &stop, sizeof(stop));
+}
+
+// [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
+MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+	struct mkfw_joystick_linux_pad *lpad = &mkfw_joystick_linux[pad_index];
+	if(lpad->fd < 0 || !lpad->has_rumble) {
+		return;
+	}
+	mkfw_joystick_rumble_upload(lpad, low_freq, high_freq, duration_ms);
+}
+
+// [=]===^=[ mkfw_joystick_get_battery ]==========================================================[=]
+MKFW_API float mkfw_joystick_get_battery(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS || !mkfw_joystick_pads[pad_index].connected) {
+		return -1.0f;
+	}
+	struct mkfw_joystick_linux_pad *lpad = &mkfw_joystick_linux[pad_index];
+	if(!lpad->battery_path[0]) {
+		return -1.0f;
+	}
+
+	int fd = open(lpad->battery_path, O_RDONLY | O_CLOEXEC);
+	if(fd < 0) {
+		return -1.0f;
+	}
+	char buf[16];
+	ssize_t n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if(n <= 0) {
+		return -1.0f;
+	}
+	buf[n] = 0;
+
+	uint32_t cap = 0;
+	const char *p = buf;
+	if(*p < '0' || *p > '9') {
+		return -1.0f;
+	}
+	while(*p >= '0' && *p <= '9') {
+		cap = cap * 10 + (uint32_t)(*p++ - '0');
+	}
+	if(cap > 100) {
+		return -1.0f;
+	}
+	return (float)cap / 100.0f;
+}
+
+// [=]===^=[ mkfw_joystick_rumble_set_platform ]==================================================[=]
+MKFW_API void mkfw_joystick_rumble_set_platform(uint32_t pad_index, float low_freq, float high_freq) {
+	struct mkfw_joystick_linux_pad *lpad = &mkfw_joystick_linux[pad_index];
+	if(lpad->fd < 0 || !lpad->has_rumble) {
+		return;
+	}
+	if(low_freq <= 0.0f && high_freq <= 0.0f) {
+		mkfw_joystick_rumble_stop(lpad);
+		return;
+	}
+	mkfw_joystick_rumble_upload(lpad, low_freq, high_freq, 0);   // length == 0: infinite
 }

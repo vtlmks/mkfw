@@ -285,6 +285,14 @@ same one that calls it; typically the main thread).
 
 ## Rumble
 
+mkfw exposes two rumble variants.  Pick whichever matches how
+your effect is driven:
+
+| API | Best for |
+|-----|----------|
+| `mkfw_joystick_rumble(idx, lo, hi, ms)` | fire-and-forget pulses (collision impact, menu confirm); auto-stops |
+| `mkfw_joystick_rumble_set(idx, lo, hi)` | continuous effects whose intensity you update each frame (engine revs, scraping); latches until you call again |
+
 ### `mkfw_joystick_rumble`
 
 ```c
@@ -298,11 +306,77 @@ Trigger force-feedback rumble for `duration_ms` milliseconds.
 motors in `[0.0, 1.0]` (mapped from "low-frequency" /
 "high-frequency" actuator semantics).
 
-A duration of `0` and both magnitudes `0` stop any active rumble.
+A duration of `0` runs until cleared with `mkfw_joystick_rumble_set(idx, 0, 0)`.
+
+### `mkfw_joystick_rumble_set`
+
+```c
+void mkfw_joystick_rumble_set(uint32_t pad_index,
+                              float low_freq, float high_freq);
+```
+
+Latch the rumble at the given magnitudes until called again.
+Pass `(0.0f, 0.0f)` to stop.  Intended for effects whose
+intensity is recalculated each frame.
 
 Supported on Linux via the kernel evdev force-feedback interface
 and on Windows via `XInputSetState`.  Unsupported controllers
 silently ignore the request.
+
+---
+
+## Battery level
+
+### `mkfw_joystick_get_battery`
+
+```c
+float mkfw_joystick_get_battery(uint32_t pad_index);
+```
+
+Read the controller's battery level.  Returns:
+
+- `0.0` to `1.0` for a wireless battery (fraction full)
+- `-1.0` if the pad is wired, doesn't expose a battery, or the
+  platform couldn't determine the level
+
+Useful for low-battery warnings in long-session games (the
+typical pattern is to fire a UI notification at < 0.15).  The
+value updates on the controller's own polling cadence; reading
+every frame is fine.
+
+**Linux**: walks the controller's sysfs ancestry once at
+connect time looking for a sibling `power_supply/` directory and
+reads its `capacity` file on each call.  Controllers without a
+sysfs power supply (most USB pads) return `-1.0`.
+
+**Windows**: `XInputGetBatteryInformation`.  Wired XInput pads
+report `-1.0`.  Wireless pads return one of four discrete levels
+(empty / low / medium / full) mapped to `0.0`, `1/3`, `2/3`, `1.0`.
+
+---
+
+## Controller archetype
+
+### `mkfw_joystick_get_type`
+
+```c
+uint32_t mkfw_joystick_get_type(uint32_t pad_index);
+```
+
+Classify the connected pad by the broad layout family its USB
+vendor ID belongs to.  Returns one of:
+
+| Value | Vendor | Examples |
+|-------|--------|----------|
+| `MKFW_JOYSTICK_TYPE_XBOX`         | 0x045E (Microsoft) | Xbox 360 / One / Series, Xbox Elite |
+| `MKFW_JOYSTICK_TYPE_PLAYSTATION`  | 0x054C (Sony)      | DualShock 3 / 4, DualSense |
+| `MKFW_JOYSTICK_TYPE_SWITCH`       | 0x057E (Nintendo)  | Switch Pro Controller, Joy-Con grip |
+| `MKFW_JOYSTICK_TYPE_GENERIC`      | everything else, or pad disconnected | |
+
+Use it to pick the right button-prompt glyphs (`"Press A"` vs
+`"Press Cross"`).  The button positions themselves remain
+abstracted via the `MKFW_GAMEPAD_*` gamedb constants -- this
+helper is purely for UI cosmetics.
 
 ---
 

@@ -39,6 +39,17 @@ typedef void (*mkfw_audio_callback_t)(void *userdata, float *buffer, uint32_t fr
  * application can react (pause music, dim a UI indicator, ...). */
 typedef void (*mkfw_audio_device_lost_callback_t)(void *userdata);
 
+/* Callback fired once each time the audio device transitions from
+ * lost back to playing (the silent retry loop in the audio thread
+ * successfully re-opened the default device).  Does NOT fire for
+ * the initial open at mkfw_audio_init time; install the callback
+ * before init and use the init return value for that case.
+ *
+ * The negotiated rate / channels / buffer size may differ from the
+ * previous device.  Re-read mkfw_audio_info() before relying on the
+ * old values. */
+typedef void (*mkfw_audio_device_acquired_callback_t)(void *userdata);
+
 /* Audio init options.  Pass 0 to use defaults for every field.
  * The version field must be 0 for now; future revisions may add
  * fields and bump the version. */
@@ -63,6 +74,7 @@ MKFW_API uint32_t mkfw_audio_init(struct mkfw_audio_options *opts);
 MKFW_API void     mkfw_audio_shutdown(void);
 MKFW_API void     mkfw_audio_set_callback(mkfw_audio_callback_t cb, void *userdata);
 MKFW_API void     mkfw_audio_set_device_lost_callback(mkfw_audio_device_lost_callback_t cb, void *userdata);
+MKFW_API void     mkfw_audio_set_device_acquired_callback(mkfw_audio_device_acquired_callback_t cb, void *userdata);
 MKFW_API void     mkfw_audio_info(struct mkfw_audio_info *out);
 
 #if defined(__GNUC__) || defined(__clang__)

@@ -138,11 +138,63 @@ MKFW_API void mkfw_joystick_update(void) {
 	}
 }
 
-// [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
-MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
-	(void)duration_ms;
+// [=]===^=[ mkfw_joystick_get_battery ]==========================================================[=]
+MKFW_API float mkfw_joystick_get_battery(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS || !mkfw_joystick_pads[pad_index].connected) {
+		return -1.0f;
+	}
+	XINPUT_BATTERY_INFORMATION info;
+	if(XInputGetBatteryInformation((DWORD)pad_index, BATTERY_DEVTYPE_GAMEPAD, &info) != ERROR_SUCCESS) {
+		return -1.0f;
+	}
+	// Wired and unknown/disconnected pads report -1: caller can tell "no
+	// battery to monitor" from "battery present, X% remaining".
+	if(info.BatteryType != BATTERY_TYPE_ALKALINE && info.BatteryType != BATTERY_TYPE_NIMH) {
+		return -1.0f;
+	}
+	switch(info.BatteryLevel) {
+		case BATTERY_LEVEL_EMPTY:  return 0.0f;
+		case BATTERY_LEVEL_LOW:    return 1.0f / 3.0f;
+		case BATTERY_LEVEL_MEDIUM: return 2.0f / 3.0f;
+		case BATTERY_LEVEL_FULL:   return 1.0f;
+	}
+	return -1.0f;
+}
+
+// [=]===^=[ mkfw_joystick_rumble_stop_proc ]=====================================================[=]
+// Threadpool timer callback that zeros vibration after the
+// time-limited rumble_platform duration expires.
+static VOID CALLBACK mkfw_joystick_rumble_stop_proc(PTP_CALLBACK_INSTANCE inst, PVOID context, PTP_TIMER timer) {
+	(void)inst;
+	DWORD pad_index = (DWORD)(UINT_PTR)context;
+	XINPUT_VIBRATION zero = {0, 0};
+	XInputSetState(pad_index, &zero);
+	CloseThreadpoolTimer(timer);
+}
+
+// [=]===^=[ mkfw_joystick_rumble_set_platform ]==================================================[=]
+MKFW_API void mkfw_joystick_rumble_set_platform(uint32_t pad_index, float low_freq, float high_freq) {
 	XINPUT_VIBRATION vibration;
-	vibration.wLeftMotorSpeed = (WORD)(low_freq * 65535.0f);
+	vibration.wLeftMotorSpeed  = (WORD)(low_freq  * 65535.0f);
 	vibration.wRightMotorSpeed = (WORD)(high_freq * 65535.0f);
 	XInputSetState(pad_index, &vibration);
+}
+
+// [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
+MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+	mkfw_joystick_rumble_set_platform(pad_index, low_freq, high_freq);
+	if(duration_ms == 0) {
+		return;
+	}
+	PTP_TIMER timer = CreateThreadpoolTimer(mkfw_joystick_rumble_stop_proc, (PVOID)(UINT_PTR)pad_index, 0);
+	if(!timer) {
+		return;
+	}
+	// FILETIME is in 100ns ticks; negative = relative.
+	ULARGE_INTEGER due;
+	due.QuadPart = (ULONGLONG)(-(LONGLONG)duration_ms * 10000LL);
+	FILETIME ft;
+	ft.dwLowDateTime  = due.LowPart;
+	ft.dwHighDateTime = due.HighPart;
+	SetThreadpoolTimer(timer, &ft, 0, 0);
 }

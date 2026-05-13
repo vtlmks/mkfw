@@ -40,6 +40,17 @@ struct mkfw_joystick_pad {
 
 typedef void (*mkfw_joystick_callback_t)(uint32_t pad_index, uint32_t connected);
 
+/* Broad controller archetype, derived from USB vendor ID.  Useful
+ * for picking the right button-prompt graphics ("press X" vs
+ * "press Cross").  Layout-neutral input still goes through the
+ * MKFW_GAMEPAD_* abstraction via mkfw_joystick_gamedb.h. */
+enum {
+	MKFW_JOYSTICK_TYPE_GENERIC = 0,
+	MKFW_JOYSTICK_TYPE_XBOX,
+	MKFW_JOYSTICK_TYPE_PLAYSTATION,
+	MKFW_JOYSTICK_TYPE_SWITCH,
+};
+
 /* Cross-TU storage: declared here, defined in the platform .c either
  * via the unity include below or via the gated block in library mode. */
 MKFW_VAR struct mkfw_joystick_pad   mkfw_joystick_pads[MKFW_JOYSTICK_MAX_PADS];
@@ -64,10 +75,12 @@ MKFW_VAR mkfw_joystick_callback_t   mkfw_joystick_cb;
 
 /* Forward declarations of every MKFW_API function defined in the
  * platform .c.  Same rationale as in mkfw.h. */
-MKFW_API void mkfw_joystick_init(void);
-MKFW_API void mkfw_joystick_shutdown(void);
-MKFW_API void mkfw_joystick_update(void);
-MKFW_API void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms);
+MKFW_API void  mkfw_joystick_init(void);
+MKFW_API void  mkfw_joystick_shutdown(void);
+MKFW_API void  mkfw_joystick_update(void);
+MKFW_API void  mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms);
+MKFW_API void  mkfw_joystick_rumble_set_platform(uint32_t pad_index, float low_freq, float high_freq);
+MKFW_API float mkfw_joystick_get_battery(uint32_t pad_index);
 
 #ifdef MKFW_JOYSTICK_GAMEDB
 MKFW_API uint32_t mkfw_gamepad_get_button(uint32_t pad_index, uint32_t gamepad_button);
@@ -168,6 +181,32 @@ static inline void mkfw_joystick_rumble(uint32_t pad_index, float low_freq, floa
 		return;
 	}
 	mkfw_joystick_rumble_platform(pad_index, low_freq, high_freq, duration_ms);
+}
+
+/* Continuous rumble: latches the given magnitudes until called again.
+ * Pass (0.0f, 0.0f) to stop.  Use this for effects whose intensity
+ * is driven each frame (engine revs, collision feedback); use the
+ * time-limited mkfw_joystick_rumble for fire-and-forget pulses. */
+static inline void mkfw_joystick_rumble_set(uint32_t pad_index, float low_freq, float high_freq) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+		return;
+	}
+	mkfw_joystick_rumble_set_platform(pad_index, low_freq, high_freq);
+}
+
+/* Broad controller archetype derived from USB vendor ID.  Returns
+ * MKFW_JOYSTICK_TYPE_GENERIC if the pad isn't connected or the
+ * vendor isn't one of the four well-known platforms. */
+static inline uint32_t mkfw_joystick_get_type(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS || !mkfw_joystick_pads[pad_index].connected) {
+		return MKFW_JOYSTICK_TYPE_GENERIC;
+	}
+	switch(mkfw_joystick_pads[pad_index].vendor_id) {
+		case 0x045E: return MKFW_JOYSTICK_TYPE_XBOX;        // Microsoft
+		case 0x054C: return MKFW_JOYSTICK_TYPE_PLAYSTATION; // Sony
+		case 0x057E: return MKFW_JOYSTICK_TYPE_SWITCH;      // Nintendo
+		default:     return MKFW_JOYSTICK_TYPE_GENERIC;
+	}
 }
 
 #ifndef MKFW_JOYSTICK_GAMEDB
