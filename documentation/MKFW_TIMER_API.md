@@ -307,7 +307,7 @@ void *render_thread_func(void *arg) {
 
     while (state.running) {
         // Handle input
-        if (mkfw_is_key_pressed(window, MKFW_KEY_ESCAPE)) {
+        if (mkfw_window_is_key_pressed(window, MKFW_KEY_ESCAPE)) {
             state.running = 0;
         }
 
@@ -317,7 +317,7 @@ void *render_thread_func(void *arg) {
 
         // Render
         render_frame();
-        mkfw_swap_buffers(window);
+        mkfw_window_swap_buffers(window);
 
         // Precise timing
         mkfw_timer_wait(timer);
@@ -334,13 +334,13 @@ int main(void) {
     // ...
 
     // Detach context from main thread
-    mkfw_detach_context(window);
+    mkfw_window_detach_context(window);
 
     // Start render thread
     pthread_create(&thread, NULL, render_thread_func, NULL);
 
     // Main thread handles events
-    while (state.running && !mkfw_should_close(window)) {
+    while (state.running && !mkfw_window_should_close(window)) {
         mkfw_poll_events(window);
         mkfw_sleep(5000000);  // 5ms
     }

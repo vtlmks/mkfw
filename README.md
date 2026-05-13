@@ -42,20 +42,20 @@ mkfw is a set of headers and source files you include directly into your project
 
 int main() {
     struct mkfw_state *mkfw = mkfw_init(1280, 720);
-    mkfw_set_window_title(mkfw, "Hello mkfw");
-    mkfw_show_window(mkfw);
+    mkfw_window_set_title(mkfw, "Hello mkfw");
+    mkfw_window_show(mkfw);
 
     mkfw_gl_loader();
 
-    while (!mkfw_should_close(mkfw)) {
+    while (!mkfw_window_should_close(mkfw)) {
         mkfw_poll_events(mkfw);
 
         if (mkfw->keyboard_state[MKFW_KEY_ESCAPE])
-            mkfw_set_should_close(mkfw, 1);
+            mkfw_window_set_should_close(mkfw, 1);
 
         // render ...
 
-        mkfw_swap_buffers(mkfw);
+        mkfw_window_swap_buffers(mkfw);
     }
 
     mkfw_shutdown(mkfw);
@@ -141,8 +141,8 @@ Render thread:   attach GL context → render loop (runs independently)
 The key steps:
 
 1. Create the window and set up callbacks on the main thread as usual
-2. Call `mkfw_detach_context()` to release the GL context (a context can only be current on one thread at a time)
-3. Spawn a render thread that calls `mkfw_attach_context()`, then runs your normal render loop
+2. Call `mkfw_window_detach_context()` to release the GL context (a context can only be current on one thread at a time)
+3. Spawn a render thread that calls `mkfw_window_attach_context()`, then runs your normal render loop
 4. The main thread loops on `mkfw_poll_events()` + `mkfw_sleep()` — nothing else
 5. On shutdown, set a shared flag, join the render thread, then clean up
 
@@ -168,7 +168,7 @@ It provides all GL types, constants, and function declarations up to OpenGL 4.6,
 #include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
-// after mkfw_init + mkfw_show_window:
+// after mkfw_init + mkfw_window_show:
 mkfw_gl_loader();
 ```
 

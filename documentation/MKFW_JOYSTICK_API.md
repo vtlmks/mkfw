@@ -140,7 +140,7 @@ while (running) {
 
     // Query state here...
 
-    mkfw_update_input_state(window);
+    mkfw_window_update_input_state(window);
 }
 ```
 
@@ -448,11 +448,11 @@ On Windows, XInput provides a fixed standardized layout, so the mapping is alway
 
 int main(void) {
     struct mkfw_state *window = mkfw_init(1280, 720);
-    mkfw_show_window(window);
+    mkfw_window_show(window);
 
     mkfw_joystick_init();
 
-    while (!mkfw_should_close(window)) {
+    while (!mkfw_window_should_close(window)) {
         mkfw_poll_events(window);
         mkfw_joystick_update();
 
@@ -470,7 +470,7 @@ int main(void) {
             float dpad_y = mkfw_joystick_hat_y(p);
         }
 
-        mkfw_update_input_state(window);
+        mkfw_window_update_input_state(window);
     }
 
     mkfw_joystick_shutdown();
@@ -488,11 +488,11 @@ int main(void) {
 
 int main(void) {
     struct mkfw_state *window = mkfw_init(1280, 720);
-    mkfw_show_window(window);
+    mkfw_window_show(window);
 
     mkfw_joystick_init();
 
-    while (!mkfw_should_close(window)) {
+    while (!mkfw_window_should_close(window)) {
         mkfw_poll_events(window);
         mkfw_joystick_update();
 
@@ -511,7 +511,7 @@ int main(void) {
             float aim_y  = mkfw_gamepad_axis(0, MKFW_GAMEPAD_AXIS_RIGHT_Y);
         }
 
-        mkfw_update_input_state(window);
+        mkfw_window_update_input_state(window);
     }
 
     mkfw_joystick_shutdown();

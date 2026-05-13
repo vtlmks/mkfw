@@ -28,7 +28,7 @@ struct app_state {
 // [=]===^=[ on_key ]=============================================================================[=]
 static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uint32_t mods) {
 	(void)mods;
-	struct app_state *app = (struct app_state *)mkfw_get_user_data(window);
+	struct app_state *app = (struct app_state *)mkfw_window_get_user_data(window);
 
 	if(key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
 		app->running = 0;
@@ -38,7 +38,7 @@ static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uin
 // [=]===^=[ on_resize ]==========================================================================[=]
 static void on_resize(struct mkfw_state *window, int32_t w, int32_t h, float aspect) {
 	(void)aspect;
-	struct app_state *app = (struct app_state *)mkfw_get_user_data(window);
+	struct app_state *app = (struct app_state *)mkfw_window_get_user_data(window);
 	app->fb_width = w;
 	app->fb_height = h;
 	glViewport(0, 0, w, h);
@@ -56,23 +56,23 @@ int main(void) {
 		return 1;
 	}
 
-	mkfw_set_window_title(app.window, "MKFW Transparency");
-	mkfw_set_user_data(app.window, &app);
-	mkfw_set_key_callback(app.window, on_key);
-	mkfw_set_framebuffer_size_callback(app.window, on_resize);
-	mkfw_show_window(app.window);
+	mkfw_window_set_title(app.window, "MKFW Transparency");
+	mkfw_window_set_user_data(app.window, &app);
+	mkfw_window_set_key_callback(app.window, on_key);
+	mkfw_window_set_framebuffer_size_callback(app.window, on_resize);
+	mkfw_window_show(app.window);
 
 	mkfw_gl_loader();
-	mkfw_set_swapinterval(app.window, 1);
+	mkfw_window_set_swap_interval(app.window, 1);
 
-	mkfw_get_framebuffer_size(app.window, &app.fb_width, &app.fb_height);
+	mkfw_window_get_framebuffer_size(app.window, &app.fb_width, &app.fb_height);
 	glViewport(0, 0, app.fb_width, app.fb_height);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	while(app.running && !mkfw_should_close(app.window)) {
+	while(app.running && !mkfw_window_should_close(app.window)) {
 		mkfw_poll_events(app.window);
-		mkfw_update_input_state(app.window);
+		mkfw_window_update_input_state(app.window);
 
 		app.time += 0.016f;
 
@@ -125,7 +125,7 @@ int main(void) {
 		}
 		glEnd();
 
-		mkfw_swap_buffers(app.window);
+		mkfw_window_swap_buffers(app.window);
 	}
 
 	mkfw_shutdown(app.window);

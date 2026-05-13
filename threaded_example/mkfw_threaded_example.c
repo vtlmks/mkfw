@@ -34,7 +34,7 @@ struct app_state {
 
 // [=]===^=[ on_key ]=========================================================================^===[=]
 static void on_key(struct mkfw_state *window, uint32_t key, uint32_t action, uint32_t mods) {
-	struct app_state *app = (struct app_state *)mkfw_get_user_data(window);
+	struct app_state *app = (struct app_state *)mkfw_window_get_user_data(window);
 
 	if(key == MKFW_KEY_ESCAPE && action == MKFW_PRESSED) {
 		app->running = 0;
@@ -52,15 +52,15 @@ static MKFW_THREAD_FUNC(render_thread_func, arg) {
 	struct mkfw_state *window = app->window;
 
 	// Make the GL context current on this thread
-	mkfw_attach_context(window);
+	mkfw_window_attach_context(window);
 	mkfw_gl_loader();
-	mkfw_set_swapinterval(window, 1);
+	mkfw_window_set_swap_interval(window, 1);
 
 	float t = 0.0f;
 
 	while(app->running) {
 		int32_t w, h;
-		mkfw_get_framebuffer_size(window, &w, &h);
+		mkfw_window_get_framebuffer_size(window, &w, &h);
 		glViewport(0, 0, w, h);
 
 		// Animate the clear color so it's obvious rendering never stalls
@@ -74,8 +74,8 @@ static MKFW_THREAD_FUNC(render_thread_func, arg) {
 
 		// --- your draw calls go here ---
 
-		mkfw_swap_buffers(window);
-		mkfw_update_input_state(window);
+		mkfw_window_swap_buffers(window);
+		mkfw_window_update_input_state(window);
 	}
 
 	return 0;
@@ -92,16 +92,16 @@ int main(void) {
 		return 1;
 	}
 
-	mkfw_set_window_title(app.window, "MKFW Threaded Rendering");
-	mkfw_set_window_min_size_and_aspect(app.window, 640, 360, 0.0f, 0.0f);
-	mkfw_set_user_data(app.window, &app);
-	mkfw_set_key_callback(app.window, on_key);
-	mkfw_set_framebuffer_size_callback(app.window, on_resize);
-	mkfw_show_window(app.window);
+	mkfw_window_set_title(app.window, "MKFW Threaded Rendering");
+	mkfw_window_set_min_size_and_aspect(app.window, 640, 360, 0.0f, 0.0f);
+	mkfw_window_set_user_data(app.window, &app);
+	mkfw_window_set_key_callback(app.window, on_key);
+	mkfw_window_set_framebuffer_size_callback(app.window, on_resize);
+	mkfw_window_show(app.window);
 
 	// Release the GL context from the main thread so the render thread can use it.
 	// A GL context can only be current on one thread at a time.
-	mkfw_detach_context(app.window);
+	mkfw_window_detach_context(app.window);
 
 	// Spawn the render thread
 	app.running = 1;
@@ -111,7 +111,7 @@ int main(void) {
 	// On Windows this is the thread that owns the window, so it must
 	// process messages. Dragging/resizing will block here, but the
 	// render thread keeps drawing independently.
-	while(app.running && !mkfw_should_close(app.window)) {
+	while(app.running && !mkfw_window_should_close(app.window)) {
 		mkfw_poll_events(app.window);
 		mkfw_sleep(5000000); // 5ms -- don't burn CPU on message polling
 	}
