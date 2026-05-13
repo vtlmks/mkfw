@@ -241,9 +241,9 @@ the per-subsystem docs do not repeat it.
 | Platform / build | Core | Joystick | Timer | Audio |
 |------------------|------|----------|-------|-------|
 | Linux, any compiler | `-lm -ldl -lpthread` | (no extra) | (no extra) | (no extra) |
-| Windows, MinGW | `-lopengl32 -lgdi32 -lwinmm` | (no extra) | (no extra) | `-lole32 -lavrt -luuid` |
-| Windows, clang-cl | `opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib` | (no extra) | (no extra) | `ole32.lib avrt.lib uuid.lib` |
-| Windows, MSVC | same as clang-cl | (no extra) | (no extra) | `ole32.lib avrt.lib uuid.lib` |
+| Windows, MinGW | `-lopengl32 -lgdi32 -lwinmm` | `-lxinput` | (no extra) | `-lole32 -lavrt -luuid` |
+| Windows, clang-cl | `opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib` | `xinput.lib` | (no extra) | `ole32.lib avrt.lib uuid.lib` |
+| Windows, MSVC | same as clang-cl | `xinput.lib` | (no extra) | `ole32.lib avrt.lib uuid.lib` |
 
 Notes:
 
