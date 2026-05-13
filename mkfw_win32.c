@@ -839,8 +839,8 @@ static void mkfw_fullscreen(struct mkfw_state *state, int32_t enable) {
 	}
 }
 
-// [=]===^=[ mkfw_pump_messages ]=================================================================[=]
-static void mkfw_pump_messages(struct mkfw_state *state) {
+// [=]===^=[ mkfw_poll_events ]=================================================================[=]
+static void mkfw_poll_events(struct mkfw_state *state) {
 	MSG msg;
 	while(PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
 		if(msg.message == WM_QUIT) {
@@ -1236,17 +1236,17 @@ static void mkfw_request_attention(struct mkfw_state *state) {
 // [=]===^=[ mkfw_wait_events ]==================================================================[=]
 static void mkfw_wait_events(struct mkfw_state *state) {
 	WaitMessage();
-	mkfw_pump_messages(state);
+	mkfw_poll_events(state);
 }
 
 // [=]===^=[ mkfw_wait_events_timeout ]===========================================================[=]
 static void mkfw_wait_events_timeout(struct mkfw_state *state, uint64_t nanoseconds) {
 	MsgWaitForMultipleObjectsEx(0, 0, (DWORD)(nanoseconds / 1000000), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-	mkfw_pump_messages(state);
+	mkfw_poll_events(state);
 }
 
-// [=]===^=[ mkfw_cleanup ]=======================================================================[=]
-static void mkfw_cleanup(struct mkfw_state *state) {
+// [=]===^=[ mkfw_shutdown ]=======================================================================[=]
+static void mkfw_shutdown(struct mkfw_state *state) {
 	if(!state) {
 		return;
 	}
@@ -1277,8 +1277,8 @@ static void mkfw_cleanup(struct mkfw_state *state) {
 	free(state);
 }
 
-// [=]===^=[ mkfw_gettime ]=======================================================================[=]
-static uint64_t mkfw_gettime(struct mkfw_state *state) {
+// [=]===^=[ mkfw_get_time ]=======================================================================[=]
+static uint64_t mkfw_get_time(struct mkfw_state *state) {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	return (now.QuadPart * 1000000000ULL) / PLATFORM(state)->performance_frequency.QuadPart;

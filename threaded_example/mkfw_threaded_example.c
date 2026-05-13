@@ -10,7 +10,7 @@
 //
 // The fix: pump messages on the main thread, render on a separate thread.
 //
-//   Main thread:   mkfw_pump_messages() in a loop  (never blocks long)
+//   Main thread:   mkfw_poll_events() in a loop  (never blocks long)
 //   Render thread: attach GL context, render, swap  (runs independently)
 //
 // This pattern works with any windowing library, not just MKFW.
@@ -112,7 +112,7 @@ int main(void) {
 	// process messages. Dragging/resizing will block here, but the
 	// render thread keeps drawing independently.
 	while(app.running && !mkfw_should_close(app.window)) {
-		mkfw_pump_messages(app.window);
+		mkfw_poll_events(app.window);
 		mkfw_sleep(5000000); // 5ms -- don't burn CPU on message polling
 	}
 
@@ -120,6 +120,6 @@ int main(void) {
 	app.running = 0;
 	mkfw_thread_join(render_thread);
 
-	mkfw_cleanup(app.window);
+	mkfw_shutdown(app.window);
 	return 0;
 }

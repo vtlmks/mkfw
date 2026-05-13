@@ -48,7 +48,7 @@ int main() {
     mkfw_gl_loader();
 
     while (!mkfw_should_close(mkfw)) {
-        mkfw_pump_messages(mkfw);
+        mkfw_poll_events(mkfw);
 
         if (mkfw->keyboard_state[MKFW_KEY_ESCAPE])
             mkfw_set_should_close(mkfw, 1);
@@ -58,7 +58,7 @@ int main() {
         mkfw_swap_buffers(mkfw);
     }
 
-    mkfw_cleanup(mkfw);
+    mkfw_shutdown(mkfw);
     return 0;
 }
 ```
@@ -143,7 +143,7 @@ The key steps:
 1. Create the window and set up callbacks on the main thread as usual
 2. Call `mkfw_detach_context()` to release the GL context (a context can only be current on one thread at a time)
 3. Spawn a render thread that calls `mkfw_attach_context()`, then runs your normal render loop
-4. The main thread loops on `mkfw_pump_messages()` + `mkfw_sleep()` — nothing else
+4. The main thread loops on `mkfw_poll_events()` + `mkfw_sleep()` — nothing else
 5. On shutdown, set a shared flag, join the render thread, then clean up
 
 This pattern is not specific to mkfw — the same approach works with GLFW, SDL, or raw Win32. The [threaded_example/](threaded_example/) shows a complete, minimal implementation.

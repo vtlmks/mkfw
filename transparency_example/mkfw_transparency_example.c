@@ -71,7 +71,7 @@ int main(void) {
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	while(app.running && !mkfw_should_close(app.window)) {
-		mkfw_pump_messages(app.window);
+		mkfw_poll_events(app.window);
 		mkfw_update_input_state(app.window);
 
 		app.time += 0.016f;
@@ -128,6 +128,6 @@ int main(void) {
 		mkfw_swap_buffers(app.window);
 	}
 
-	mkfw_cleanup(app.window);
+	mkfw_shutdown(app.window);
 	return 0;
 }

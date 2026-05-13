@@ -35,6 +35,6 @@ int main(void) {
 		printf("\n");
 	}
 
-	mkfw_cleanup(window);
+	mkfw_shutdown(window);
 	return 0;
 }

@@ -135,7 +135,7 @@ Poll all connected controllers and update state.
 **Example:**
 ```c
 while (running) {
-    mkfw_pump_messages(window);
+    mkfw_poll_events(window);
     mkfw_joystick_update();
 
     // Query state here...
@@ -453,7 +453,7 @@ int main(void) {
     mkfw_joystick_init();
 
     while (!mkfw_should_close(window)) {
-        mkfw_pump_messages(window);
+        mkfw_poll_events(window);
         mkfw_joystick_update();
 
         for (int p = 0; p < 4; p++) {
@@ -474,7 +474,7 @@ int main(void) {
     }
 
     mkfw_joystick_shutdown();
-    mkfw_cleanup(window);
+    mkfw_shutdown(window);
     return 0;
 }
 ```
@@ -493,7 +493,7 @@ int main(void) {
     mkfw_joystick_init();
 
     while (!mkfw_should_close(window)) {
-        mkfw_pump_messages(window);
+        mkfw_poll_events(window);
         mkfw_joystick_update();
 
         if (mkfw_joystick_connected(0)) {
@@ -515,7 +515,7 @@ int main(void) {
     }
 
     mkfw_joystick_shutdown();
-    mkfw_cleanup(window);
+    mkfw_shutdown(window);
     return 0;
 }
 ```

@@ -217,10 +217,10 @@ mkfw_show_window(window);
 
 ---
 
-### `mkfw_cleanup`
+### `mkfw_shutdown`
 
 ```c
-void mkfw_cleanup(struct mkfw_state *state)
+void mkfw_shutdown(struct mkfw_state *state)
 ```
 
 Clean up resources and close the window.
@@ -236,7 +236,7 @@ Clean up resources and close the window.
 
 **Example:**
 ```c
-mkfw_cleanup(window);
+mkfw_shutdown(window);
 ```
 
 ---
@@ -866,7 +866,7 @@ Update previous keyboard and mouse button state. Call once per frame after proce
 
 **Example:**
 ```c
-mkfw_pump_messages(window);
+mkfw_poll_events(window);
 // ... handle input ...
 mkfw_update_input_state(window);
 ```
@@ -1338,7 +1338,7 @@ The `mkfw_state` struct exposes:
 - `state->has_focus` - Non-zero if window currently has keyboard focus
 - `state->mouse_in_window` - Non-zero if mouse cursor is inside the window client area
 
-These are updated automatically by `mkfw_pump_messages()`.
+These are updated automatically by `mkfw_poll_events()`.
 
 ---
 
@@ -1516,10 +1516,10 @@ mkfw_set_framebuffer_size_callback(window, on_resize);
 
 ## Timing
 
-### `mkfw_gettime`
+### `mkfw_get_time`
 
 ```c
-uint64_t mkfw_gettime(struct mkfw_state *state)
+uint64_t mkfw_get_time(struct mkfw_state *state)
 ```
 
 Get high-resolution monotonic time.
@@ -1532,9 +1532,9 @@ Get high-resolution monotonic time.
 
 **Example:**
 ```c
-uint64_t start = mkfw_gettime(window);
+uint64_t start = mkfw_get_time(window);
 do_work();
-uint64_t elapsed = mkfw_gettime(window) - start;
+uint64_t elapsed = mkfw_get_time(window) - start;
 printf("Took %llu ns\n", elapsed);
 ```
 
@@ -1573,10 +1573,10 @@ mkfw_sleep(5000000); // ~5ms
 
 ## Event Processing
 
-### `mkfw_pump_messages`
+### `mkfw_poll_events`
 
 ```c
-void mkfw_pump_messages(struct mkfw_state *state)
+void mkfw_poll_events(struct mkfw_state *state)
 ```
 
 Process pending window and input events.
@@ -1593,7 +1593,7 @@ Process pending window and input events.
 **Example main loop:**
 ```c
 while (!mkfw_should_close(window)) {
-    mkfw_pump_messages(window);
+    mkfw_poll_events(window);
 
     // Handle input
     if (mkfw_is_key_pressed(window, MKFW_KEY_ESCAPE)) {
@@ -1654,7 +1654,7 @@ Block until an event arrives or the timeout expires, then process all pending ev
 
 **Parameters:**
 - `state` - Window state pointer
-- `nanoseconds` - Maximum time to wait in nanoseconds (consistent with `mkfw_sleep` and `mkfw_gettime`)
+- `nanoseconds` - Maximum time to wait in nanoseconds (consistent with `mkfw_sleep` and `mkfw_get_time`)
 
 **Notes:**
 - Useful for apps that need periodic updates (blinking cursors, animations) even without user input
@@ -1718,7 +1718,7 @@ int main(void) {
 
     // Main loop
     while (!mkfw_should_close(window)) {
-        mkfw_pump_messages(window);
+        mkfw_poll_events(window);
 
         // Input handling
         if (mkfw_is_key_pressed(window, MKFW_KEY_F11)) {
@@ -1737,7 +1737,7 @@ int main(void) {
     }
 
     // Cleanup
-    mkfw_cleanup(window);
+    mkfw_shutdown(window);
     return 0;
 }
 ```
@@ -1770,7 +1770,7 @@ int main(void) {
     // Create options window
     struct mkfw_state *options_window = mkfw_init(800, 600);
     if (!options_window) {
-        mkfw_cleanup(main_window);
+        mkfw_shutdown(main_window);
         return -1;
     }
 
@@ -1784,8 +1784,8 @@ int main(void) {
     // Main loop - handle both windows
     while (!mkfw_should_close(main_window) && !mkfw_should_close(options_window)) {
         // Process events for both windows
-        mkfw_pump_messages(main_window);
-        mkfw_pump_messages(options_window);
+        mkfw_poll_events(main_window);
+        mkfw_poll_events(options_window);
 
         // Render main window
         mkfw_attach_context(main_window);
@@ -1805,8 +1805,8 @@ int main(void) {
     }
 
     // Cleanup
-    mkfw_cleanup(main_window);
-    mkfw_cleanup(options_window);
+    mkfw_shutdown(main_window);
+    mkfw_shutdown(options_window);
     return 0;
 }
 ```
@@ -1818,7 +1818,7 @@ int main(void) {
 MKFW supports multi-threaded rendering with context management:
 
 1. **Main thread handles events:**
-   - Call `mkfw_pump_messages(state)` on main thread
+   - Call `mkfw_poll_events(state)` on main thread
    - Process input state
 
 2. **Render thread handles OpenGL:**
@@ -1837,12 +1837,12 @@ pthread_create(&thread, NULL, render_func, window);
 
 // Main thread
 while (running) {
-    mkfw_pump_messages(window);
+    mkfw_poll_events(window);
     mkfw_sleep(5000000); // 5ms
 }
 
 pthread_join(thread, NULL);
-mkfw_cleanup(window);
+mkfw_shutdown(window);
 ```
 
 ---

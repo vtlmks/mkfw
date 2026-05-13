@@ -879,8 +879,8 @@ static int32_t mkfw_is_maximized(struct mkfw_state *state) {
 	return result;
 }
 
-// [=]===^=[ mkfw_pump_messages ]=================================================================[=]
-static void mkfw_pump_messages(struct mkfw_state *state) {
+// [=]===^=[ mkfw_poll_events ]=================================================================[=]
+static void mkfw_poll_events(struct mkfw_state *state) {
 	XEvent event;
 	while(XPending(PLATFORM(state)->display)) {
 		XNextEvent(PLATFORM(state)->display, &event);
@@ -1435,8 +1435,8 @@ static int32_t mkfw_get_swapinterval(struct mkfw_state *state) {
 	return 0;
 }
 
-// [=]===^=[ mkfw_gettime ]=======================================================================[=]
-static uint64_t mkfw_gettime(struct mkfw_state *state __attribute__((unused))) {
+// [=]===^=[ mkfw_get_time ]=======================================================================[=]
+static uint64_t mkfw_get_time(struct mkfw_state *state __attribute__((unused))) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
@@ -1652,7 +1652,7 @@ static void mkfw_wait_events(struct mkfw_state *state) {
 		pfd.events = POLLIN;
 		poll(&pfd, 1, -1);
 	}
-	mkfw_pump_messages(state);
+	mkfw_poll_events(state);
 }
 
 // [=]===^=[ mkfw_wait_events_timeout ]===========================================================[=]
@@ -1663,11 +1663,11 @@ static void mkfw_wait_events_timeout(struct mkfw_state *state, uint64_t nanoseco
 		pfd.events = POLLIN;
 		poll(&pfd, 1, (int)(nanoseconds / 1000000));
 	}
-	mkfw_pump_messages(state);
+	mkfw_poll_events(state);
 }
 
-// [=]===^=[ mkfw_cleanup ]=======================================================================[=]
-static void mkfw_cleanup(struct mkfw_state *state) {
+// [=]===^=[ mkfw_shutdown ]=======================================================================[=]
+static void mkfw_shutdown(struct mkfw_state *state) {
 	if(!state) {
 		return;
 	}

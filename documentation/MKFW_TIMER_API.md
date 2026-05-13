@@ -341,7 +341,7 @@ int main(void) {
 
     // Main thread handles events
     while (state.running && !mkfw_should_close(window)) {
-        mkfw_pump_messages(window);
+        mkfw_poll_events(window);
         mkfw_sleep(5000000);  // 5ms
     }
 
@@ -478,10 +478,10 @@ mkfw_timer_set_interval(timer, 8333333);
 ```c
 #include "mkfw.h"
 
-uint64_t last_time = mkfw_gettime(window);
+uint64_t last_time = mkfw_get_time(window);
 
 while (running) {
-    uint64_t current_time = mkfw_gettime(window);
+    uint64_t current_time = mkfw_get_time(window);
     uint64_t delta = current_time - last_time;
     last_time = current_time;
 
@@ -534,7 +534,7 @@ while (running) {
 
 - `MKFW_API.md` - Main MKFW windowing API
 - `MKFW_AUDIO_API.md` - Audio subsystem documentation
-- `mkfw_gettime()` - High-resolution time query (in main MKFW API)
+- `mkfw_get_time()` - High-resolution time query (in main MKFW API)
 - `mkfw_sleep()` - Simple sleep function (in main MKFW API)
 
 ---
