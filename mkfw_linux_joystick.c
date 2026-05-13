@@ -424,7 +424,7 @@ static void mkfw_joystick_update(void) {
 }
 
 // [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
-static void mkfw_joystick_rumble_platform(int pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+static void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
 	struct mkfw_joystick_linux_pad *lpad = &mkfw_joystick_linux[pad_index];
 	if(lpad->fd < 0 || !lpad->has_rumble) {
 		return;

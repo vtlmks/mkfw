@@ -75,22 +75,22 @@ static inline void mkfw_error(const char *fmt, ...) {
 }
 
 /* OpenGL version configuration (call before mkfw_init, defaults to 3.1) */
-static int mkfw_gl_major = 3;
-static int mkfw_gl_minor = 1;
+static int32_t mkfw_gl_major = 3;
+static int32_t mkfw_gl_minor = 1;
 
-static inline void mkfw_set_gl_version(int major, int minor) {
+static inline void mkfw_set_gl_version(int32_t major, int32_t minor) {
 	mkfw_gl_major = major;
 	mkfw_gl_minor = minor;
 }
 
 /* Per-pixel transparency (call before mkfw_init) */
-static int mkfw_transparent = 0;
-static inline void mkfw_set_transparent(int enable) { mkfw_transparent = enable; }
+static int32_t mkfw_transparent = 0;
+static inline void mkfw_set_transparent(int32_t enable) { mkfw_transparent = enable; }
 
 // sscanf("%d.%d") pulls in __isoc23_sscanf on GCC 13+, requiring glibc 2.38
-static inline int mkfw_parse_version(const char *str, int *major, int *minor) {
+static inline uint32_t mkfw_parse_version(const char *str, int32_t *major, int32_t *minor) {
 	const char *p = str;
-	int maj = 0, min = 0;
+	int32_t maj = 0, min = 0;
 	if(*p < '0' || *p > '9') {
 		return 0;
 	}
@@ -218,10 +218,10 @@ static inline void mkfw_window_set_framebuffer_size_callback(struct mkfw_state *
 static inline void mkfw_window_set_focus_callback(struct mkfw_state *state, mkfw_focus_callback_t callback) { state->focus_callback = callback; }
 static inline void mkfw_window_set_drop_callback(struct mkfw_state *state, mkfw_drop_callback_t callback) { state->drop_callback = callback; mkfw_window_enable_drop(state, callback != 0); }
 static inline void mkfw_window_set_state_callback(struct mkfw_state *state, mkfw_window_state_callback_t callback) { state->window_state_callback = callback; }
-static inline int mkfw_window_is_key_pressed(struct mkfw_state *state, uint8_t key) { return state->keyboard_state[key] && !state->prev_keyboard_state[key]; }
-static inline int mkfw_window_was_key_released(struct mkfw_state *state, uint8_t key) { return !state->keyboard_state[key] && state->prev_keyboard_state[key]; }
-static inline uint8_t mkfw_window_is_button_pressed(struct mkfw_state *state, uint8_t button) { return state->mouse_buttons[button] && !state->previous_mouse_buttons[button]; }
-static inline uint8_t mkfw_window_was_button_released(struct mkfw_state *state, uint8_t button) { return !state->mouse_buttons[button] && state->previous_mouse_buttons[button]; }
+static inline uint32_t mkfw_window_is_key_pressed(struct mkfw_state *state, uint8_t key) { return state->keyboard_state[key] && !state->prev_keyboard_state[key]; }
+static inline uint32_t mkfw_window_was_key_released(struct mkfw_state *state, uint8_t key) { return !state->keyboard_state[key] && state->prev_keyboard_state[key]; }
+static inline uint32_t mkfw_window_is_button_pressed(struct mkfw_state *state, uint8_t button) { return state->mouse_buttons[button] && !state->previous_mouse_buttons[button]; }
+static inline uint32_t mkfw_window_was_button_released(struct mkfw_state *state, uint8_t button) { return !state->mouse_buttons[button] && state->previous_mouse_buttons[button]; }
 
 static inline const char *mkfw_get_key_name(uint32_t key) {
 	if(key >= 'a' && key <= 'z') {
@@ -314,76 +314,76 @@ static inline const char *mkfw_get_key_name(uint32_t key) {
 
 /* Joystick query helpers */
 #ifdef MKFW_JOYSTICK
-static inline int mkfw_joystick_is_connected(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline uint32_t mkfw_joystick_is_connected(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
 	return mkfw_joystick_pads[pad_index].connected;
 }
-static inline const char *mkfw_joystick_get_name(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline const char *mkfw_joystick_get_name(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return "";
 	}
 	return mkfw_joystick_pads[pad_index].name;
 }
-static inline int mkfw_joystick_get_button(int pad_index, int button_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline uint32_t mkfw_joystick_get_button(uint32_t pad_index, uint32_t button_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
-	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
+	if(button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
 		return 0;
 	}
 	return mkfw_joystick_pads[pad_index].buttons[button_index];
 }
-static inline int mkfw_joystick_is_button_pressed(int pad_index, int button_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline uint32_t mkfw_joystick_is_button_pressed(uint32_t pad_index, uint32_t button_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
-	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
+	if(button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
 		return 0;
 	}
 	return mkfw_joystick_pads[pad_index].buttons[button_index] &&
 	       !mkfw_joystick_pads[pad_index].prev_buttons[button_index];
 }
-static inline int mkfw_joystick_was_button_released(int pad_index, int button_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline uint32_t mkfw_joystick_was_button_released(uint32_t pad_index, uint32_t button_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
-	if(button_index < 0 || button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
+	if(button_index >= MKFW_JOYSTICK_MAX_BUTTONS) {
 		return 0;
 	}
 	return !mkfw_joystick_pads[pad_index].buttons[button_index] &&
 	       mkfw_joystick_pads[pad_index].prev_buttons[button_index];
 }
-static inline float mkfw_joystick_get_axis(int pad_index, int axis_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline float mkfw_joystick_get_axis(uint32_t pad_index, uint32_t axis_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}
-	if(axis_index < 0 || axis_index >= MKFW_JOYSTICK_MAX_AXES) {
+	if(axis_index >= MKFW_JOYSTICK_MAX_AXES) {
 		return 0.0f;
 	}
 	return mkfw_joystick_pads[pad_index].axes[axis_index];
 }
-static inline float mkfw_joystick_get_hat_x(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline float mkfw_joystick_get_hat_x(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}
 	return mkfw_joystick_pads[pad_index].hat_x;
 }
-static inline float mkfw_joystick_get_hat_y(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline float mkfw_joystick_get_hat_y(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
 	}
 	return mkfw_joystick_pads[pad_index].hat_y;
 }
-static inline int mkfw_joystick_get_button_count(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline uint32_t mkfw_joystick_get_button_count(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
 	return mkfw_joystick_pads[pad_index].button_count;
 }
-static inline int mkfw_joystick_get_axis_count(int pad_index) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline uint32_t mkfw_joystick_get_axis_count(uint32_t pad_index) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
 	}
 	return mkfw_joystick_pads[pad_index].axis_count;
@@ -391,8 +391,8 @@ static inline int mkfw_joystick_get_axis_count(int pad_index) {
 static inline void mkfw_joystick_set_callback(mkfw_joystick_callback_t callback) {
 	mkfw_joystick_cb = callback;
 }
-static inline void mkfw_joystick_rumble(int pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
-	if(pad_index < 0 || pad_index >= MKFW_JOYSTICK_MAX_PADS) {
+static inline void mkfw_joystick_rumble(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return;
 	}
 	mkfw_joystick_rumble_platform(pad_index, low_freq, high_freq, duration_ms);

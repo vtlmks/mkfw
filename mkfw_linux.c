@@ -253,7 +253,7 @@ static void enable_xi2_raw_input(struct mkfw_state *state) {
 }
 
 // [=]===^=[ mkfw_window_should_close ]==================================================================[=]
-static int32_t mkfw_window_should_close(struct mkfw_state *state) {
+static uint32_t mkfw_window_should_close(struct mkfw_state *state) {
 	return PLATFORM(state)->should_close;
 }
 
@@ -382,7 +382,7 @@ static void mkfw_window_hide(struct mkfw_state *state) {
 }
 
 // [=]===^=[ mkfw_query_max_gl_version ]==========================================================[=]
-static int mkfw_query_max_gl_version(int *major, int *minor) {
+static uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	load_x11_functions();
 	Display *dpy = XOpenDisplay(0);
 	if(!dpy) {
@@ -427,11 +427,11 @@ static int mkfw_query_max_gl_version(int *major, int *minor) {
 
 	typedef const unsigned char *(*PFNGLGETSTRINGPROC)(unsigned int);
 	PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const unsigned char *)"glGetString");
-	int result = 0;
+	uint32_t result = 0;
 	if(pglGetString) {
 		const char *version = (const char *)pglGetString(0x1F02); // GL_VERSION
 		if(version) {
-			int tmp_major, tmp_minor;
+			int32_t tmp_major, tmp_minor;
 			result = mkfw_parse_version(version, &tmp_major, &tmp_minor);
 			if(result) {
 				if(major) {
@@ -556,7 +556,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 			glXMakeCurrent(PLATFORM(state)->display, PLATFORM(state)->window, query_ctx);
 			typedef const unsigned char *(*PFNGLGETSTRINGPROC)(unsigned int);
 			PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const unsigned char *)"glGetString");
-			int max_major = 0, max_minor = 0;
+			int32_t max_major = 0, max_minor = 0;
 			if(pglGetString) {
 				const char *ver = (const char *)pglGetString(0x1F02);
 				if(ver) {
@@ -836,13 +836,13 @@ static void xdnd_parse_uri_list(struct mkfw_state *state, const char *data, uint
 }
 
 // [=]===^=[ mkfw_window_is_minimized ]=================================================================[=]
-static int32_t mkfw_window_is_minimized(struct mkfw_state *state) {
+static uint32_t mkfw_window_is_minimized(struct mkfw_state *state) {
 	Atom actual_type;
 	int actual_format;
 	unsigned long nitems, bytes_after;
 	unsigned char *data = 0;
 	XGetWindowProperty(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->wm_state, 0, 2, False, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &data);
-	int32_t result = 0;
+	uint32_t result = 0;
 	if(data && nitems >= 1) {
 		long state_val = *(long *)data;
 		result = (state_val == 3) ? 1 : 0;
@@ -854,14 +854,14 @@ static int32_t mkfw_window_is_minimized(struct mkfw_state *state) {
 }
 
 // [=]===^=[ mkfw_window_is_maximized ]=================================================================[=]
-static int32_t mkfw_window_is_maximized(struct mkfw_state *state) {
+static uint32_t mkfw_window_is_maximized(struct mkfw_state *state) {
 	Display *dpy = PLATFORM(state)->display;
 	Atom actual_type;
 	int actual_format;
 	unsigned long nitems, bytes_after;
 	unsigned char *data = 0;
 	XGetWindowProperty(dpy, PLATFORM(state)->window, PLATFORM(state)->net_wm_state, 0, 1024, False, XA_ATOM, &actual_type, &actual_format, &nitems, &bytes_after, &data);
-	int32_t result = 0;
+	uint32_t result = 0;
 	if(data) {
 		Atom *atoms = (Atom *)data;
 		uint8_t has_h = 0, has_v = 0;

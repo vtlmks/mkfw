@@ -623,7 +623,7 @@ static void mkfw_window_hide(struct mkfw_state *state) {
 }
 
 // [=]===^=[ mkfw_query_max_gl_version ]==========================================================[=]
-static int mkfw_query_max_gl_version(int *major, int *minor) {
+static uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	WNDCLASS wc = {0};
 	wc.lpfnWndProc = DefWindowProc;
 	wc.hInstance = GetModuleHandle(0);
@@ -651,11 +651,11 @@ static int mkfw_query_max_gl_version(int *major, int *minor) {
 	HMODULE gl_module = GetModuleHandleA("opengl32.dll");
 	PFNGLGETSTRINGPROC pglGetString = gl_module ? (PFNGLGETSTRINGPROC)(void *)GetProcAddress(gl_module, "glGetString") : 0;
 
-	int result = 0;
+	uint32_t result = 0;
 	if(pglGetString) {
 		const char *version = (const char *)pglGetString(0x1F02); // GL_VERSION
 		if(version) {
-			int tmp_major, tmp_minor;
+			int32_t tmp_major, tmp_minor;
 			result = mkfw_parse_version(version, &tmp_major, &tmp_minor);
 			if(result) {
 				if(major) {
@@ -758,7 +758,7 @@ static struct mkfw_state *mkfw_init(int32_t width, int32_t height) {
 			typedef const unsigned char *(__stdcall *PFNGLGETSTRINGPROC)(unsigned int);
 			HMODULE gl_module = GetModuleHandleA("opengl32.dll");
 			PFNGLGETSTRINGPROC pglGetString = gl_module ? (PFNGLGETSTRINGPROC)(void *)GetProcAddress(gl_module, "glGetString") : 0;
-			int max_major = 0, max_minor = 0;
+			int32_t max_major = 0, max_minor = 0;
 			if(pglGetString) {
 				const char *ver = (const char *)pglGetString(0x1F02);
 				if(ver) {
@@ -908,7 +908,7 @@ static int32_t mkfw_window_get_swap_interval(struct mkfw_state *state) {
 }
 
 // [=]===^=[ mkfw_window_should_close ]==================================================================[=]
-static int32_t mkfw_window_should_close(struct mkfw_state *state) {
+static uint32_t mkfw_window_should_close(struct mkfw_state *state) {
 	return PLATFORM(state)->should_close;
 }
 
@@ -1203,12 +1203,12 @@ static void mkfw_window_restore(struct mkfw_state *state) {
 }
 
 // [=]===^=[ mkfw_window_is_minimized ]=================================================================[=]
-static int32_t mkfw_window_is_minimized(struct mkfw_state *state) {
+static uint32_t mkfw_window_is_minimized(struct mkfw_state *state) {
 	return IsIconic(PLATFORM(state)->hwnd) ? 1 : 0;
 }
 
 // [=]===^=[ mkfw_window_is_maximized ]=================================================================[=]
-static int32_t mkfw_window_is_maximized(struct mkfw_state *state) {
+static uint32_t mkfw_window_is_maximized(struct mkfw_state *state) {
 	return IsZoomed(PLATFORM(state)->hwnd) ? 1 : 0;
 }
 

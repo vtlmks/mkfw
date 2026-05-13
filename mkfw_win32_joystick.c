@@ -128,10 +128,10 @@ static void mkfw_joystick_update(void) {
 }
 
 // [=]===^=[ mkfw_joystick_rumble_platform ]======================================================[=]
-static void mkfw_joystick_rumble_platform(int pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
+static void mkfw_joystick_rumble_platform(uint32_t pad_index, float low_freq, float high_freq, uint32_t duration_ms) {
 	(void)duration_ms;
 	XINPUT_VIBRATION vibration;
 	vibration.wLeftMotorSpeed = (WORD)(low_freq * 65535.0f);
 	vibration.wRightMotorSpeed = (WORD)(high_freq * 65535.0f);
-	XInputSetState((DWORD)pad_index, &vibration);
+	XInputSetState(pad_index, &vibration);
 }

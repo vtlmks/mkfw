@@ -23,7 +23,7 @@ struct mkfw_timer_handle {
 	mkfw_thread timer_thread;
 
 	uint32_t spin;
-	int futex_word;
+	int32_t futex_word;
 
 #ifdef MKFW_TIMER_DEBUG
 	struct timespec last_wait_start;
@@ -53,12 +53,12 @@ static int64_t mkfw_timespec_diff_ns(struct timespec *a, struct timespec *b) {
 }
 
 // [=]===^=[ mkfw_futex_wait ]====================================================================[=]
-static int mkfw_futex_wait(int *addr, int val) {
+static int32_t mkfw_futex_wait(int32_t *addr, int32_t val) {
 	return syscall(SYS_futex, addr, FUTEX_WAIT_PRIVATE, val, 0, 0, 0);
 }
 
 // [=]===^=[ mkfw_futex_wake ]====================================================================[=]
-static int mkfw_futex_wake(int *addr) {
+static int32_t mkfw_futex_wake(int32_t *addr) {
 	return syscall(SYS_futex, addr, FUTEX_WAKE_PRIVATE, 1, 0, 0, 0);
 }
 
