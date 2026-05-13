@@ -100,10 +100,10 @@ mkfw_timer_shutdown();
 
 ## Timer Handle Management
 
-### `mkfw_timer_new`
+### `mkfw_timer_create`
 
 ```c
-struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns)
+struct mkfw_timer_handle *mkfw_timer_create(uint64_t interval_ns)
 ```
 
 Create a new timer instance with the specified interval.
@@ -127,7 +127,7 @@ Create a new timer instance with the specified interval.
 ```c
 // 60 FPS timer (16.666... ms)
 #define FRAME_TIME_NS 16666666
-struct mkfw_timer_handle *timer = mkfw_timer_new(FRAME_TIME_NS);
+struct mkfw_timer_handle *timer = mkfw_timer_create(FRAME_TIME_NS);
 ```
 
 **Common intervals:**
@@ -144,7 +144,7 @@ struct mkfw_timer_handle *timer = mkfw_timer_new(FRAME_TIME_NS);
 // 120 FPS
 #define FPS_120 8333333ULL
 
-struct mkfw_timer_handle *timer = mkfw_timer_new(FPS_60);
+struct mkfw_timer_handle *timer = mkfw_timer_create(FPS_60);
 ```
 
 ---
@@ -207,7 +207,7 @@ Change the interval of a running timer without destroying and recreating it.
 // NES emulator: nudge frame time to keep audio buffer healthy
 #define NES_NTSC_FRAME_NS 16639267  // ~60.0988 Hz
 
-struct mkfw_timer_handle *timer = mkfw_timer_new(NES_NTSC_FRAME_NS);
+struct mkfw_timer_handle *timer = mkfw_timer_create(NES_NTSC_FRAME_NS);
 
 // Audio callback notices buffer is getting thin — speed up slightly
 mkfw_timer_set_interval(timer, NES_NTSC_FRAME_NS - 50000);
@@ -258,7 +258,7 @@ int main(void) {
     mkfw_timer_init();
 
     // Create 60 FPS timer
-    struct mkfw_timer_handle *timer = mkfw_timer_new(FRAME_TIME_NS);
+    struct mkfw_timer_handle *timer = mkfw_timer_create(FRAME_TIME_NS);
 
     // Main loop
     while (running) {
@@ -287,9 +287,9 @@ int main(void) {
 
 ```c
 // Different update rates for different systems
-struct mkfw_timer_handle *render_timer = mkfw_timer_new(16666666);  // 60 FPS
-struct mkfw_timer_handle *physics_timer = mkfw_timer_new(10000000); // 100 Hz
-struct mkfw_timer_handle *network_timer = mkfw_timer_new(50000000); // 20 Hz
+struct mkfw_timer_handle *render_timer = mkfw_timer_create(16666666);  // 60 FPS
+struct mkfw_timer_handle *physics_timer = mkfw_timer_create(10000000); // 100 Hz
+struct mkfw_timer_handle *network_timer = mkfw_timer_create(50000000); // 20 Hz
 
 // Each timer runs independently with its own thread
 ```
@@ -303,7 +303,7 @@ struct mkfw_timer_handle *network_timer = mkfw_timer_new(50000000); // 20 Hz
 #include "mkfw.h"
 
 void *render_thread_func(void *arg) {
-    struct mkfw_timer_handle *timer = mkfw_timer_new(FRAME_TIME_NS);
+    struct mkfw_timer_handle *timer = mkfw_timer_create(FRAME_TIME_NS);
 
     while (state.running) {
         // Handle input
@@ -467,7 +467,7 @@ Define `MKFW_TIMER_DEBUG` before including to enable debug output:
 
 ```c
 // Start with 60 FPS
-struct mkfw_timer_handle *timer = mkfw_timer_new(16666666);
+struct mkfw_timer_handle *timer = mkfw_timer_create(16666666);
 
 // Later, switch to 120 FPS
 mkfw_timer_set_interval(timer, 8333333);

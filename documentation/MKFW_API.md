@@ -1565,7 +1565,7 @@ Sleep for a specified duration.
 mkfw_sleep(5000000); // ~5ms
 
 // For precise frame timing, use mkfw_timer instead:
-// struct mkfw_timer_handle *timer = mkfw_timer_new(16666666);
+// struct mkfw_timer_handle *timer = mkfw_timer_create(16666666);
 // mkfw_timer_wait(timer);
 ```
 

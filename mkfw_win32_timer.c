@@ -160,8 +160,8 @@ static void mkfw_timer_shutdown(void) {
 }
 
 
-// [=]===^=[ mkfw_timer_new ]=====================================================================[=]
-static struct mkfw_timer_handle *mkfw_timer_new(uint64_t interval_ns) {
+// [=]===^=[ mkfw_timer_create ]=====================================================================[=]
+static struct mkfw_timer_handle *mkfw_timer_create(uint64_t interval_ns) {
 	struct mkfw_timer_handle *t = calloc(1, sizeof(struct mkfw_timer_handle));
 
 	t->qpc_frequency = mkfw_cached_qpc_frequency;
