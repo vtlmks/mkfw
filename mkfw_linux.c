@@ -25,8 +25,16 @@
 #include "mkfw_linux_xrandr_loader.h"
 #include "mkfw_linux_xinput2_loader.h"
 
-/* Platform casting macro */
+/* Platform casting macros */
 #define PLATFORM(state) ((struct x11_mkfw_window *)(state)->platform)
+#define CTX_PLATFORM(c) ((struct x11_mkfw_context *)(c)->platform)
+#define WIN_CTX_PLATFORM(w) CTX_PLATFORM((w)->context)
+
+struct x11_mkfw_context {
+	Display *display;
+	uint8_t libs_loaded;
+	uint8_t signal_handlers_installed;
+};
 
 struct x11_mkfw_window {
 	Display *display;
@@ -262,15 +270,8 @@ static void mkfw_window_set_should_close(struct mkfw_window *state, int32_t valu
 	PLATFORM(state)->should_close = value;
 }
 
-// [=]===^=[ setup_signal_handlers ]==============================================================[=]
-static void setup_signal_handlers(struct mkfw_window *state) {
-	// Signal handlers can't easily access per-window state
-	// Applications should set up their own signal handling if needed
-	(void)state;
-}
-
-// [=]===^=[ select_best_fbconfig ]===============================================================[=]
-static GLXFBConfig select_best_fbconfig(Display *display, int screen) {
+// [=]===^=[ select_best_fbconfig_for ]===========================================================[=]
+static GLXFBConfig select_best_fbconfig_for(Display *display, int screen, int32_t transparent) {
 	int fb_count = 0;
 	GLXFBConfig *fbcs = glXChooseFBConfig(display, screen, 0, &fb_count);
 	if(!fbcs || fb_count == 0) {
@@ -297,12 +298,12 @@ static GLXFBConfig select_best_fbconfig(Display *display, int screen) {
 
 		/* Fetch color/depth/stencil sizes */
 		glXGetFBConfigAttrib(display, fbcs[i], GLX_ALPHA_SIZE, &alpha_size);
-		if(mkfw_transparent && alpha_size < 8) {
+		if(transparent && alpha_size < 8) {
 			continue;
 		}
 
 		/* For transparency we need a true 32-bit visual, not just alpha in the fbconfig */
-		if(mkfw_transparent) {
+		if(transparent) {
 			XVisualInfo *tvi = glXGetVisualFromFBConfig(display, fbcs[i]);
 			if(!tvi || tvi->depth != 32) {
 				if(tvi) {
@@ -392,7 +393,7 @@ static uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	load_glx_functions(dpy);
 
 	int screen = DefaultScreen(dpy);
-	GLXFBConfig fb_config = select_best_fbconfig(dpy, screen);
+	GLXFBConfig fb_config = select_best_fbconfig_for(dpy, screen, 0);
 
 	XVisualInfo *vi = glXGetVisualFromFBConfig(dpy, fb_config);
 	if(!vi) {
@@ -454,12 +455,70 @@ static uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	return result;
 }
 
+// Forward declaration for monitor query used inside mkfw_init
+static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, int32_t max);
+
 // [=]===^=[ mkfw_init ]==========================================================================[=]
-static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
+static struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
+	(void)opts;  // No fields yet beyond version
+
+	struct mkfw_context *ctx = (struct mkfw_context *)calloc(1, sizeof(struct mkfw_context));
+	if(!ctx) {
+		return 0;
+	}
+	ctx->platform = calloc(1, sizeof(struct x11_mkfw_context));
+	if(!ctx->platform) {
+		free(ctx);
+		return 0;
+	}
+
+	load_x11_functions();
+	load_xrandr_functions();
+	load_xinput2_functions();
+	CTX_PLATFORM(ctx)->libs_loaded = 1;
+
+	XInitThreads();
+
+	CTX_PLATFORM(ctx)->display = XOpenDisplay(0);
+	if(!CTX_PLATFORM(ctx)->display) {
+		mkfw_error("unable to open X display");
+		free(ctx->platform);
+		free(ctx);
+		return 0;
+	}
+
+	load_glx_functions(CTX_PLATFORM(ctx)->display);
+
+	XrmInitialize();
+
+	// Cache monitors so callers can query before creating a window
+	ctx->monitor_count = (uint32_t)mkfw_query_monitors_into(CTX_PLATFORM(ctx)->display, ctx->monitors, MKFW_MAX_MONITORS);
+
+	return ctx;
+}
+
+// [=]===^=[ mkfw_window_create ]=================================================================[=]
+static struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct mkfw_window_options *opts) {
+	if(!ctx || ctx->window_count >= MKFW_MAX_WINDOWS) {
+		return 0;
+	}
+
+	struct mkfw_window_options defaults = {0};
+	if(!opts) {
+		opts = &defaults;
+	}
+	int32_t width    = opts->width    > 0 ? opts->width    : 1280;
+	int32_t height   = opts->height   > 0 ? opts->height   : 720;
+	int32_t gl_major = opts->gl_major > 0 ? opts->gl_major : 3;
+	int32_t gl_minor = opts->gl_minor > 0 ? opts->gl_minor : 1;
+	const char *title = opts->title ? opts->title : "mkfw";
+	int32_t transparent = (opts->flags & MKFW_WIN_TRANSPARENT) ? 1 : 0;
+
 	struct mkfw_window *state = (struct mkfw_window *)calloc(1, sizeof(struct mkfw_window));
 	if(!state) {
 		return 0;
 	}
+	state->context = ctx;
 
 	state->platform = calloc(1, sizeof(struct x11_mkfw_window));
 	if(!state->platform) {
@@ -469,91 +528,72 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 
 	PLATFORM(state)->mouse_sensitivity = 1.0;
 	PLATFORM(state)->xi_opcode = -1;
+	PLATFORM(state)->display = CTX_PLATFORM(ctx)->display;
 
-	load_x11_functions();
-	load_xrandr_functions();
-	load_xinput2_functions();
+	Display *display = CTX_PLATFORM(ctx)->display;
+	int screen = DefaultScreen(display);
+	Window root = RootWindow(display, screen);
 
-	XInitThreads();
-	setup_signal_handlers(state);
-	PLATFORM(state)->display = XOpenDisplay(0);
-	if(!PLATFORM(state)->display) {
-		mkfw_error("unable to open X display");
-		free(state->platform);
-		free(state);
-		return 0;
-	}
+	GLXFBConfig fb_config = select_best_fbconfig_for(display, screen, transparent);
 
-	int screen = DefaultScreen(PLATFORM(state)->display);
-	Window root = RootWindow(PLATFORM(state)->display, screen);
-
-	load_glx_functions(PLATFORM(state)->display);
-
-	GLXFBConfig fb_config = select_best_fbconfig(PLATFORM(state)->display, screen);
-
-	XVisualInfo *vi = glXGetVisualFromFBConfig(PLATFORM(state)->display, fb_config);
+	XVisualInfo *vi = glXGetVisualFromFBConfig(display, fb_config);
 	if(!vi) {
 		mkfw_error("unable to get a visual from framebuffer config");
-		XCloseDisplay(PLATFORM(state)->display);
 		free(state->platform);
 		free(state);
 		return 0;
 	}
 
-	Colormap cmap = XCreateColormap(PLATFORM(state)->display, root, vi->visual, AllocNone);
+	Colormap cmap = XCreateColormap(display, root, vi->visual, AllocNone);
 	XSetWindowAttributes swa;
 	swa.colormap = cmap;
 	swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | EnterWindowMask | LeaveWindowMask | FocusChangeMask | PropertyChangeMask;
 	swa.border_pixel = 0;
 	swa.background_pixmap = None;
 
-	PLATFORM(state)->window = XCreateWindow(PLATFORM(state)->display, root, 0, 0, width, height, 0, vi->depth, InputOutput, vi->visual, CWBackPixmap | CWBorderPixel | CWColormap | CWEventMask, &swa);
+	PLATFORM(state)->window = XCreateWindow(display, root, 0, 0, width, height, 0, vi->depth, InputOutput, vi->visual, CWBackPixmap | CWBorderPixel | CWColormap | CWEventMask, &swa);
 
-	XStoreName(PLATFORM(state)->display, PLATFORM(state)->window, "MKFW");
+	XStoreName(display, PLATFORM(state)->window, title);
 
-	// Set WM_CLASS
 	XClassHint *class_hint = XAllocClassHint();
 	if(class_hint) {
 		class_hint->res_name = (char *)"mkfw";
 		class_hint->res_class = (char *)"MKFW";
-		XSetClassHint(PLATFORM(state)->display, PLATFORM(state)->window, class_hint);
+		XSetClassHint(display, PLATFORM(state)->window, class_hint);
 		XFree(class_hint);
 	}
 
-	PLATFORM(state)->wm_delete_window = XInternAtom(PLATFORM(state)->display, "WM_DELETE_WINDOW", False);
-	XSetWMProtocols(PLATFORM(state)->display, PLATFORM(state)->window, &PLATFORM(state)->wm_delete_window, 1);
+	PLATFORM(state)->wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols(display, PLATFORM(state)->window, &PLATFORM(state)->wm_delete_window, 1);
 	enable_xi2_raw_input(state);
 
-	// Create OpenGL context (glXCreateContextAttribsARB loaded by load_glx_functions above)
 	if(!glXCreateContextAttribsARB) {
 		mkfw_error("glXCreateContextAttribsARB not supported");
 		XFree(vi);
-		XDestroyWindow(PLATFORM(state)->display, PLATFORM(state)->window);
-		XCloseDisplay(PLATFORM(state)->display);
+		XDestroyWindow(display, PLATFORM(state)->window);
 		free(state->platform);
 		free(state);
 		return 0;
 	}
 
 	int ctx_attribs[] = {
-		GLX_CONTEXT_MAJOR_VERSION_ARB, mkfw_gl_major,
-		GLX_CONTEXT_MINOR_VERSION_ARB, mkfw_gl_minor,
+		GLX_CONTEXT_MAJOR_VERSION_ARB, gl_major,
+		GLX_CONTEXT_MINOR_VERSION_ARB, gl_minor,
 		GLX_CONTEXT_PROFILE_MASK_ARB,  GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 		0
 	};
 
-	PLATFORM(state)->glctx = glXCreateContextAttribsARB(PLATFORM(state)->display, fb_config, 0, 1, ctx_attribs);
+	PLATFORM(state)->glctx = glXCreateContextAttribsARB(display, fb_config, 0, 1, ctx_attribs);
 	if(!PLATFORM(state)->glctx) {
-		// Try to determine max supported version for the error message
 		int fallback_attribs[] = {
 			GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
 			GLX_CONTEXT_MINOR_VERSION_ARB, 1,
 			GLX_CONTEXT_PROFILE_MASK_ARB,  GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 			0
 		};
-		GLXContext query_ctx = glXCreateContextAttribsARB(PLATFORM(state)->display, fb_config, 0, 1, fallback_attribs);
+		GLXContext query_ctx = glXCreateContextAttribsARB(display, fb_config, 0, 1, fallback_attribs);
 		if(query_ctx) {
-			glXMakeCurrent(PLATFORM(state)->display, PLATFORM(state)->window, query_ctx);
+			glXMakeCurrent(display, PLATFORM(state)->window, query_ctx);
 			typedef const unsigned char *(*PFNGLGETSTRINGPROC)(unsigned int);
 			PFNGLGETSTRINGPROC pglGetString = (PFNGLGETSTRINGPROC)glXGetProcAddress((const unsigned char *)"glGetString");
 			int32_t max_major = 0, max_minor = 0;
@@ -563,69 +603,68 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 					mkfw_parse_version(ver, &max_major, &max_minor);
 				}
 			}
-			glXMakeCurrent(PLATFORM(state)->display, None, 0);
-			glXDestroyContext(PLATFORM(state)->display, query_ctx);
+			glXMakeCurrent(display, None, 0);
+			glXDestroyContext(display, query_ctx);
 			mkfw_error("OpenGL %d.%d Compatibility Profile not available (driver supports up to %d.%d)",
-				mkfw_gl_major, mkfw_gl_minor, max_major, max_minor);
+				gl_major, gl_minor, max_major, max_minor);
 		} else {
-			mkfw_error("OpenGL %d.%d Compatibility Profile not available", mkfw_gl_major, mkfw_gl_minor);
+			mkfw_error("OpenGL %d.%d Compatibility Profile not available", gl_major, gl_minor);
 		}
 		XFree(vi);
-		XDestroyWindow(PLATFORM(state)->display, PLATFORM(state)->window);
-		XCloseDisplay(PLATFORM(state)->display);
+		XDestroyWindow(display, PLATFORM(state)->window);
 		free(state->platform);
 		free(state);
 		return 0;
 	}
 
-	glXMakeCurrent(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->glctx);
+	glXMakeCurrent(display, PLATFORM(state)->window, PLATFORM(state)->glctx);
 	XFree(vi);
 
-	// XIM for Unicode text input
-	PLATFORM(state)->xim = XOpenIM(PLATFORM(state)->display, 0, 0, 0);
+	PLATFORM(state)->xim = XOpenIM(display, 0, 0, 0);
 	if(PLATFORM(state)->xim) {
 		PLATFORM(state)->xic = XCreateIC(PLATFORM(state)->xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing, XNClientWindow, PLATFORM(state)->window, XNFocusWindow, PLATFORM(state)->window, (char *)0);
 	}
 
-	// Cursor shapes
-	PLATFORM(state)->cursors[MKFW_CURSOR_ARROW]       = XCreateFontCursor(PLATFORM(state)->display, XC_left_ptr);
-	PLATFORM(state)->cursors[MKFW_CURSOR_TEXT_INPUT]   = XCreateFontCursor(PLATFORM(state)->display, XC_xterm);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_ALL]   = XCreateFontCursor(PLATFORM(state)->display, XC_fleur);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NS]    = XCreateFontCursor(PLATFORM(state)->display, XC_sb_v_double_arrow);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_EW]    = XCreateFontCursor(PLATFORM(state)->display, XC_sb_h_double_arrow);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NESW]  = XCreateFontCursor(PLATFORM(state)->display, XC_bottom_left_corner);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NWSE]  = XCreateFontCursor(PLATFORM(state)->display, XC_bottom_right_corner);
-	PLATFORM(state)->cursors[MKFW_CURSOR_HAND]         = XCreateFontCursor(PLATFORM(state)->display, XC_hand2);
-	PLATFORM(state)->cursors[MKFW_CURSOR_NOT_ALLOWED]  = XCreateFontCursor(PLATFORM(state)->display, XC_X_cursor);
+	PLATFORM(state)->cursors[MKFW_CURSOR_ARROW]       = XCreateFontCursor(display, XC_left_ptr);
+	PLATFORM(state)->cursors[MKFW_CURSOR_TEXT_INPUT]  = XCreateFontCursor(display, XC_xterm);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_ALL]  = XCreateFontCursor(display, XC_fleur);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NS]   = XCreateFontCursor(display, XC_sb_v_double_arrow);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_EW]   = XCreateFontCursor(display, XC_sb_h_double_arrow);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NESW] = XCreateFontCursor(display, XC_bottom_left_corner);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NWSE] = XCreateFontCursor(display, XC_bottom_right_corner);
+	PLATFORM(state)->cursors[MKFW_CURSOR_HAND]        = XCreateFontCursor(display, XC_hand2);
+	PLATFORM(state)->cursors[MKFW_CURSOR_NOT_ALLOWED] = XCreateFontCursor(display, XC_X_cursor);
 
-	// Clipboard atoms
-	PLATFORM(state)->clipboard_atom      = XInternAtom(PLATFORM(state)->display, "CLIPBOARD", False);
-	PLATFORM(state)->utf8_string_atom    = XInternAtom(PLATFORM(state)->display, "UTF8_STRING", False);
-	PLATFORM(state)->targets_atom        = XInternAtom(PLATFORM(state)->display, "TARGETS", False);
-	PLATFORM(state)->mkfw_clipboard_atom = XInternAtom(PLATFORM(state)->display, "MKFW_CLIPBOARD", False);
+	PLATFORM(state)->clipboard_atom      = XInternAtom(display, "CLIPBOARD", False);
+	PLATFORM(state)->utf8_string_atom    = XInternAtom(display, "UTF8_STRING", False);
+	PLATFORM(state)->targets_atom        = XInternAtom(display, "TARGETS", False);
+	PLATFORM(state)->mkfw_clipboard_atom = XInternAtom(display, "MKFW_CLIPBOARD", False);
 
-	// XDND atoms
-	PLATFORM(state)->xdnd_aware     = XInternAtom(PLATFORM(state)->display, "XdndAware", False);
-	PLATFORM(state)->xdnd_enter     = XInternAtom(PLATFORM(state)->display, "XdndEnter", False);
-	PLATFORM(state)->xdnd_position  = XInternAtom(PLATFORM(state)->display, "XdndPosition", False);
-	PLATFORM(state)->xdnd_status    = XInternAtom(PLATFORM(state)->display, "XdndStatus", False);
-	PLATFORM(state)->xdnd_leave     = XInternAtom(PLATFORM(state)->display, "XdndLeave", False);
-	PLATFORM(state)->xdnd_drop      = XInternAtom(PLATFORM(state)->display, "XdndDrop", False);
-	PLATFORM(state)->xdnd_finished  = XInternAtom(PLATFORM(state)->display, "XdndFinished", False);
-	PLATFORM(state)->xdnd_selection = XInternAtom(PLATFORM(state)->display, "XdndSelection", False);
-	PLATFORM(state)->xdnd_type_list = XInternAtom(PLATFORM(state)->display, "XdndTypeList", False);
-	PLATFORM(state)->text_uri_list  = XInternAtom(PLATFORM(state)->display, "text/uri-list", False);
+	PLATFORM(state)->xdnd_aware     = XInternAtom(display, "XdndAware", False);
+	PLATFORM(state)->xdnd_enter     = XInternAtom(display, "XdndEnter", False);
+	PLATFORM(state)->xdnd_position  = XInternAtom(display, "XdndPosition", False);
+	PLATFORM(state)->xdnd_status    = XInternAtom(display, "XdndStatus", False);
+	PLATFORM(state)->xdnd_leave     = XInternAtom(display, "XdndLeave", False);
+	PLATFORM(state)->xdnd_drop      = XInternAtom(display, "XdndDrop", False);
+	PLATFORM(state)->xdnd_finished  = XInternAtom(display, "XdndFinished", False);
+	PLATFORM(state)->xdnd_selection = XInternAtom(display, "XdndSelection", False);
+	PLATFORM(state)->xdnd_type_list = XInternAtom(display, "XdndTypeList", False);
+	PLATFORM(state)->text_uri_list  = XInternAtom(display, "text/uri-list", False);
 
-	// Window state atoms
-	PLATFORM(state)->net_wm_state                = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE", False);
-	PLATFORM(state)->net_wm_state_maximized_horz = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-	PLATFORM(state)->net_wm_state_maximized_vert = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-	PLATFORM(state)->wm_state                    = XInternAtom(PLATFORM(state)->display, "WM_STATE", False);
-	PLATFORM(state)->net_wm_state_demands_attention = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
-
-	XrmInitialize();
+	PLATFORM(state)->net_wm_state                = XInternAtom(display, "_NET_WM_STATE", False);
+	PLATFORM(state)->net_wm_state_maximized_horz = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+	PLATFORM(state)->net_wm_state_maximized_vert = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+	PLATFORM(state)->wm_state                    = XInternAtom(display, "WM_STATE", False);
+	PLATFORM(state)->net_wm_state_demands_attention = XInternAtom(display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
 
 	state->has_focus = 1;
+
+	ctx->windows[ctx->window_count++] = state;
+
+	if(!(opts->flags & MKFW_WIN_HIDDEN)) {
+		XMapWindow(display, PLATFORM(state)->window);
+		XFlush(display);
+	}
 
 	return state;
 }
@@ -879,12 +918,49 @@ static uint32_t mkfw_window_is_maximized(struct mkfw_window *state) {
 	return result;
 }
 
-// [=]===^=[ mkfw_poll_events ]=================================================================[=]
-static void mkfw_poll_events(struct mkfw_window *state) {
-	XEvent event;
-	while(XPending(PLATFORM(state)->display)) {
-		XNextEvent(PLATFORM(state)->display, &event);
+// Forward declaration so process_window_event can be called from mkfw_poll_events
+static void process_window_event(struct mkfw_window *state, XEvent *event_ptr);
 
+// [=]===^=[ find_window_for_event ]==============================================================[=]
+static struct mkfw_window *find_window_for_event(struct mkfw_context *ctx, XEvent *event) {
+	for(uint32_t i = 0; i < ctx->window_count; ++i) {
+		if(PLATFORM(ctx->windows[i])->window == event->xany.window) {
+			return ctx->windows[i];
+		}
+	}
+	// XInput2 generic events have window == 0; deliver them to the focused window
+	if(event->type == GenericEvent) {
+		for(uint32_t i = 0; i < ctx->window_count; ++i) {
+			if(PLATFORM(ctx->windows[i])->in_window) {
+				return ctx->windows[i];
+			}
+		}
+		if(ctx->window_count > 0) {
+			return ctx->windows[0];
+		}
+	}
+	return 0;
+}
+
+// [=]===^=[ mkfw_poll_events ]===================================================================[=]
+static void mkfw_poll_events(struct mkfw_context *ctx) {
+	if(!ctx || !CTX_PLATFORM(ctx)->display) {
+		return;
+	}
+	XEvent event;
+	while(XPending(CTX_PLATFORM(ctx)->display)) {
+		XNextEvent(CTX_PLATFORM(ctx)->display, &event);
+		struct mkfw_window *target = find_window_for_event(ctx, &event);
+		if(target) {
+			process_window_event(target, &event);
+		}
+	}
+}
+
+// [=]===^=[ process_window_event ]===============================================================[=]
+static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
+	XEvent event = *event_ptr;
+	{
 		// Handle XInput2 generic events if relevant
 		if(event.type == GenericEvent && PLATFORM(state)->in_window) {
 			if(event.xcookie.extension == PLATFORM(state)->xi_opcode && XGetEventData(PLATFORM(state)->display, &event.xcookie)) {
@@ -1436,7 +1512,7 @@ static int32_t mkfw_window_get_swap_interval(struct mkfw_window *state) {
 }
 
 // [=]===^=[ mkfw_get_time ]=======================================================================[=]
-static uint64_t mkfw_get_time(struct mkfw_window *state __attribute__((unused))) {
+static uint64_t mkfw_get_time(void) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
@@ -1467,12 +1543,13 @@ static void mkfw_window_set_icon(struct mkfw_window *state, int32_t width, int32
 	free(data);
 }
 
-// [=]===^=[ mkfw_get_monitors ]==================================================================[=]
-static int32_t mkfw_get_monitors(struct mkfw_window *state, struct mkfw_monitor *out, int32_t max) {
+// [=]===^=[ mkfw_query_monitors_into ]===========================================================[=]
+// Queries XRandR and writes into the caller-supplied buffer. Used internally
+// at mkfw_init to populate the context's monitor cache.
+static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, int32_t max) {
 	if(!out || max <= 0) {
 		return 0;
 	}
-	Display *dpy = PLATFORM(state)->display;
 	Window root = DefaultRootWindow(dpy);
 	XRRScreenResources *sr = XRRGetScreenResourcesCurrent(dpy, root);
 	if(!sr) {
@@ -1539,6 +1616,21 @@ static int32_t mkfw_get_monitors(struct mkfw_window *state, struct mkfw_monitor 
 	}
 
 	return count;
+}
+
+// [=]===^=[ mkfw_get_monitors ]==================================================================[=]
+static int32_t mkfw_get_monitors(struct mkfw_context *ctx, struct mkfw_monitor *out, int32_t max) {
+	if(!ctx || !out || max <= 0) {
+		return 0;
+	}
+	int32_t n = (int32_t)ctx->monitor_count;
+	if(n > max) {
+		n = max;
+	}
+	for(int32_t i = 0; i < n; ++i) {
+		out[i] = ctx->monitors[i];
+	}
+	return n;
 }
 
 // [=]===^=[ mkfw_window_set_position ]===========================================================[=]
@@ -1645,29 +1737,37 @@ static void mkfw_window_request_attention(struct mkfw_window *state) {
 }
 
 // [=]===^=[ mkfw_wait_events ]==================================================================[=]
-static void mkfw_wait_events(struct mkfw_window *state) {
-	if(!XPending(PLATFORM(state)->display)) {
+static void mkfw_wait_events(struct mkfw_context *ctx) {
+	if(!ctx || !CTX_PLATFORM(ctx)->display) {
+		return;
+	}
+	Display *dpy = CTX_PLATFORM(ctx)->display;
+	if(!XPending(dpy)) {
 		struct pollfd pfd;
-		pfd.fd = ConnectionNumber(PLATFORM(state)->display);
+		pfd.fd = ConnectionNumber(dpy);
 		pfd.events = POLLIN;
 		poll(&pfd, 1, -1);
 	}
-	mkfw_poll_events(state);
+	mkfw_poll_events(ctx);
 }
 
 // [=]===^=[ mkfw_wait_events_timeout ]===========================================================[=]
-static void mkfw_wait_events_timeout(struct mkfw_window *state, uint64_t nanoseconds) {
-	if(!XPending(PLATFORM(state)->display)) {
+static void mkfw_wait_events_timeout(struct mkfw_context *ctx, uint64_t nanoseconds) {
+	if(!ctx || !CTX_PLATFORM(ctx)->display) {
+		return;
+	}
+	Display *dpy = CTX_PLATFORM(ctx)->display;
+	if(!XPending(dpy)) {
 		struct pollfd pfd;
-		pfd.fd = ConnectionNumber(PLATFORM(state)->display);
+		pfd.fd = ConnectionNumber(dpy);
 		pfd.events = POLLIN;
 		poll(&pfd, 1, (int)(nanoseconds / 1000000));
 	}
-	mkfw_poll_events(state);
+	mkfw_poll_events(ctx);
 }
 
-// [=]===^=[ mkfw_shutdown ]=======================================================================[=]
-static void mkfw_shutdown(struct mkfw_window *state) {
+// [=]===^=[ mkfw_window_destroy ]================================================================[=]
+static void mkfw_window_destroy(struct mkfw_window *state) {
 	if(!state) {
 		return;
 	}
@@ -1691,10 +1791,42 @@ static void mkfw_shutdown(struct mkfw_window *state) {
 	glXMakeCurrent(PLATFORM(state)->display, None, 0);
 	glXDestroyContext(PLATFORM(state)->display, PLATFORM(state)->glctx);
 	XDestroyWindow(PLATFORM(state)->display, PLATFORM(state)->window);
-	XCloseDisplay(PLATFORM(state)->display);
+
+	// Unlink from its context's window list
+	struct mkfw_context *ctx = state->context;
+	if(ctx) {
+		for(uint32_t i = 0; i < ctx->window_count; ++i) {
+			if(ctx->windows[i] == state) {
+				for(uint32_t j = i + 1; j < ctx->window_count; ++j) {
+					ctx->windows[j - 1] = ctx->windows[j];
+				}
+				ctx->windows[ctx->window_count - 1] = 0;
+				--ctx->window_count;
+				break;
+			}
+		}
+	}
 
 	free(state->platform);
 	free(state);
+}
+
+// [=]===^=[ mkfw_shutdown ]======================================================================[=]
+static void mkfw_shutdown(struct mkfw_context *ctx) {
+	if(!ctx) {
+		return;
+	}
+
+	// Destroy any remaining windows
+	while(ctx->window_count > 0) {
+		mkfw_window_destroy(ctx->windows[ctx->window_count - 1]);
+	}
+
+	if(CTX_PLATFORM(ctx)->display) {
+		XCloseDisplay(CTX_PLATFORM(ctx)->display);
+	}
+	free(ctx->platform);
+	free(ctx);
 }
 
 // [=]===^=[ mkfw_sleep ]=========================================================================[=]

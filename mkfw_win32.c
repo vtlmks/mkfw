@@ -23,15 +23,24 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 typedef HGLRC (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int *attribList);
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 
-/* Platform casting macro */
+/* Platform casting macros */
 #define PLATFORM(state) ((struct win32_mkfw_window *)(state)->platform)
+#define CTX_PLATFORM(c) ((struct win32_mkfw_context *)(c)->platform)
 
 /* Platform-specific raw input scaling factor to normalize across platforms */
 #define WIN32_RAW_MOUSE_SCALE 3.0
 
-// Win32 platform state structure
+// Process-global platform state
+static LARGE_INTEGER mkfw_win32_perf_freq;
+static UINT (WINAPI *mkfw_win32_GetDpiForWindow)(HWND);
+static uint8_t mkfw_win32_class_registered;
+
+struct win32_mkfw_context {
+	HINSTANCE hinstance;
+};
+
+// Win32 per-window platform state
 struct win32_mkfw_window {
-	LARGE_INTEGER performance_frequency;
 	HINSTANCE hinstance;
 	HWND hwnd;
 	HDC hdc;
@@ -65,9 +74,6 @@ struct win32_mkfw_window {
 	// Window state callback tracking
 	uint8_t last_maximized;
 	uint8_t last_minimized;
-
-	// Dynamic DPI function
-	UINT (WINAPI *GetDpiForWindow_)(HWND);
 };
 
 // [=]===^=[ map_vk_to_scancode ]=================================================================[=]
@@ -607,10 +613,6 @@ static void mkfw_enable_raw_mouse(struct mkfw_window *state, int32_t enable) {
 	}
 }
 
-static void mkfw_setup_signal_handlers() {
-	/* No-op on Windows, typically. */
-}
-
 // [=]===^=[ mkfw_window_show ]===================================================================[=]
 static void mkfw_window_show(struct mkfw_window *state) {
 	ShowWindow(PLATFORM(state)->hwnd, SW_SHOW);
@@ -677,12 +679,73 @@ static uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	return result;
 }
 
+// Forward declaration so mkfw_init can prime the monitor cache
+static int32_t mkfw_query_monitors_into(struct mkfw_monitor *out, int32_t max);
+
 // [=]===^=[ mkfw_init ]==========================================================================[=]
-static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
+static struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
+	(void)opts;
+
+	struct mkfw_context *ctx = (struct mkfw_context *)calloc(1, sizeof(struct mkfw_context));
+	if(!ctx) {
+		return 0;
+	}
+	ctx->platform = calloc(1, sizeof(struct win32_mkfw_context));
+	if(!ctx->platform) {
+		free(ctx);
+		return 0;
+	}
+
+	SetProcessDPIAware();
+
+	HMODULE user32 = GetModuleHandle("user32.dll");
+	if(user32 && !mkfw_win32_GetDpiForWindow) {
+		mkfw_win32_GetDpiForWindow = (UINT (WINAPI *)(HWND))(void *)GetProcAddress(user32, "GetDpiForWindow");
+	}
+
+	if(mkfw_win32_perf_freq.QuadPart == 0) {
+		QueryPerformanceFrequency(&mkfw_win32_perf_freq);
+	}
+
+	CTX_PLATFORM(ctx)->hinstance = GetModuleHandle(0);
+
+	if(!mkfw_win32_class_registered) {
+		WNDCLASS wc = {0};
+		wc.lpfnWndProc   = Win32WindowProc;
+		wc.hInstance     = CTX_PLATFORM(ctx)->hinstance;
+		wc.hCursor       = LoadCursor(0, IDC_ARROW);
+		wc.lpszClassName = "OpenGLWindowClass";
+		RegisterClass(&wc);
+		mkfw_win32_class_registered = 1;
+	}
+
+	ctx->monitor_count = (uint32_t)mkfw_query_monitors_into(ctx->monitors, MKFW_MAX_MONITORS);
+
+	return ctx;
+}
+
+// [=]===^=[ mkfw_window_create ]=================================================================[=]
+static struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct mkfw_window_options *opts) {
+	if(!ctx || ctx->window_count >= MKFW_MAX_WINDOWS) {
+		return 0;
+	}
+
+	struct mkfw_window_options defaults = {0};
+	if(!opts) {
+		opts = &defaults;
+	}
+	int32_t width    = opts->width    > 0 ? opts->width    : 1280;
+	int32_t height   = opts->height   > 0 ? opts->height   : 720;
+	int32_t gl_major = opts->gl_major > 0 ? opts->gl_major : 3;
+	int32_t gl_minor = opts->gl_minor > 0 ? opts->gl_minor : 1;
+	const char *title = opts->title ? opts->title : "mkfw";
+	int32_t transparent = (opts->flags & MKFW_WIN_TRANSPARENT) ? 1 : 0;
+
 	struct mkfw_window *state = (struct mkfw_window *)calloc(1, sizeof(struct mkfw_window));
 	if(!state) {
 		return 0;
 	}
+	state->context = ctx;
 
 	state->platform = calloc(1, sizeof(struct win32_mkfw_window));
 	if(!state->platform) {
@@ -690,35 +753,19 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 		return 0;
 	}
 
-	SetProcessDPIAware();
-
-	HMODULE user32 = GetModuleHandle("user32.dll");
-	if(user32) {
-		PLATFORM(state)->GetDpiForWindow_ = (UINT (WINAPI *)(HWND))(void *)GetProcAddress(user32, "GetDpiForWindow");
-	}
-
 	PLATFORM(state)->mouse_sensitivity = 1.0;
-	PLATFORM(state)->hinstance = GetModuleHandle(0);
-	QueryPerformanceFrequency(&PLATFORM(state)->performance_frequency);
-
-	WNDCLASS wc = {0};
-	wc.lpfnWndProc   = Win32WindowProc;
-	wc.hInstance     = PLATFORM(state)->hinstance;
-	wc.hCursor       = LoadCursor(0, IDC_ARROW);
-	wc.lpszClassName = "OpenGLWindowClass";
-	RegisterClass(&wc);
+	PLATFORM(state)->hinstance = CTX_PLATFORM(ctx)->hinstance;
 
 	DWORD style = WS_OVERLAPPEDWINDOW;
 	RECT rect = { 0, 0, width, height };
 	AdjustWindowRect(&rect, style, FALSE);
 
-	PLATFORM(state)->hwnd = CreateWindowEx(0, wc.lpszClassName, "OpenGL Example", style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, 0, 0, PLATFORM(state)->hinstance, state);
+	PLATFORM(state)->hwnd = CreateWindowEx(0, "OpenGLWindowClass", title, style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, 0, 0, PLATFORM(state)->hinstance, state);
 
 	SetWindowPos(PLATFORM(state)->hwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
 
 	PLATFORM(state)->hdc = GetDC(PLATFORM(state)->hwnd);
 
-	// Create OpenGL context
 	PIXELFORMATDESCRIPTOR pfd = {0};
 	pfd.nSize      = sizeof(pfd);
 	pfd.nVersion   = 1;
@@ -741,8 +788,8 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 		PLATFORM(state)->hglrc = temp_ctx;
 	} else {
 		int ctx_attribs[] = {
-			WGL_CONTEXT_MAJOR_VERSION_ARB, mkfw_gl_major,
-			WGL_CONTEXT_MINOR_VERSION_ARB, mkfw_gl_minor,
+			WGL_CONTEXT_MAJOR_VERSION_ARB, gl_major,
+			WGL_CONTEXT_MINOR_VERSION_ARB, gl_minor,
 			WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 			0
 		};
@@ -754,7 +801,6 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 			wglMakeCurrent(PLATFORM(state)->hdc, modern_ctx);
 			PLATFORM(state)->hglrc = modern_ctx;
 		} else {
-			// Query max supported version from the legacy context for the error message
 			typedef const unsigned char *(__stdcall *PFNGLGETSTRINGPROC)(unsigned int);
 			HMODULE gl_module = GetModuleHandleA("opengl32.dll");
 			PFNGLGETSTRINGPROC pglGetString = gl_module ? (PFNGLGETSTRINGPROC)(void *)GetProcAddress(gl_module, "glGetString") : 0;
@@ -768,7 +814,7 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 			wglMakeCurrent(0, 0);
 			wglDeleteContext(temp_ctx);
 			mkfw_error("OpenGL %d.%d Compatibility Profile not available (driver supports up to %d.%d)",
-				mkfw_gl_major, mkfw_gl_minor, max_major, max_minor);
+				gl_major, gl_minor, max_major, max_minor);
 			ReleaseDC(PLATFORM(state)->hwnd, PLATFORM(state)->hdc);
 			DestroyWindow(PLATFORM(state)->hwnd);
 			free(state->platform);
@@ -777,24 +823,21 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 		}
 	}
 
-	/* Cache original style/rect for fullscreen toggling */
 	PLATFORM(state)->saved_style = style;
 	GetWindowRect(PLATFORM(state)->hwnd, &PLATFORM(state)->saved_rect);
 	mkfw_enable_raw_mouse(state, 1);
 
-	// Cursor shapes
-	PLATFORM(state)->cursors[MKFW_CURSOR_ARROW]        = LoadCursor(0, IDC_ARROW);
-	PLATFORM(state)->cursors[MKFW_CURSOR_TEXT_INPUT]    = LoadCursor(0, IDC_IBEAM);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_ALL]    = LoadCursor(0, IDC_SIZEALL);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NS]     = LoadCursor(0, IDC_SIZENS);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_EW]     = LoadCursor(0, IDC_SIZEWE);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NESW]   = LoadCursor(0, IDC_SIZENESW);
-	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NWSE]   = LoadCursor(0, IDC_SIZENWSE);
-	PLATFORM(state)->cursors[MKFW_CURSOR_HAND]          = LoadCursor(0, IDC_HAND);
-	PLATFORM(state)->cursors[MKFW_CURSOR_NOT_ALLOWED]   = LoadCursor(0, IDC_NO);
+	PLATFORM(state)->cursors[MKFW_CURSOR_ARROW]       = LoadCursor(0, IDC_ARROW);
+	PLATFORM(state)->cursors[MKFW_CURSOR_TEXT_INPUT]  = LoadCursor(0, IDC_IBEAM);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_ALL]  = LoadCursor(0, IDC_SIZEALL);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NS]   = LoadCursor(0, IDC_SIZENS);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_EW]   = LoadCursor(0, IDC_SIZEWE);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NESW] = LoadCursor(0, IDC_SIZENESW);
+	PLATFORM(state)->cursors[MKFW_CURSOR_RESIZE_NWSE] = LoadCursor(0, IDC_SIZENWSE);
+	PLATFORM(state)->cursors[MKFW_CURSOR_HAND]        = LoadCursor(0, IDC_HAND);
+	PLATFORM(state)->cursors[MKFW_CURSOR_NOT_ALLOWED] = LoadCursor(0, IDC_NO);
 
-	if(mkfw_transparent) {
-		// Define locally to avoid dwmapi.h dependency
+	if(transparent) {
 		typedef struct { int left; int right; int top; int bottom; } MKFW_DWM_MARGINS;
 		typedef HRESULT (WINAPI *PFN_DwmExtendFrameIntoClientArea)(HWND, const MKFW_DWM_MARGINS *);
 		HMODULE dwm = LoadLibraryA("dwmapi.dll");
@@ -809,6 +852,12 @@ static struct mkfw_window *mkfw_init(int32_t width, int32_t height) {
 	}
 
 	state->has_focus = 1;
+
+	ctx->windows[ctx->window_count++] = state;
+
+	if(!(opts->flags & MKFW_WIN_HIDDEN)) {
+		ShowWindow(PLATFORM(state)->hwnd, SW_SHOW);
+	}
 
 	return state;
 }
@@ -839,12 +888,17 @@ static void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable
 	}
 }
 
-// [=]===^=[ mkfw_poll_events ]=================================================================[=]
-static void mkfw_poll_events(struct mkfw_window *state) {
+// [=]===^=[ mkfw_poll_events ]===================================================================[=]
+static void mkfw_poll_events(struct mkfw_context *ctx) {
+	if(!ctx) {
+		return;
+	}
 	MSG msg;
 	while(PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
 		if(msg.message == WM_QUIT) {
-			PLATFORM(state)->should_close = 1;
+			for(uint32_t i = 0; i < ctx->window_count; ++i) {
+				PLATFORM(ctx->windows[i])->should_close = 1;
+			}
 			break;
 		}
 		TranslateMessage(&msg);
@@ -1149,9 +1203,8 @@ static BOOL CALLBACK mkfw_monitor_enum_proc(HMONITOR hMonitor, HDC hdcMonitor, L
 	return TRUE;
 }
 
-// [=]===^=[ mkfw_get_monitors ]================================================================[=]
-static int32_t mkfw_get_monitors(struct mkfw_window *state, struct mkfw_monitor *out, int32_t max) {
-	(void)state;
+// [=]===^=[ mkfw_query_monitors_into ]==========================================================[=]
+static int32_t mkfw_query_monitors_into(struct mkfw_monitor *out, int32_t max) {
 	if(!out || max <= 0) {
 		return 0;
 	}
@@ -1168,6 +1221,21 @@ static int32_t mkfw_get_monitors(struct mkfw_window *state, struct mkfw_monitor 
 	}
 
 	return data.count;
+}
+
+// [=]===^=[ mkfw_get_monitors ]================================================================[=]
+static int32_t mkfw_get_monitors(struct mkfw_context *ctx, struct mkfw_monitor *out, int32_t max) {
+	if(!ctx || !out || max <= 0) {
+		return 0;
+	}
+	int32_t n = (int32_t)ctx->monitor_count;
+	if(n > max) {
+		n = max;
+	}
+	for(int32_t i = 0; i < n; ++i) {
+		out[i] = ctx->monitors[i];
+	}
+	return n;
 }
 
 // [=]===^=[ mkfw_window_set_position ]=========================================================[=]
@@ -1214,8 +1282,8 @@ static uint32_t mkfw_window_is_maximized(struct mkfw_window *state) {
 
 // [=]===^=[ mkfw_window_get_content_scale ]=============================================================[=]
 static float mkfw_window_get_content_scale(struct mkfw_window *state) {
-	if(PLATFORM(state)->GetDpiForWindow_) {
-		UINT dpi = PLATFORM(state)->GetDpiForWindow_(PLATFORM(state)->hwnd);
+	if(mkfw_win32_GetDpiForWindow) {
+		UINT dpi = mkfw_win32_GetDpiForWindow(PLATFORM(state)->hwnd);
 		return (float)dpi / 96.0f;
 	}
 	int dpi = GetDeviceCaps(PLATFORM(state)->hdc, LOGPIXELSX);
@@ -1234,19 +1302,19 @@ static void mkfw_window_request_attention(struct mkfw_window *state) {
 }
 
 // [=]===^=[ mkfw_wait_events ]==================================================================[=]
-static void mkfw_wait_events(struct mkfw_window *state) {
+static void mkfw_wait_events(struct mkfw_context *ctx) {
 	WaitMessage();
-	mkfw_poll_events(state);
+	mkfw_poll_events(ctx);
 }
 
 // [=]===^=[ mkfw_wait_events_timeout ]===========================================================[=]
-static void mkfw_wait_events_timeout(struct mkfw_window *state, uint64_t nanoseconds) {
+static void mkfw_wait_events_timeout(struct mkfw_context *ctx, uint64_t nanoseconds) {
 	MsgWaitForMultipleObjectsEx(0, 0, (DWORD)(nanoseconds / 1000000), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-	mkfw_poll_events(state);
+	mkfw_poll_events(ctx);
 }
 
-// [=]===^=[ mkfw_shutdown ]=======================================================================[=]
-static void mkfw_shutdown(struct mkfw_window *state) {
+// [=]===^=[ mkfw_window_destroy ]================================================================[=]
+static void mkfw_window_destroy(struct mkfw_window *state) {
 	if(!state) {
 		return;
 	}
@@ -1271,17 +1339,42 @@ static void mkfw_shutdown(struct mkfw_window *state) {
 		DispatchMessage(&msg);
 	}
 
-	UnregisterClass("OpenGLWindowClass", PLATFORM(state)->hinstance);
+	// Unlink from its context's window list
+	struct mkfw_context *ctx = state->context;
+	if(ctx) {
+		for(uint32_t i = 0; i < ctx->window_count; ++i) {
+			if(ctx->windows[i] == state) {
+				for(uint32_t j = i + 1; j < ctx->window_count; ++j) {
+					ctx->windows[j - 1] = ctx->windows[j];
+				}
+				ctx->windows[ctx->window_count - 1] = 0;
+				--ctx->window_count;
+				break;
+			}
+		}
+	}
 
 	free(state->platform);
 	free(state);
 }
 
+// [=]===^=[ mkfw_shutdown ]======================================================================[=]
+static void mkfw_shutdown(struct mkfw_context *ctx) {
+	if(!ctx) {
+		return;
+	}
+	while(ctx->window_count > 0) {
+		mkfw_window_destroy(ctx->windows[ctx->window_count - 1]);
+	}
+	free(ctx->platform);
+	free(ctx);
+}
+
 // [=]===^=[ mkfw_get_time ]=======================================================================[=]
-static uint64_t mkfw_get_time(struct mkfw_window *state) {
+static uint64_t mkfw_get_time(void) {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
-	return (now.QuadPart * 1000000000ULL) / PLATFORM(state)->performance_frequency.QuadPart;
+	return (now.QuadPart * 1000000000ULL) / mkfw_win32_perf_freq.QuadPart;
 }
 
 // [=]===^=[ mkfw_sleep ]=========================================================================[=]

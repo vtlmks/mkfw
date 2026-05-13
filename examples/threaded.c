@@ -88,19 +88,28 @@ static MKFW_THREAD_FUNC(render_thread_func, arg) {
 int main(void) {
 	struct app_state app = {0};
 
-	// Create window (GL context is current on main thread after init)
-	app.window = mkfw_init(1280, 720);
-	if(!app.window) {
-		fprintf(stderr, "Failed to create window\n");
+	struct mkfw_context *ctx = mkfw_init(0);
+	if(!ctx) {
+		fprintf(stderr, "Failed to initialize mkfw\n");
 		return 1;
 	}
 
-	mkfw_window_set_title(app.window, "MKFW Threaded Rendering");
+	struct mkfw_window_options wopts = {
+		.width = 1280,
+		.height = 720,
+		.title = "MKFW Threaded Rendering",
+	};
+	app.window = mkfw_window_create(ctx, &wopts);
+	if(!app.window) {
+		fprintf(stderr, "Failed to create window\n");
+		mkfw_shutdown(ctx);
+		return 1;
+	}
+
 	mkfw_window_set_min_size_and_aspect(app.window, 640, 360, 0.0f, 0.0f);
 	mkfw_window_set_user_data(app.window, &app);
 	mkfw_window_set_key_callback(app.window, on_key);
 	mkfw_window_set_framebuffer_size_callback(app.window, on_resize);
-	mkfw_window_show(app.window);
 
 	// Release the GL context from the main thread so the render thread can use it.
 	// A GL context can only be current on one thread at a time.
@@ -115,7 +124,7 @@ int main(void) {
 	// process messages. Dragging/resizing will block here, but the
 	// render thread keeps drawing independently.
 	while(app.running && !mkfw_window_should_close(app.window)) {
-		mkfw_poll_events(app.window);
+		mkfw_poll_events(ctx);
 		mkfw_sleep(5000000); // 5ms -- don't burn CPU on message polling
 	}
 
@@ -123,6 +132,7 @@ int main(void) {
 	app.running = 0;
 	mkfw_thread_join(render_thread);
 
-	mkfw_shutdown(app.window);
+	mkfw_window_destroy(app.window);
+	mkfw_shutdown(ctx);
 	return 0;
 }

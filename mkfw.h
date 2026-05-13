@@ -11,23 +11,27 @@
 
 #include "mkfw_keys.h"
 
-/* Forward declaration */
+/* Forward declarations */
+struct mkfw_context;
 struct mkfw_window;
 
 /* Callback function pointers */
-typedef void (*mkfw_key_callback_t)(struct mkfw_window *state, uint32_t key, uint32_t action, uint32_t modifier_bits);
-typedef void (*mkfw_char_callback_t)(struct mkfw_window *state, uint32_t codepoint);
-typedef void (*mkfw_scroll_callback_t)(struct mkfw_window *state, double xoffset, double yoffset);
-typedef void (*mkfw_mouse_move_delta_callback_t)(struct mkfw_window *state, int32_t x, int32_t y);
-typedef void (*mkfw_mouse_button_callback_t)(struct mkfw_window *state, uint8_t button, int action);
-typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_window *state, int32_t width, int32_t height, float aspect_ratio);
-typedef void (*mkfw_focus_callback_t)(struct mkfw_window *state, uint8_t focused);
+typedef void (*mkfw_key_callback_t)(struct mkfw_window *window, uint32_t key, uint32_t action, uint32_t modifier_bits);
+typedef void (*mkfw_char_callback_t)(struct mkfw_window *window, uint32_t codepoint);
+typedef void (*mkfw_scroll_callback_t)(struct mkfw_window *window, double xoffset, double yoffset);
+typedef void (*mkfw_mouse_move_delta_callback_t)(struct mkfw_window *window, int32_t x, int32_t y);
+typedef void (*mkfw_mouse_button_callback_t)(struct mkfw_window *window, uint8_t button, int action);
+typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_window *window, int32_t width, int32_t height, float aspect_ratio);
+typedef void (*mkfw_focus_callback_t)(struct mkfw_window *window, uint8_t focused);
 typedef void (*mkfw_drop_callback_t)(uint32_t count, const char **paths);
-typedef void (*mkfw_window_state_callback_t)(struct mkfw_window *state, uint8_t maximized, uint8_t minimized);
+typedef void (*mkfw_window_state_callback_t)(struct mkfw_window *window, uint8_t maximized, uint8_t minimized);
 
-/* Main state structure */
+/* Per-window state.  Owned by a mkfw_context; create with
+ * mkfw_window_create and destroy with mkfw_window_destroy. */
 struct mkfw_window {
-	// Shared input state
+	struct mkfw_context *context;
+
+	// Input state
 	uint8_t keyboard_state[MKFW_KEY_LAST];
 	uint8_t prev_keyboard_state[MKFW_KEY_LAST];
 	uint8_t modifier_state[MKFW_MODIFIER_LAST];
@@ -74,19 +78,6 @@ static inline void mkfw_error(const char *fmt, ...) {
 	}
 }
 
-/* OpenGL version configuration (call before mkfw_init, defaults to 3.1) */
-static int32_t mkfw_gl_major = 3;
-static int32_t mkfw_gl_minor = 1;
-
-static inline void mkfw_set_gl_version(int32_t major, int32_t minor) {
-	mkfw_gl_major = major;
-	mkfw_gl_minor = minor;
-}
-
-/* Per-pixel transparency (call before mkfw_init) */
-static int32_t mkfw_transparent = 0;
-static inline void mkfw_set_transparent(int32_t enable) { mkfw_transparent = enable; }
-
 // sscanf("%d.%d") pulls in __isoc23_sscanf on GCC 13+, requiring glibc 2.38
 static inline uint32_t mkfw_parse_version(const char *str, int32_t *major, int32_t *minor) {
 	const char *p = str;
@@ -122,6 +113,44 @@ struct mkfw_monitor {
 	int32_t height;
 	int32_t refresh_rate;
 	uint8_t primary;
+};
+
+/* Library-level handle.  Created with mkfw_init, destroyed with
+ * mkfw_shutdown.  Owns the platform display connection, loaded
+ * function pointers, monitor cache, shared atoms, shared cursor
+ * handles, and all windows created against it. */
+#define MKFW_MAX_WINDOWS 16
+
+struct mkfw_context {
+	void *platform;
+
+	struct mkfw_window *windows[MKFW_MAX_WINDOWS];
+	uint32_t window_count;
+
+	struct mkfw_monitor monitors[MKFW_MAX_MONITORS];
+	uint32_t monitor_count;
+};
+
+/* Library init options.  Pass 0 to use defaults for every field. */
+struct mkfw_options {
+	uint32_t version;        // 0 = current
+};
+
+/* Window-creation flags */
+#define MKFW_WIN_TRANSPARENT  (1u << 0)
+#define MKFW_WIN_HIDDEN       (1u << 1)
+
+/* Window creation options.  Pass 0 to use defaults for every field.
+ * The version field must be 0 for now; future revisions may add
+ * fields and bump the version. */
+struct mkfw_window_options {
+	uint32_t version;        // 0 = current
+	int32_t  width;          // 0 = 1280
+	int32_t  height;         // 0 = 720
+	const char *title;       // 0 = "mkfw"
+	int32_t  gl_major;       // 0 = 3
+	int32_t  gl_minor;       // 0 = 1
+	uint32_t flags;          // MKFW_WIN_*
 };
 
 /* Suppress unused-function warnings for API functions the user may not call */

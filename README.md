@@ -40,25 +40,28 @@ mkfw is a set of headers and source files you include directly into your project
 #include "mkfw_gl_loader.h"
 #include "mkfw.h"
 
-int main() {
-    struct mkfw_window *mkfw = mkfw_init(1280, 720);
-    mkfw_window_set_title(mkfw, "Hello mkfw");
-    mkfw_window_show(mkfw);
+int main(void) {
+    struct mkfw_context *ctx = mkfw_init(0);
+    struct mkfw_window_options wopts = {
+        .width = 1280, .height = 720, .title = "Hello mkfw",
+    };
+    struct mkfw_window *window = mkfw_window_create(ctx, &wopts);
 
     mkfw_gl_loader();
 
-    while (!mkfw_window_should_close(mkfw)) {
-        mkfw_poll_events(mkfw);
+    while (!mkfw_window_should_close(window)) {
+        mkfw_poll_events(ctx);
 
-        if (mkfw->keyboard_state[MKFW_KEY_ESCAPE])
-            mkfw_window_set_should_close(mkfw, 1);
+        if (window->keyboard_state[MKFW_KEY_ESCAPE])
+            mkfw_window_set_should_close(window, 1);
 
         // render ...
 
-        mkfw_window_swap_buffers(mkfw);
+        mkfw_window_swap_buffers(window);
     }
 
-    mkfw_shutdown(mkfw);
+    mkfw_window_destroy(window);
+    mkfw_shutdown(ctx);
     return 0;
 }
 ```
@@ -101,12 +104,16 @@ By default mkfw creates an OpenGL 3.1 Compatibility Profile context. You can req
 
 ```c
 // Query what the driver supports
-int major, minor;
+int32_t major, minor;
 mkfw_query_max_gl_version(&major, &minor);
 
-// Request a specific version before mkfw_init
-mkfw_set_gl_version(4, 6);
-struct mkfw_window *mkfw = mkfw_init(1280, 720);
+// Request a specific version via the window options struct
+struct mkfw_context *ctx = mkfw_init(0);
+struct mkfw_window_options wopts = {
+    .width = 1280, .height = 720,
+    .gl_major = 4, .gl_minor = 6,
+};
+struct mkfw_window *window = mkfw_window_create(ctx, &wopts);
 ```
 
 See [MKFW_API.md](documentation/MKFW_API.md#opengl-version-configuration) for details.

@@ -49,18 +49,28 @@ int main(void) {
 	struct app_state app = {0};
 	app.running = 1;
 
-	mkfw_set_transparent(1);
-	app.window = mkfw_init(800, 600);
-	if(!app.window) {
-		fprintf(stderr, "Failed to create window\n");
+	struct mkfw_context *ctx = mkfw_init(0);
+	if(!ctx) {
+		fprintf(stderr, "Failed to initialize mkfw\n");
 		return 1;
 	}
 
-	mkfw_window_set_title(app.window, "MKFW Transparency");
+	struct mkfw_window_options wopts = {
+		.width = 800,
+		.height = 600,
+		.title = "MKFW Transparency",
+		.flags = MKFW_WIN_TRANSPARENT,
+	};
+	app.window = mkfw_window_create(ctx, &wopts);
+	if(!app.window) {
+		fprintf(stderr, "Failed to create window\n");
+		mkfw_shutdown(ctx);
+		return 1;
+	}
+
 	mkfw_window_set_user_data(app.window, &app);
 	mkfw_window_set_key_callback(app.window, on_key);
 	mkfw_window_set_framebuffer_size_callback(app.window, on_resize);
-	mkfw_window_show(app.window);
 
 	mkfw_gl_loader();
 	mkfw_window_set_swap_interval(app.window, 1);
@@ -71,7 +81,7 @@ int main(void) {
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	while(app.running && !mkfw_window_should_close(app.window)) {
-		mkfw_poll_events(app.window);
+		mkfw_poll_events(ctx);
 		mkfw_window_update_input_state(app.window);
 
 		app.time += 0.016f;
@@ -128,6 +138,7 @@ int main(void) {
 		mkfw_window_swap_buffers(app.window);
 	}
 
-	mkfw_shutdown(app.window);
+	mkfw_window_destroy(app.window);
+	mkfw_shutdown(ctx);
 	return 0;
 }

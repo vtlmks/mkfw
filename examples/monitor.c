@@ -3,10 +3,8 @@
 
 // Monitor enumeration example for MKFW (terminal output)
 //
-// Creates a hidden window (required for platform init), queries all
-// connected monitors, and prints their properties to stdout.
-//
-// Compile with: ./build_monitor.sh
+// Initializes the library, queries all connected monitors via the context
+// (no window required), and prints their properties to stdout.
 
 #include <stdio.h>
 #include <stdint.h>
@@ -15,14 +13,14 @@
 
 // [=]===^=[ main ]===============================================================================[=]
 int main(void) {
-	struct mkfw_window *window = mkfw_init(1, 1);
-	if(!window) {
+	struct mkfw_context *ctx = mkfw_init(0);
+	if(!ctx) {
 		fprintf(stderr, "Failed to initialize mkfw\n");
 		return 1;
 	}
 
 	struct mkfw_monitor monitors[MKFW_MAX_MONITORS];
-	int32_t count = mkfw_get_monitors(window, monitors, MKFW_MAX_MONITORS);
+	int32_t count = mkfw_get_monitors(ctx, monitors, MKFW_MAX_MONITORS);
 
 	printf("Detected %d monitor(s):\n\n", count);
 
@@ -35,6 +33,6 @@ int main(void) {
 		printf("\n");
 	}
 
-	mkfw_shutdown(window);
+	mkfw_shutdown(ctx);
 	return 0;
 }
