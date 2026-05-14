@@ -9,6 +9,23 @@ exercises every subsystem.  It's still a solo effort, so the
 ecosystem (third-party bindings, integrations, distro packages)
 isn't there yet; evaluate accordingly if those matter to you.
 
+## Updating from 0.1.0
+
+The API was refactored after the `0.1.0` tag and the change is
+not source-compatible.  Previously `mkfw_init()` initialised
+the library and created a window in a single call, returning a
+per-window context.  The current API splits that responsibility:
+`mkfw_init()` creates one library-wide context, and windows are
+created on top of it with `mkfw_window_create()`.  A single
+context can own multiple windows that share one event pump.
+
+There is no automatic migration path; call sites have to be
+updated by hand.  See the [Quick start](#quick-start) snippet
+below for the shape of the new API, and [MKFW_API.md](documentation/MKFW_API.md)
+for the full reference.  If you need the previous API, check
+out the [`0.1.0`](../../releases/tag/0.1.0) tag.  Future
+breaking changes will ship with a proper migration note.
+
 ## Features
 
 **Core:**
