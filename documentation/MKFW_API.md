@@ -180,8 +180,9 @@ struct mkfw_window_options {
     int32_t  width;          // 0 = 1280
     int32_t  height;         // 0 = 720
     const char *title;       // 0 = "mkfw"
-    int32_t  gl_major;       // 0 = 3 (GL Compatibility Profile)
-    int32_t  gl_minor;       // 0 = 1
+    int32_t  gl_major;       // 0 = highest supported by driver
+    int32_t  gl_minor;       // 0 = highest supported by driver
+    uint32_t gl_profile;     // MKFW_GL_PROFILE_*; 0 = CORE
     uint32_t flags;          // MKFW_WIN_TRANSPARENT | MKFW_WIN_HIDDEN
     uint32_t graphics_api;   // MKFW_GFX_*; 0 = MKFW_GFX_GL
 };
@@ -194,11 +195,20 @@ Flags:
 | `MKFW_WIN_TRANSPARENT` | request a 32-bit ARGB visual (Linux: GLX_ALPHA_SIZE > 0; Win32: DwmExtendFrameIntoClientArea) |
 | `MKFW_WIN_HIDDEN` | do not map / show the window at creation; caller must call `mkfw_window_show` when ready |
 
+GL profile selection:
+
+```c
+enum mkfw_gl_profile {
+    MKFW_GL_PROFILE_CORE = 0,   // default; no fixed-function, no glBegin/glEnd
+    MKFW_GL_PROFILE_COMPAT,     // opt in for immediate mode and other deprecated GL
+};
+```
+
 Graphics-API selection:
 
 ```c
 enum mkfw_graphics_api {
-    MKFW_GFX_GL = 0,    // default; GLX / WGL Compatibility Profile
+    MKFW_GFX_GL = 0,    // default; GLX / WGL context honouring gl_major/gl_minor/gl_profile
     MKFW_GFX_GLES,      // reserved; window creation fails today
     MKFW_GFX_VULKAN,    // reserved; window creation fails today
     MKFW_GFX_NONE,      // no rendering surface; caller manages it
@@ -293,13 +303,16 @@ Passing `0` is a no-op.
 uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor);
 ```
 
-Probe the driver for the highest OpenGL Compatibility Profile
-version it can provide.  Writes the result into `*major` and
-`*minor` and returns non-zero on success.
+Probe the driver for the highest OpenGL version it can provide.
+Writes the result into `*major` and `*minor` and returns non-zero
+on success.
 
-Useful for choosing an appropriate `gl_major` / `gl_minor` for
-`mkfw_window_options`.  Safe to call before `mkfw_init` on Win32
-and after on Linux (creates a throwaway window internally).
+`mkfw_window_create` calls this internally when `gl_major` is 0,
+so most callers do not need to invoke it directly.  It is
+exposed for callers that want to inspect the driver maximum
+before deciding which version (and which features) to request
+explicitly.  Safe to call before `mkfw_init` on Win32 and after
+on Linux (creates a throwaway window internally).
 
 ```c
 int32_t maj = 0, min = 0;
@@ -540,6 +553,45 @@ Non-zero if the window is currently iconified / zoomed.
 ---
 
 ## Rendering and OpenGL
+
+### OpenGL version configuration
+
+By default `mkfw_window_create` requests an OpenGL context at the
+highest version the driver reports, using the Core (non-
+backwards-compatible) profile.  Callers that need a specific
+version or the Compatibility profile set the corresponding
+fields in `mkfw_window_options`:
+
+```c
+// Defaults: highest available, Core profile
+struct mkfw_window_options wopts = { .width = 1280, .height = 720 };
+
+// Pin to a specific version
+struct mkfw_window_options pinned = { .gl_major = 4, .gl_minor = 6 };
+
+// Immediate mode / fixed-function pipeline
+struct mkfw_window_options legacy = { .gl_profile = MKFW_GL_PROFILE_COMPAT };
+
+// Pin to a legacy version, Compatibility profile
+struct mkfw_window_options retro = {
+    .gl_major = 3, .gl_minor = 3,
+    .gl_profile = MKFW_GL_PROFILE_COMPAT,
+};
+```
+
+If an explicit `gl_major` / `gl_minor` is not available on the
+driver, window creation fails.  The error fired through
+`mkfw_set_error_callback` (and recorded for
+`mkfw_get_last_error`) includes the driver's maximum, so the
+caller can retry with a lower version:
+
+```
+OpenGL 4.6 Core Profile not available (driver supports up to 4.3)
+```
+
+There is no silent fallback: if you ask for 4.6 and the driver
+caps at 4.3, you get an error and decide what to do, rather than
+silently receiving a 4.3 context.
 
 ### `mkfw_window_attach_context` / `_detach_context`
 

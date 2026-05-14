@@ -20,11 +20,12 @@ created on top of it with `mkfw_window_create()`.  A single
 context can own multiple windows that share one event pump.
 
 There is no automatic migration path; call sites have to be
-updated by hand.  See the [Quick start](#quick-start) snippet
-below for the shape of the new API, and [MKFW_API.md](documentation/MKFW_API.md)
-for the full reference.  If you need the previous API, check
-out the [`0.1.0`](../../releases/tag/0.1.0) tag.  Future
-breaking changes will ship with a proper migration note.
+updated by hand.  A symbol-level mapping with before/after
+snippets is in [MIGRATION_0.1.0.md](documentation/MIGRATION_0.1.0.md).
+For the full reference, see [MKFW_API.md](documentation/MKFW_API.md).
+If you need the previous API, check out the
+[`v0.1.0`](../../releases/tag/v0.1.0) tag.  Future breaking
+changes will ship with a proper migration note.
 
 ## Features
 
@@ -124,23 +125,35 @@ The subsystem headers are unity-build companion files (they `#include` the platf
 
 ## OpenGL version
 
-By default mkfw creates an OpenGL 3.1 Compatibility Profile context. You can request a higher version for features like compute shaders (4.3+) while keeping immediate mode available:
+By default mkfw creates an OpenGL context at the highest version
+the driver reports, using the Core (non-backwards-compatible)
+profile.  Code that needs the fixed-function pipeline, immediate
+mode, or any other deprecated GL must opt into the Compatibility
+profile explicitly:
 
 ```c
-// Query what the driver supports
-int32_t major, minor;
-mkfw_query_max_gl_version(&major, &minor);
-
-// Request a specific version via the window options struct
-struct mkfw_context *ctx = mkfw_init(0);
+// Defaults: highest available version, Core profile
 struct mkfw_window_options wopts = {
     .width = 1280, .height = 720,
-    .gl_major = 4, .gl_minor = 6,
 };
 struct mkfw_window *window = mkfw_window_create(ctx, &wopts);
+
+// Pin to a specific version; window creation fails (with an
+// error reporting the driver's maximum) if it is not available
+struct mkfw_window_options pinned = {
+    .gl_major = 4, .gl_minor = 6,
+};
+
+// Immediate mode / fixed function (opt in)
+struct mkfw_window_options legacy = {
+    .gl_profile = MKFW_GL_PROFILE_COMPAT,
+};
 ```
 
-See [MKFW_API.md](documentation/MKFW_API.md#opengl-version-configuration) for details.
+`mkfw_query_max_gl_version(&major, &minor)` is available if you
+want to inspect the driver maximum yourself.  See
+[MKFW_API.md](documentation/MKFW_API.md#opengl-version-configuration)
+for details.
 
 ## Examples
 
