@@ -60,6 +60,7 @@ int main(void) {
 		.height = 600,
 		.title = "MKFW Transparency",
 		.flags = MKFW_WIN_TRANSPARENT,
+		.gl_profile = MKFW_GL_PROFILE_COMPAT,
 	};
 	app.window = mkfw_window_create(ctx, &wopts);
 	if(!app.window) {

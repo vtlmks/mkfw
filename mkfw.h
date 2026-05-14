@@ -217,7 +217,8 @@ struct mkfw_options {
 /* Graphics-API selection for window creation.
  *
  * MKFW_GFX_GL (the default) creates a GLX/WGL context honouring
- * gl_major/gl_minor in the options struct.  MKFW_GFX_NONE skips all
+ * gl_major / gl_minor / gl_profile in the options struct.
+ * MKFW_GFX_NONE skips all
  * rendering setup; the window is created in a state suitable for the
  * caller to manage a Vulkan surface, a Direct2D surface, or any other
  * API mkfw does not know about.  Reach the underlying platform
@@ -232,16 +233,37 @@ enum mkfw_graphics_api {
 	MKFW_GFX_NONE,
 };
 
+/* OpenGL profile selection.  CORE is the modern, non-backwards-
+ * compatible profile: no fixed-function pipeline, no glBegin/glEnd,
+ * no GL_QUADS, no built-in matrix stack.  COMPAT keeps all the
+ * deprecated functionality available for code that uses immediate
+ * mode or other legacy paths. */
+enum mkfw_gl_profile {
+	MKFW_GL_PROFILE_CORE = 0,
+	MKFW_GL_PROFILE_COMPAT,
+};
+
 /* Window creation options.  Pass 0 to use defaults for every field.
  * The version field must be 0 for now; future revisions may add
- * fields and bump the version. */
+ * fields and bump the version.
+ *
+ * gl_major / gl_minor: pass 0 / 0 to request the highest OpenGL
+ * version the driver reports.  Pass an explicit version pair to
+ * request exactly that; window creation fails (with an error
+ * including the driver's maximum) if it is not available, so the
+ * caller can decide to retry with a lower version.
+ *
+ * gl_profile: defaults to MKFW_GL_PROFILE_CORE.  Code that relies
+ * on the fixed-function pipeline must opt in with
+ * MKFW_GL_PROFILE_COMPAT. */
 struct mkfw_window_options {
 	uint32_t version;        // 0 = current
 	int32_t  width;          // 0 = 1280
 	int32_t  height;         // 0 = 720
 	const char *title;       // 0 = "mkfw"
-	int32_t  gl_major;       // 0 = 3
-	int32_t  gl_minor;       // 0 = 1
+	int32_t  gl_major;       // 0 = highest supported by driver
+	int32_t  gl_minor;       // 0 = highest supported by driver
+	uint32_t gl_profile;     // MKFW_GL_PROFILE_*; 0 = CORE
 	uint32_t flags;          // MKFW_WIN_*
 	uint32_t graphics_api;   // MKFW_GFX_*; 0 = MKFW_GFX_GL
 };

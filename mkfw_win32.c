@@ -823,10 +823,20 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 
 	int32_t width    = opts->width    > 0 ? opts->width    : 1280;
 	int32_t height   = opts->height   > 0 ? opts->height   : 720;
-	int32_t gl_major = opts->gl_major > 0 ? opts->gl_major : 3;
-	int32_t gl_minor = opts->gl_minor > 0 ? opts->gl_minor : 1;
+	int32_t gl_major = opts->gl_major;
+	int32_t gl_minor = opts->gl_minor;
+	if(gl_major == 0 && graphics_api == MKFW_GFX_GL) {
+		if(!mkfw_query_max_gl_version(&gl_major, &gl_minor)) {
+			mkfw_error("mkfw_window_create: unable to query driver's maximum OpenGL version");
+			return 0;
+		}
+	}
 	const char *title = opts->title ? opts->title : "mkfw";
 	int32_t transparent = (opts->flags & MKFW_WIN_TRANSPARENT) ? 1 : 0;
+	uint32_t gl_profile_bit = (opts->gl_profile == MKFW_GL_PROFILE_COMPAT)
+		? WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB
+		: WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+	const char *gl_profile_name = (opts->gl_profile == MKFW_GL_PROFILE_COMPAT) ? "Compatibility" : "Core";
 
 	struct mkfw_window *state = (struct mkfw_window *)calloc(1, sizeof(struct mkfw_window));
 	if(!state) {
@@ -882,7 +892,7 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 			int ctx_attribs[] = {
 				WGL_CONTEXT_MAJOR_VERSION_ARB, gl_major,
 				WGL_CONTEXT_MINOR_VERSION_ARB, gl_minor,
-				WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+				WGL_CONTEXT_PROFILE_MASK_ARB, (int)gl_profile_bit,
 				0
 			};
 
@@ -893,20 +903,16 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 				wglMakeCurrent(PLATFORM(state)->hdc, modern_ctx);
 				PLATFORM(state)->hglrc = modern_ctx;
 			} else {
-				typedef const unsigned char *(__stdcall *PFNGLGETSTRINGPROC)(unsigned int);
-				HMODULE gl_module = GetModuleHandleA("opengl32.dll");
-				PFNGLGETSTRINGPROC pglGetString = gl_module ? (PFNGLGETSTRINGPROC)(void *)GetProcAddress(gl_module, "glGetString") : 0;
-				int32_t max_major = 0, max_minor = 0;
-				if(pglGetString) {
-					const char *ver = (const char *)pglGetString(0x1F02);
-					if(ver) {
-						mkfw_parse_version(ver, &max_major, &max_minor);
-					}
-				}
 				wglMakeCurrent(0, 0);
 				wglDeleteContext(temp_ctx);
-				mkfw_error("OpenGL %d.%d Compatibility Profile not available (driver supports up to %d.%d)",
-					gl_major, gl_minor, max_major, max_minor);
+				int32_t max_major = 0, max_minor = 0;
+				mkfw_query_max_gl_version(&max_major, &max_minor);
+				if(max_major > 0) {
+					mkfw_error("OpenGL %d.%d %s Profile not available (driver supports up to %d.%d)",
+						gl_major, gl_minor, gl_profile_name, max_major, max_minor);
+				} else {
+					mkfw_error("OpenGL %d.%d %s Profile not available", gl_major, gl_minor, gl_profile_name);
+				}
 				ReleaseDC(PLATFORM(state)->hwnd, PLATFORM(state)->hdc);
 				DestroyWindow(PLATFORM(state)->hwnd);
 				free(state->platform);
