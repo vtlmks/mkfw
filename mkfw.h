@@ -122,35 +122,16 @@ struct mkfw_window {
 typedef void (*mkfw_error_callback_t)(const char *message);
 MKFW_VAR mkfw_error_callback_t mkfw_error_callback;
 
-#ifdef _MSC_VER
-	#define MKFW_THREAD_LOCAL __declspec(thread)
-#else
-	#define MKFW_THREAD_LOCAL __thread
-#endif
-
-MKFW_VAR MKFW_THREAD_LOCAL char mkfw_last_error_buf[512];
-MKFW_VAR MKFW_THREAD_LOCAL uint8_t mkfw_last_error_set;
-
+// The per-thread last-error storage lives in the platform .c file
+// (Win32 TLS API on Windows, __thread on Linux).  Going through Win32
+// TLS on MinGW avoids pulling in libwinpthread-1.dll, which GCC's
+// __thread brings in via emutls under the posix threading model, and
+// also avoids __declspec(thread), which modern MinGW GCC ignores
+// outright with a -Wattributes warning.
 __attribute__((format(printf, 1, 2)))
-static inline void mkfw_error(const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	vsnprintf(mkfw_last_error_buf, sizeof(mkfw_last_error_buf), fmt, args);
-	va_end(args);
-	mkfw_last_error_set = 1;
-	if(mkfw_error_callback) {
-		mkfw_error_callback(mkfw_last_error_buf);
-	}
-}
-
-static inline const char *mkfw_get_last_error(void) {
-	return mkfw_last_error_set ? mkfw_last_error_buf : 0;
-}
-
-static inline void mkfw_clear_last_error(void) {
-	mkfw_last_error_buf[0] = 0;
-	mkfw_last_error_set = 0;
-}
+MKFW_API void mkfw_error(const char *fmt, ...);
+MKFW_API const char *mkfw_get_last_error(void);
+MKFW_API void mkfw_clear_last_error(void);
 
 // sscanf("%d.%d") pulls in __isoc23_sscanf on GCC 13+, requiring glibc 2.38
 static inline uint32_t mkfw_parse_version(const char *str, int32_t *major, int32_t *minor) {

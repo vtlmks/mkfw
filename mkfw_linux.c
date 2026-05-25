@@ -32,12 +32,41 @@
 
 /* Storage for the cross-TU variables declared MKFW_VAR in mkfw.h.
  * Provided only in library / shared builds; in unity mode the
- * static declarations in the header are also the definitions. */
+ * static declaration in the header is also the definition. */
 #if defined(MKFW_BUILD_SHARED) || defined(MKFW_BUILD_LIBRARY)
 mkfw_error_callback_t           mkfw_error_callback;
-MKFW_THREAD_LOCAL char          mkfw_last_error_buf[512];
-MKFW_THREAD_LOCAL uint8_t       mkfw_last_error_set;
 #endif
+
+// Per-thread last-error storage.  __thread on Linux/glibc lowers to
+// native ELF TLS with no extra runtime dependency, so we use it
+// directly.  These live at file scope so the slot is allocated by the
+// dynamic loader before main() and stays valid for the lifetime of
+// each thread that ever touches the error API.
+static __thread char    mkfw_linux_last_error_buf[512];
+static __thread uint8_t mkfw_linux_last_error_set;
+
+// [=]===^=[ mkfw_error ]=========================================================================[=]
+MKFW_API void mkfw_error(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(mkfw_linux_last_error_buf, sizeof(mkfw_linux_last_error_buf), fmt, args);
+	va_end(args);
+	mkfw_linux_last_error_set = 1;
+	if(mkfw_error_callback) {
+		mkfw_error_callback(mkfw_linux_last_error_buf);
+	}
+}
+
+// [=]===^=[ mkfw_get_last_error ]================================================================[=]
+MKFW_API const char *mkfw_get_last_error(void) {
+	return mkfw_linux_last_error_set ? mkfw_linux_last_error_buf : 0;
+}
+
+// [=]===^=[ mkfw_clear_last_error ]==============================================================[=]
+MKFW_API void mkfw_clear_last_error(void) {
+	mkfw_linux_last_error_buf[0] = 0;
+	mkfw_linux_last_error_set = 0;
+}
 
 /* Platform casting macros */
 #define PLATFORM(state) ((struct x11_mkfw_window *)(state)->platform)

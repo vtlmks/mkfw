@@ -17,12 +17,84 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 /* Storage for the cross-TU variables declared MKFW_VAR in mkfw.h.
  * Provided only in library / shared builds; in unity mode the static
- * declarations in the header are also the definitions. */
+ * declaration in the header is also the definition. */
 #if defined(MKFW_BUILD_SHARED) || defined(MKFW_BUILD_LIBRARY)
 mkfw_error_callback_t           mkfw_error_callback;
-MKFW_THREAD_LOCAL char          mkfw_last_error_buf[512];
-MKFW_THREAD_LOCAL uint8_t       mkfw_last_error_set;
 #endif
+
+// Per-thread last-error storage backed by the Win32 TLS API.  Using
+// the native API instead of __thread / __declspec(thread) keeps the
+// resulting executables free of any libwinpthread-1.dll dependency,
+// which MinGW's posix-threaded GCC would otherwise inject through the
+// emutls runtime that backs __thread.  The slot index is allocated
+// lazily on first error report; the per-thread struct is calloc'd on
+// the same path and intentionally leaks at thread exit (bounded, tiny,
+// and the OS reclaims it at process tear-down anyway).
+struct mkfw_win32_error_state {
+	char    buf[512];
+	uint8_t set;
+};
+
+static volatile uint32_t mkfw_win32_tls_index = 0xffffffffu;
+
+static struct mkfw_win32_error_state *mkfw_win32_error_state(uint32_t create) {
+	uint32_t slot = mkfw_win32_tls_index;
+	if(slot == 0xffffffffu) {
+		if(!create) {
+			return 0;
+		}
+		uint32_t fresh = (uint32_t)TlsAlloc();
+		if(fresh == 0xffffffffu) {
+			return 0;
+		}
+		uint32_t prev = (uint32_t)InterlockedCompareExchange((volatile LONG *)&mkfw_win32_tls_index, (LONG)fresh, (LONG)0xffffffffu);
+		if(prev != 0xffffffffu) {
+			TlsFree(fresh);
+			slot = prev;
+		} else {
+			slot = fresh;
+		}
+	}
+	struct mkfw_win32_error_state *st = (struct mkfw_win32_error_state *)TlsGetValue(slot);
+	if(!st && create) {
+		st = (struct mkfw_win32_error_state *)calloc(1, sizeof(struct mkfw_win32_error_state));
+		if(st) {
+			TlsSetValue(slot, st);
+		}
+	}
+	return st;
+}
+
+// [=]===^=[ mkfw_error ]=========================================================================[=]
+MKFW_API void mkfw_error(const char *fmt, ...) {
+	struct mkfw_win32_error_state *st = mkfw_win32_error_state(1);
+	if(!st) {
+		return;
+	}
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(st->buf, sizeof(st->buf), fmt, args);
+	va_end(args);
+	st->set = 1;
+	if(mkfw_error_callback) {
+		mkfw_error_callback(st->buf);
+	}
+}
+
+// [=]===^=[ mkfw_get_last_error ]================================================================[=]
+MKFW_API const char *mkfw_get_last_error(void) {
+	struct mkfw_win32_error_state *st = mkfw_win32_error_state(0);
+	return (st && st->set) ? st->buf : 0;
+}
+
+// [=]===^=[ mkfw_clear_last_error ]==============================================================[=]
+MKFW_API void mkfw_clear_last_error(void) {
+	struct mkfw_win32_error_state *st = mkfw_win32_error_state(0);
+	if(st) {
+		st->buf[0] = 0;
+		st->set = 0;
+	}
+}
 
 // WGL constants for context creation
 #define WGL_CONTEXT_MAJOR_VERSION_ARB           0x2091
