@@ -9,6 +9,8 @@
 #include <alsa/asoundlib.h>
 #include <dlfcn.h>
 #include <sched.h>
+#include <xmmintrin.h>
+#include <pmmintrin.h>
 
 typedef int (*PFN_snd_pcm_open)(snd_pcm_t **, const char *, snd_pcm_stream_t, int);
 typedef int (*PFN_snd_pcm_close)(snd_pcm_t *);
@@ -262,6 +264,19 @@ static void mkfw_audio_dispatch(float *buffer, uint32_t frames) {
 	}
 }
 
+// [=]===^=[ mkfw_audio_apply_denormal_flags ]====================================================[=]
+// Force FTZ + DAZ on the audio thread's MXCSR.  Denormal arithmetic
+// on x86 can be 100x slower than normal FP and will silently push a
+// callback past its deadline, producing buffer underruns that look
+// like "random" dropouts.  Synth code that accidentally lets a
+// filter state, reverb tail, or envelope decay into the denormal
+// range is the usual culprit.  Setting both bits at thread start is
+// enough; ALSA's playback path does not touch MXCSR.
+static void mkfw_audio_apply_denormal_flags(void) {
+	_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+	_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+}
+
 // [=]===^=[ mkfw_audio_apply_rt_priority ]=======================================================[=]
 static void mkfw_audio_apply_rt_priority(void) {
 	if(!mkfw_audio_opts.realtime_priority) {
@@ -277,6 +292,7 @@ static void mkfw_audio_apply_rt_priority(void) {
 // [=]===^=[ mkfw_audio_thread_func ]=============================================================[=]
 static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
 	(void)arg;
+	mkfw_audio_apply_denormal_flags();
 	mkfw_audio_apply_rt_priority();
 
 	while(__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {

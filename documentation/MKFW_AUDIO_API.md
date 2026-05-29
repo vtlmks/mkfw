@@ -238,6 +238,18 @@ int main(void) {
 - `mkfw_audio_init` / `mkfw_audio_shutdown` should be called from
   the same thread (typically main).
 
+## Denormal handling
+
+The audio thread runs with FTZ (Flush-To-Zero) and DAZ
+(Denormals-Are-Zero) set on MXCSR before the first callback fires.
+Your callback inherits those flags for free. This protects
+filters, reverb tails, and envelope decays from sliding into the
+denormal range and silently blowing the period deadline (denormal
+FP ops on x86 can be ~100x slower than normal). You do not need
+to do anything; this section exists only so you know the contract
+if you ever read MXCSR from inside the callback or call into a
+library that depends on the rounding mode.
+
 ## Memory ownership
 
 mkfw_audio never returns library-owned memory and never asks the

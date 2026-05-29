@@ -12,6 +12,8 @@
 #include <mmdeviceapi.h>
 #include <avrt.h>
 #include <timeapi.h>
+#include <xmmintrin.h>
+#include <pmmintrin.h>
 
 // WASAPI GUIDs -- defined explicitly so we don't depend on uuid.lib (MSVC/clang-cl)
 // or initguid.h ordering. Works on MinGW, MSVC, and clang-cl.
@@ -184,6 +186,19 @@ static void mkfw_audio_dispatch(float *buffer, uint32_t frames) {
 	}
 }
 
+// [=]===^=[ mkfw_audio_apply_denormal_flags ]====================================================[=]
+// Force FTZ + DAZ on the audio thread's MXCSR.  Denormal arithmetic
+// on x86 can be 100x slower than normal FP and will silently push a
+// callback past its deadline, producing buffer underruns that look
+// like "random" dropouts.  Synth code that accidentally lets a
+// filter state, reverb tail, or envelope decay into the denormal
+// range is the usual culprit.  Setting both bits at thread start is
+// enough; WASAPI's render path does not touch MXCSR.
+static void mkfw_audio_apply_denormal_flags(void) {
+	_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+	_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+}
+
 // [=]===^=[ mkfw_audio_thread_proc ]=============================================================[=]
 static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	(void)arg;
@@ -195,6 +210,8 @@ static DWORD WINAPI mkfw_audio_thread_proc(void *arg) {
 	uint8_t *data;
 	HANDLE avrt_handle = 0;
 	DWORD task_index = 0;
+
+	mkfw_audio_apply_denormal_flags();
 
 	if(mkfw_audio_opts.realtime_priority) {
 		avrt_handle = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index);
