@@ -103,11 +103,33 @@ MKFW_API void mkfw_clear_last_error(void) {
 #define WGL_CONTEXT_PROFILE_MASK_ARB            0x9126
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB        0x00000001
 #define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB 0x00000002
+#define WGL_CONTEXT_DEBUG_BIT_ARB               0x00000001
 #define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB  0x00000002
 
-// WGL function pointer for creating modern contexts
+// WGL_ARB_pixel_format constants for choosing the default framebuffer format.
+// Required for MSAA / sRGB, which the legacy PIXELFORMATDESCRIPTOR cannot express.
+#define WGL_DRAW_TO_WINDOW_ARB                  0x2001
+#define WGL_ACCELERATION_ARB                    0x2003
+#define WGL_SUPPORT_OPENGL_ARB                  0x2010
+#define WGL_DOUBLE_BUFFER_ARB                   0x2011
+#define WGL_PIXEL_TYPE_ARB                      0x2013
+#define WGL_COLOR_BITS_ARB                      0x2014
+#define WGL_ALPHA_BITS_ARB                      0x201b
+#define WGL_DEPTH_BITS_ARB                      0x2022
+#define WGL_STENCIL_BITS_ARB                    0x2023
+#define WGL_FULL_ACCELERATION_ARB               0x2027
+#define WGL_TYPE_RGBA_ARB                       0x202b
+#define WGL_SAMPLE_BUFFERS_ARB                  0x2041
+#define WGL_SAMPLES_ARB                         0x2042
+#define WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB        0x20a9
+
+// WGL function pointers for creating modern contexts and choosing pixel
+// formats.  Both come from extensions and must be resolved through a
+// throwaway context (see mkfw_win32_load_wgl_extensions).
 typedef HGLRC (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int *attribList);
+typedef BOOL (WINAPI *PFNWGLCHOOSEPIXELFORMATARBPROC)(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
 static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
+static PFNWGLCHOOSEPIXELFORMATARBPROC wglChoosePixelFormatARB;
 
 /* Platform casting macros */
 #define PLATFORM(state) ((struct win32_mkfw_window *)(state)->platform)
@@ -119,6 +141,7 @@ static PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 // Process-global platform state
 static LARGE_INTEGER mkfw_win32_perf_freq;
 static UINT (WINAPI *mkfw_win32_GetDpiForWindow)(HWND);
+static HRESULT (WINAPI *mkfw_win32_GetDpiForMonitor)(HMONITOR, int, UINT *, UINT *); // shcore.dll, Win8.1+
 static uint8_t mkfw_win32_class_registered;
 
 struct win32_mkfw_context {
@@ -156,6 +179,10 @@ struct win32_mkfw_window {
 	uint8_t is_fullscreen;
 	uint8_t aspect_ratio_enabled;
 	WINDOWPLACEMENT window_placement;
+
+	// Exclusive-fullscreen mode restore
+	uint8_t mode_changed;
+	char fs_device[128];
 
 	HCURSOR cursors[MKFW_CURSOR_LAST];
 	uint32_t current_cursor;
@@ -372,6 +399,10 @@ static uint32_t map_vk_to_scancode(struct mkfw_window *state, WPARAM wParam, LPA
 	return keycode;
 }
 
+// Forward declaration so the window proc (hotplug) and mkfw_init (cache prime)
+// can reach the monitor query, which is defined later in the file.
+static int32_t mkfw_query_monitors_into(struct mkfw_monitor *out, int32_t max);
+
 // [=]===^=[ Win32WindowProc ]====================================================================[=]
 static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	struct mkfw_window *state = (struct mkfw_window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
@@ -391,11 +422,31 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 	switch(uMsg) {
 		case WM_CLOSE:
 			PLATFORM(state)->should_close = 1;
+			if(state->close_callback) {
+				state->close_callback(state);
+			}
 			return 0;
 
 		case WM_DESTROY:
 			PostQuitMessage(0);
 			return 0;
+
+		case WM_DISPLAYCHANGE: {
+			// Monitor hotplug / mode change.  Re-query and fire the callback
+			// only when the set actually changed; this also dedupes the
+			// message arriving at every window of the context.
+			struct mkfw_context *ctx = state->context;
+			struct mkfw_monitor fresh[MKFW_MAX_MONITORS];
+			int32_t fc = mkfw_query_monitors_into(fresh, MKFW_MAX_MONITORS);
+			if((uint32_t)fc != ctx->monitor_count || memcmp(fresh, ctx->monitors, (size_t)fc * sizeof(struct mkfw_monitor)) != 0) {
+				ctx->monitor_count = (uint32_t)fc;
+				memcpy(ctx->monitors, fresh, (size_t)fc * sizeof(struct mkfw_monitor));
+				if(ctx->monitor_callback) {
+					ctx->monitor_callback(ctx);
+				}
+			}
+			return 0;
+		}
 
 		case WM_SIZING: {
 			if(!PLATFORM(state)->aspect_ratio_enabled || PLATFORM(state)->is_fullscreen) {
@@ -463,6 +514,30 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 					state->window_state_callback(state, maximized, minimized);
 				}
 			}
+		} break;
+
+		case WM_MOVE: {
+			if(state->window_pos_callback) {
+				state->window_pos_callback(state, (int32_t)(short)LOWORD(lParam), (int32_t)(short)HIWORD(lParam));
+			}
+		} break;
+
+		case WM_PAINT: {
+			if(state->window_refresh_callback) {
+				state->window_refresh_callback(state);
+			}
+			// Validate the update region; mkfw renders on its own schedule, so
+			// leaving it invalid would spin WM_PAINT forever.
+			ValidateRect(hwnd, 0);
+		} break;
+
+		case WM_DPICHANGED: {
+			if(state->content_scale_callback) {
+				state->content_scale_callback(state, (float)HIWORD(wParam) / 96.0f);
+			}
+			// Adopt the WM-suggested window rect for the new DPI.
+			RECT *r = (RECT *)lParam;
+			SetWindowPos(hwnd, 0, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
 		} break;
 
 		case WM_GETMINMAXINFO: {
@@ -575,12 +650,21 @@ static LRESULT CALLBACK Win32WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
 				TrackMouseEvent(&tme);
 				PLATFORM(state)->mouse_tracked = 1;
 				state->mouse_in_window = 1;
+				if(state->cursor_enter_callback) {
+					state->cursor_enter_callback(state, 1);
+				}
+			}
+			if(state->cursor_pos_callback) {
+				state->cursor_pos_callback(state, state->mouse_x, state->mouse_y);
 			}
 		} break;
 
 		case WM_MOUSELEAVE: {
 			PLATFORM(state)->mouse_tracked = 0;
 			state->mouse_in_window = 0;
+			if(state->cursor_enter_callback) {
+				state->cursor_enter_callback(state, 0);
+			}
 		} break;
 
 		case WM_LBUTTONDOWN: {
@@ -769,6 +853,48 @@ MKFW_API void mkfw_window_hide(struct mkfw_window *state) {
 	ShowWindow(PLATFORM(state)->hwnd, SW_HIDE);
 }
 
+// [=]===^=[ mkfw_win32_load_wgl_extensions ]=====================================================[=]
+// Resolve the WGL extension entry points (modern context creation, ARB pixel
+// format selection) through a throwaway window + legacy context.  Idempotent.
+// A window's pixel format can be set only once, so the real window cannot be
+// used to bootstrap these; a dedicated dummy window is mandatory.
+static void mkfw_win32_load_wgl_extensions(void) {
+	if(wglChoosePixelFormatARB && wglCreateContextAttribsARB) {
+		return;
+	}
+
+	WNDCLASS wc = {0};
+	wc.lpfnWndProc = DefWindowProc;
+	wc.hInstance = GetModuleHandle(0);
+	wc.lpszClassName = "mkfw_wgl_bootstrap";
+	RegisterClass(&wc);
+
+	HWND hwnd = CreateWindowEx(0, wc.lpszClassName, "", 0, 0, 0, 1, 1, 0, 0, wc.hInstance, 0);
+	HDC hdc = GetDC(hwnd);
+
+	PIXELFORMATDESCRIPTOR pfd = {0};
+	pfd.nSize      = sizeof(pfd);
+	pfd.nVersion   = 1;
+	pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+	pfd.iPixelType = PFD_TYPE_RGBA;
+	pfd.cColorBits = 24;
+
+	int pf = ChoosePixelFormat(hdc, &pfd);
+	SetPixelFormat(hdc, pf, &pfd);
+
+	HGLRC ctx = wglCreateContext(hdc);
+	wglMakeCurrent(hdc, ctx);
+
+	wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)(void *)wglGetProcAddress("wglCreateContextAttribsARB");
+	wglChoosePixelFormatARB    = (PFNWGLCHOOSEPIXELFORMATARBPROC)(void *)wglGetProcAddress("wglChoosePixelFormatARB");
+
+	wglMakeCurrent(0, 0);
+	wglDeleteContext(ctx);
+	ReleaseDC(hwnd, hdc);
+	DestroyWindow(hwnd);
+	UnregisterClass("mkfw_wgl_bootstrap", wc.hInstance);
+}
+
 // [=]===^=[ mkfw_query_max_gl_version ]==========================================================[=]
 MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	WNDCLASS wc = {0};
@@ -824,9 +950,6 @@ MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	return result;
 }
 
-// Forward declaration so mkfw_init can prime the monitor cache
-static int32_t mkfw_query_monitors_into(struct mkfw_monitor *out, int32_t max);
-
 // [=]===^=[ mkfw_init ]==========================================================================[=]
 MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 	(void)opts;
@@ -848,6 +971,13 @@ MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 	HMODULE user32 = GetModuleHandle("user32.dll");
 	if(user32 && !mkfw_win32_GetDpiForWindow) {
 		mkfw_win32_GetDpiForWindow = (UINT (WINAPI *)(HWND))(void *)GetProcAddress(user32, "GetDpiForWindow");
+	}
+
+	if(!mkfw_win32_GetDpiForMonitor) {
+		HMODULE shcore = LoadLibraryA("shcore.dll");
+		if(shcore) {
+			mkfw_win32_GetDpiForMonitor = (HRESULT (WINAPI *)(HMONITOR, int, UINT *, UINT *))(void *)GetProcAddress(shcore, "GetDpiForMonitor");
+		}
 	}
 
 	if(mkfw_win32_perf_freq.QuadPart == 0) {
@@ -933,50 +1063,111 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	RECT rect = { 0, 0, width, height };
 	AdjustWindowRect(&rect, style, FALSE);
 
-	PLATFORM(state)->hwnd = CreateWindowEx(0, "OpenGLWindowClass", title, style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, 0, 0, PLATFORM(state)->hinstance, state);
+	DWORD ex_style = 0;
+	if(opts->flags & MKFW_WIN_FLOATING) {
+		ex_style |= WS_EX_TOPMOST;
+	}
+	if(opts->flags & MKFW_WIN_NO_FOCUS) {
+		ex_style |= WS_EX_NOACTIVATE;
+	}
+
+	PLATFORM(state)->hwnd = CreateWindowEx(ex_style, "OpenGLWindowClass", title, style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, 0, 0, PLATFORM(state)->hinstance, state);
 
 	SetWindowPos(PLATFORM(state)->hwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
 
 	PLATFORM(state)->hdc = GetDC(PLATFORM(state)->hwnd);
 
 	if(graphics_api == MKFW_GFX_GL) {
-		PIXELFORMATDESCRIPTOR pfd = {0};
-		pfd.nSize      = sizeof(pfd);
-		pfd.nVersion   = 1;
-		pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-		pfd.iPixelType = PFD_TYPE_RGBA;
-		pfd.cColorBits = 24;
-		pfd.cAlphaBits = 8;
-		pfd.cDepthBits = 24;
-		pfd.cStencilBits = 8;
-		pfd.iLayerType = PFD_MAIN_PLANE;
+		mkfw_win32_load_wgl_extensions();
 
-		int pf = ChoosePixelFormat(PLATFORM(state)->hdc, &pfd);
-		SetPixelFormat(PLATFORM(state)->hdc, pf, &pfd);
+		int32_t want_samples = opts->samples > 1 ? opts->samples : 0;
+		int pixel_format = 0;
 
-		HGLRC temp_ctx = wglCreateContext(PLATFORM(state)->hdc);
-		wglMakeCurrent(PLATFORM(state)->hdc, temp_ctx);
+		if(wglChoosePixelFormatARB) {
+			int pf_attribs[32];
+			int n = 0;
+			pf_attribs[n++] = WGL_DRAW_TO_WINDOW_ARB;  pf_attribs[n++] = 1;
+			pf_attribs[n++] = WGL_SUPPORT_OPENGL_ARB;  pf_attribs[n++] = 1;
+			pf_attribs[n++] = WGL_DOUBLE_BUFFER_ARB;   pf_attribs[n++] = 1;
+			pf_attribs[n++] = WGL_ACCELERATION_ARB;    pf_attribs[n++] = WGL_FULL_ACCELERATION_ARB;
+			pf_attribs[n++] = WGL_PIXEL_TYPE_ARB;      pf_attribs[n++] = WGL_TYPE_RGBA_ARB;
+			pf_attribs[n++] = WGL_COLOR_BITS_ARB;      pf_attribs[n++] = 24;
+			pf_attribs[n++] = WGL_ALPHA_BITS_ARB;      pf_attribs[n++] = 8;
+			pf_attribs[n++] = WGL_DEPTH_BITS_ARB;      pf_attribs[n++] = opts->depth_bits   > 0 ? opts->depth_bits   : 24;
+			pf_attribs[n++] = WGL_STENCIL_BITS_ARB;    pf_attribs[n++] = opts->stencil_bits > 0 ? opts->stencil_bits : 8;
+			if(want_samples > 0) {
+				pf_attribs[n++] = WGL_SAMPLE_BUFFERS_ARB; pf_attribs[n++] = 1;
+				pf_attribs[n++] = WGL_SAMPLES_ARB;        pf_attribs[n++] = want_samples;
+			}
+			if(opts->srgb) {
+				pf_attribs[n++] = WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB; pf_attribs[n++] = 1;
+			}
+			pf_attribs[n++] = 0;
 
-		wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)(void *)wglGetProcAddress("wglCreateContextAttribsARB");
-		if(!wglCreateContextAttribsARB) {
-			PLATFORM(state)->hglrc = temp_ctx;
+			UINT num_formats = 0;
+			if(!wglChoosePixelFormatARB(PLATFORM(state)->hdc, pf_attribs, 0, 1, &pixel_format, &num_formats) || num_formats == 0) {
+				mkfw_error("no pixel format matches requested format (depth>=%d, stencil>=%d, samples>=%d, srgb=%u)", opts->depth_bits, opts->stencil_bits, want_samples, opts->srgb ? 1u : 0u);
+				ReleaseDC(PLATFORM(state)->hwnd, PLATFORM(state)->hdc);
+				DestroyWindow(PLATFORM(state)->hwnd);
+				free(state->platform);
+				free(state);
+				return 0;
+			}
 		} else {
+			// No WGL_ARB_pixel_format: MSAA and sRGB cannot be expressed.
+			if(want_samples > 0 || opts->srgb) {
+				mkfw_error("WGL_ARB_pixel_format unavailable; cannot honor samples=%d / srgb=%u", want_samples, opts->srgb ? 1u : 0u);
+				ReleaseDC(PLATFORM(state)->hwnd, PLATFORM(state)->hdc);
+				DestroyWindow(PLATFORM(state)->hwnd);
+				free(state->platform);
+				free(state);
+				return 0;
+			}
+			PIXELFORMATDESCRIPTOR pfd = {0};
+			pfd.nSize        = sizeof(pfd);
+			pfd.nVersion     = 1;
+			pfd.dwFlags      = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+			pfd.iPixelType   = PFD_TYPE_RGBA;
+			pfd.cColorBits   = 24;
+			pfd.cAlphaBits   = 8;
+			pfd.cDepthBits   = (BYTE)(opts->depth_bits   > 0 ? opts->depth_bits   : 24);
+			pfd.cStencilBits = (BYTE)(opts->stencil_bits > 0 ? opts->stencil_bits : 8);
+			pfd.iLayerType   = PFD_MAIN_PLANE;
+			pixel_format = ChoosePixelFormat(PLATFORM(state)->hdc, &pfd);
+		}
+
+		PIXELFORMATDESCRIPTOR set_pfd = {0};
+		DescribePixelFormat(PLATFORM(state)->hdc, pixel_format, sizeof(set_pfd), &set_pfd);
+		SetPixelFormat(PLATFORM(state)->hdc, pixel_format, &set_pfd);
+
+		if(!wglCreateContextAttribsARB) {
+			// Ancient driver without WGL_ARB_create_context: legacy context only,
+			// version and flags cannot be requested.
+			PLATFORM(state)->hglrc = wglCreateContext(PLATFORM(state)->hdc);
+			wglMakeCurrent(PLATFORM(state)->hdc, PLATFORM(state)->hglrc);
+		} else {
+			int ctx_flags = 0;
+			if(opts->context_flags & MKFW_CONTEXT_DEBUG) {
+				ctx_flags |= WGL_CONTEXT_DEBUG_BIT_ARB;
+			}
+			if(opts->context_flags & MKFW_CONTEXT_FORWARD_COMPAT) {
+				ctx_flags |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+			}
+
 			int ctx_attribs[] = {
 				WGL_CONTEXT_MAJOR_VERSION_ARB, gl_major,
 				WGL_CONTEXT_MINOR_VERSION_ARB, gl_minor,
-				WGL_CONTEXT_PROFILE_MASK_ARB, (int)gl_profile_bit,
+				WGL_CONTEXT_PROFILE_MASK_ARB,  (int)gl_profile_bit,
+				WGL_CONTEXT_FLAGS_ARB,         ctx_flags,
 				0
 			};
 
-			HGLRC modern_ctx = wglCreateContextAttribsARB(PLATFORM(state)->hdc, 0, ctx_attribs);
+			HGLRC share_ctx = opts->share_window ? PLATFORM(opts->share_window)->hglrc : 0;
+			HGLRC modern_ctx = wglCreateContextAttribsARB(PLATFORM(state)->hdc, share_ctx, ctx_attribs);
 			if(modern_ctx) {
-				wglMakeCurrent(0, 0);
-				wglDeleteContext(temp_ctx);
 				wglMakeCurrent(PLATFORM(state)->hdc, modern_ctx);
 				PLATFORM(state)->hglrc = modern_ctx;
 			} else {
-				wglMakeCurrent(0, 0);
-				wglDeleteContext(temp_ctx);
 				int32_t max_major = 0, max_minor = 0;
 				mkfw_query_max_gl_version(&max_major, &max_minor);
 				if(max_major > 0) {
@@ -1027,30 +1218,83 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	ctx->windows[ctx->window_count++] = state;
 
 	if(!(opts->flags & MKFW_WIN_HIDDEN)) {
-		ShowWindow(PLATFORM(state)->hwnd, SW_SHOW);
+		int show_cmd = SW_SHOW;
+		if(opts->flags & MKFW_WIN_MAXIMIZED) {
+			show_cmd = SW_SHOWMAXIMIZED;
+		} else if(opts->flags & MKFW_WIN_NO_FOCUS) {
+			show_cmd = SW_SHOWNOACTIVATE;
+		}
+		ShowWindow(PLATFORM(state)->hwnd, show_cmd);
 	}
 
 	return state;
 }
 
 // [=]===^=[ mkfw_window_set_fullscreen ]====================================================================[=]
-MKFW_API void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable) {
+MKFW_API void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable, int32_t monitor_index, struct mkfw_video_mode *mode) {
+	struct mkfw_context *ctx = state->context;
 	PLATFORM(state)->window_placement.length = sizeof(PLATFORM(state)->window_placement);
 	DWORD dwStyle = GetWindowLong(PLATFORM(state)->hwnd, GWL_STYLE);
 
 	if(!PLATFORM(state)->is_fullscreen && enable) {
-		MONITORINFO mi;
-		memset(&mi, 0, sizeof(mi));
-		mi.cbSize = sizeof(mi);
-		if(GetWindowPlacement(PLATFORM(state)->hwnd, &PLATFORM(state)->window_placement) && GetMonitorInfo(MonitorFromWindow(PLATFORM(state)->hwnd, MONITOR_DEFAULTTOPRIMARY), &mi)) {
-			PLATFORM(state)->saved_style = dwStyle;
-			SetWindowLong(PLATFORM(state)->hwnd, GWL_STYLE, (dwStyle & ~WS_OVERLAPPEDWINDOW) | WS_POPUP);
-			SetWindowPos(PLATFORM(state)->hwnd, HWND_TOPMOST, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+		// Resolve the target monitor rect and device name.  monitor_index < 0
+		// (or out of range) means the monitor that currently contains the window.
+		RECT mon_rect;
+		char device[128];
+		device[0] = 0;
+		if(monitor_index >= 0 && (uint32_t)monitor_index < ctx->monitor_count) {
+			struct mkfw_monitor *m = &ctx->monitors[monitor_index];
+			mon_rect.left = m->x;
+			mon_rect.top = m->y;
+			mon_rect.right = m->x + m->width;
+			mon_rect.bottom = m->y + m->height;
+			snprintf(device, sizeof(device), "%s", m->name);
+		} else {
+			MONITORINFOEXA mi = {0};
+			mi.cbSize = sizeof(mi);
+			GetMonitorInfoA(MonitorFromWindow(PLATFORM(state)->hwnd, MONITOR_DEFAULTTONEAREST), (MONITORINFO *)&mi);
+			mon_rect = mi.rcMonitor;
+			snprintf(device, sizeof(device), "%s", mi.szDevice);
 		}
+
+		GetWindowPlacement(PLATFORM(state)->hwnd, &PLATFORM(state)->window_placement);
+		PLATFORM(state)->saved_style = dwStyle;
+
+		int32_t target_w = mon_rect.right - mon_rect.left;
+		int32_t target_h = mon_rect.bottom - mon_rect.top;
+		PLATFORM(state)->mode_changed = 0;
+
+		// Optional exclusive mode change on the target device.
+		if(mode && device[0]) {
+			DEVMODEA dm = {0};
+			dm.dmSize = sizeof(dm);
+			dm.dmPelsWidth = (DWORD)mode->width;
+			dm.dmPelsHeight = (DWORD)mode->height;
+			dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+			if(mode->refresh_rate > 0) {
+				dm.dmDisplayFrequency = (DWORD)mode->refresh_rate;
+				dm.dmFields |= DM_DISPLAYFREQUENCY;
+			}
+			if(ChangeDisplaySettingsExA(device, &dm, 0, CDS_FULLSCREEN, 0) == DISP_CHANGE_SUCCESSFUL) {
+				PLATFORM(state)->mode_changed = 1;
+				snprintf(PLATFORM(state)->fs_device, sizeof(PLATFORM(state)->fs_device), "%s", device);
+				target_w = mode->width;
+				target_h = mode->height;
+			} else {
+				mkfw_error("set_fullscreen: ChangeDisplaySettingsEx to %dx%d@%d failed", mode->width, mode->height, mode->refresh_rate);
+			}
+		}
+
+		SetWindowLong(PLATFORM(state)->hwnd, GWL_STYLE, (dwStyle & ~WS_OVERLAPPEDWINDOW) | WS_POPUP);
+		SetWindowPos(PLATFORM(state)->hwnd, HWND_TOPMOST, mon_rect.left, mon_rect.top, target_w, target_h, SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 		PLATFORM(state)->is_fullscreen = 1;
 		state->is_fullscreen = 1;
 
 	} else if(PLATFORM(state)->is_fullscreen && !enable) {
+		if(PLATFORM(state)->mode_changed) {
+			ChangeDisplaySettingsExA(PLATFORM(state)->fs_device, 0, 0, 0, 0);
+			PLATFORM(state)->mode_changed = 0;
+		}
 		SetWindowLong(PLATFORM(state)->hwnd, GWL_STYLE, PLATFORM(state)->saved_style);
 		SetWindowPlacement(PLATFORM(state)->hwnd, &PLATFORM(state)->window_placement);
 		SetWindowPos(PLATFORM(state)->hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
@@ -1384,6 +1628,27 @@ static BOOL CALLBACK mkfw_monitor_enum_proc(HMONITOR hMonitor, HDC hdcMonitor, L
 	m->height = mi.rcMonitor.bottom - mi.rcMonitor.top;
 	m->refresh_rate = dm.dmDisplayFrequency;
 	m->primary = (mi.dwFlags & MONITORINFOF_PRIMARY) ? 1 : 0;
+	m->work_x = mi.rcWork.left;
+	m->work_y = mi.rcWork.top;
+	m->work_width = mi.rcWork.right - mi.rcWork.left;
+	m->work_height = mi.rcWork.bottom - mi.rcWork.top;
+	m->content_scale = 1.0f;
+
+	// Physical size in millimetres from a device context for this display.
+	HDC mon_dc = CreateDCA("DISPLAY", mi.szDevice, 0, 0);
+	if(mon_dc) {
+		m->width_mm = GetDeviceCaps(mon_dc, HORZSIZE);
+		m->height_mm = GetDeviceCaps(mon_dc, VERTSIZE);
+		DeleteDC(mon_dc);
+	}
+
+	// Effective DPI scale (the user's display-scaling setting), not physical density.
+	if(mkfw_win32_GetDpiForMonitor) {
+		UINT dpi_x = 0, dpi_y = 0;
+		if(mkfw_win32_GetDpiForMonitor(hMonitor, 0 /* MDT_EFFECTIVE_DPI */, &dpi_x, &dpi_y) == S_OK && dpi_x > 0) {
+			m->content_scale = (float)dpi_x / 96.0f;
+		}
+	}
 
 	return TRUE;
 }
@@ -1421,6 +1686,39 @@ MKFW_API int32_t mkfw_get_monitors(struct mkfw_context *ctx, struct mkfw_monitor
 		out[i] = ctx->monitors[i];
 	}
 	return n;
+}
+
+// [=]===^=[ mkfw_get_video_modes ]=============================================================[=]
+MKFW_API int32_t mkfw_get_video_modes(struct mkfw_context *ctx, int32_t monitor_index, struct mkfw_video_mode *out, int32_t max) {
+	if(!ctx || !out || max <= 0 || monitor_index < 0 || (uint32_t)monitor_index >= ctx->monitor_count) {
+		return 0;
+	}
+	const char *device = ctx->monitors[monitor_index].name;
+	int32_t count = 0;
+	for(DWORD i = 0; count < max; ++i) {
+		DEVMODEA dm = {0};
+		dm.dmSize = sizeof(dm);
+		if(!EnumDisplaySettingsA(device, i, &dm)) {
+			break;
+		}
+		struct mkfw_video_mode vm;
+		vm.width = (int32_t)dm.dmPelsWidth;
+		vm.height = (int32_t)dm.dmPelsHeight;
+		vm.refresh_rate = (int32_t)dm.dmDisplayFrequency;
+
+		// EnumDisplaySettings lists a row per bit depth; collapse duplicates.
+		uint8_t dup = 0;
+		for(int32_t k = 0; k < count; ++k) {
+			if(out[k].width == vm.width && out[k].height == vm.height && out[k].refresh_rate == vm.refresh_rate) {
+				dup = 1;
+				break;
+			}
+		}
+		if(!dup) {
+			out[count++] = vm;
+		}
+	}
+	return count;
 }
 
 // [=]===^=[ mkfw_window_set_position ]=========================================================[=]
@@ -1484,6 +1782,14 @@ MKFW_API void mkfw_window_request_attention(struct mkfw_window *state) {
 	fi.uCount = 3;
 	fi.dwTimeout = 0;
 	FlashWindowEx(&fi);
+}
+
+// [=]===^=[ mkfw_window_focus ]=================================================================[=]
+MKFW_API void mkfw_window_focus(struct mkfw_window *state) {
+	HWND hwnd = PLATFORM(state)->hwnd;
+	BringWindowToTop(hwnd);
+	SetForegroundWindow(hwnd);
+	SetFocus(hwnd);
 }
 
 // [=]===^=[ mkfw_wait_events ]==================================================================[=]

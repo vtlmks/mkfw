@@ -31,7 +31,11 @@ changes will ship with a proper migration note.
 
 **Core:**
 - Window creation and management (resize, fullscreen, aspect ratio, min size)
+- Monitor enumeration with physical size, content scale, and work area; video-mode listing; per-monitor fullscreen with optional exclusive mode; hotplug notification
+- Window event callbacks (move, refresh, content-scale, cursor enter/leave, absolute cursor position, close) plus always-on-top / maximized / no-focus creation hints and force-focus
 - OpenGL Compatibility Profile context creation (configurable version, default 3.1)
+- Framebuffer format hints (depth, stencil, MSAA samples, sRGB)
+- Debug / forward-compatible context flags and context sharing between windows
 - Keyboard input with key press/release edge detection
 - Mouse input with raw motion deltas and configurable sensitivity
 - Unicode text input via character callbacks
@@ -53,6 +57,10 @@ changes will ship with a proper migration note.
 |----------|---------------|------------|-------|
 | Linux | X11 | GLX | XInput2 (mouse), evdev (joystick) |
 | Windows | Win32 | WGL | Raw Input (mouse), XInput (joystick) |
+
+macOS is out of scope. Apple deprecated OpenGL, and a Cocoa backend is
+a permanent maintenance cost that pulls against the library's focus;
+mkfw targets Linux/X11 and Windows/Win32 only.
 
 ## Quick start
 

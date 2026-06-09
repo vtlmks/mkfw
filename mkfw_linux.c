@@ -77,6 +77,13 @@ struct x11_mkfw_context {
 	Display *display;
 	uint8_t libs_loaded;
 	uint8_t signal_handlers_installed;
+
+	// Per-monitor XRandR handles, parallel to mkfw_context.monitors[] (same
+	// order, primary first), used for video-mode enumeration and mode setting.
+	RRCrtc   monitor_crtc[MKFW_MAX_MONITORS];
+	RROutput monitor_output[MKFW_MAX_MONITORS];
+
+	int32_t xrandr_event_base;   // base for RRScreenChangeNotify, or -1 if unavailable
 };
 
 /* libXcursor minimal loader.  Used by mkfw_cursor_create_rgba; missing
@@ -131,6 +138,11 @@ struct x11_mkfw_window {
 	int32_t win_saved_height;
 	int32_t win_saved_x;
 	int32_t win_saved_y;
+
+	// Exclusive-fullscreen mode restore: the crtc whose mode we changed and
+	// the mode to put back on exit (None when no mode change is outstanding).
+	RRCrtc saved_crtc;
+	RRMode saved_mode;
 	int32_t min_width;
 	int32_t min_height;
 	int32_t max_width;
@@ -155,6 +167,14 @@ struct x11_mkfw_window {
 	// Framebuffer size tracking (per-window)
 	int32_t last_framebuffer_width;
 	int32_t last_framebuffer_height;
+
+	// Absolute window-position tracking for the pos callback
+	int32_t last_pos_x;
+	int32_t last_pos_y;
+	uint8_t have_last_pos;
+
+	// Last reported content scale, for the content-scale callback
+	float last_content_scale;
 
 	// XIM for Unicode text input
 	XIM xim;
@@ -403,7 +423,10 @@ MKFW_API void mkfw_window_set_should_close(struct mkfw_window *state, int32_t va
 
 // [=]===^=[ select_best_fbconfig_for ]===========================================================[=]
 // Returns the chosen GLXFBConfig, or 0 on failure (mkfw_error has been fired).
-static GLXFBConfig select_best_fbconfig_for(Display *display, int screen, int32_t transparent) {
+// depth_bits / stencil_bits / samples act as hard minimums when nonzero (samples
+// only when > 1); srgb requires an sRGB-capable config when set.  An explicit hint
+// the driver cannot satisfy is a hard failure, never a silent downgrade.
+static GLXFBConfig select_best_fbconfig_for(Display *display, int screen, int32_t transparent, int32_t depth_bits, int32_t stencil_bits, int32_t samples, uint32_t srgb) {
 	int fb_count = 0;
 	GLXFBConfig *fbcs = glXChooseFBConfig(display, screen, 0, &fb_count);
 	if(!fbcs || fb_count == 0) {
@@ -414,14 +437,19 @@ static GLXFBConfig select_best_fbconfig_for(Display *display, int screen, int32_
 		return 0;
 	}
 
+	int32_t want_samples = samples > 1 ? samples : 0;
+	int32_t has_explicit_hint = (depth_bits > 0 || stencil_bits > 0 || want_samples > 0 || srgb);
+
 	GLXFBConfig best_fbconfig = 0;
-	int highest_score = -1;
+	int best_score = 0;
+	int have_best = 0;
 
 	for(int i = 0; i < fb_count; i++) {
 		int drawable_type = 0;
 		int doublebuffer  = 0;
 		int red_size, green_size, blue_size, alpha_size;
 		int depth_size, stencil_size;
+		int sample_buffers = 0, config_samples = 0, srgb_capable = 0;
 
 		glXGetFBConfigAttrib(display, fbcs[i], GLX_DRAWABLE_TYPE, &drawable_type);
 		glXGetFBConfigAttrib(display, fbcs[i], GLX_DOUBLEBUFFER, &doublebuffer);
@@ -455,8 +483,26 @@ static GLXFBConfig select_best_fbconfig_for(Display *display, int screen, int32_
 		glXGetFBConfigAttrib(display, fbcs[i], GLX_ALPHA_SIZE, &alpha_size);
 		glXGetFBConfigAttrib(display, fbcs[i], GLX_DEPTH_SIZE, &depth_size);
 		glXGetFBConfigAttrib(display, fbcs[i], GLX_STENCIL_SIZE, &stencil_size);
+		glXGetFBConfigAttrib(display, fbcs[i], GLX_SAMPLE_BUFFERS, &sample_buffers);
+		glXGetFBConfigAttrib(display, fbcs[i], GLX_SAMPLES, &config_samples);
+		glXGetFBConfigAttrib(display, fbcs[i], GLX_FRAMEBUFFER_SRGB_CAPABLE_ARB, &srgb_capable);
 
-		/* Score config */
+		/* Hard minimums: reject configs that cannot meet an explicit request */
+		if(depth_bits > 0 && depth_size < depth_bits) {
+			continue;
+		}
+		if(stencil_bits > 0 && stencil_size < stencil_bits) {
+			continue;
+		}
+		if(want_samples > 0 && (sample_buffers < 1 || config_samples < want_samples)) {
+			continue;
+		}
+		if(srgb && !srgb_capable) {
+			continue;
+		}
+
+		/* Score config.  Double-buffering dominates; the smaller per-attribute
+		 * terms tune the choice among the qualifying configs. */
 		int score = 0;
 
 		if(doublebuffer) {
@@ -471,21 +517,37 @@ static GLXFBConfig select_best_fbconfig_for(Display *display, int screen, int32_
 			score += 25;
 		}
 
-		if(depth_size >= 24) {
+		if(depth_bits > 0) {
+			score -= (depth_size - depth_bits);   // prefer the closest at-or-above match
+		} else if(depth_size >= 24) {
 			score += 10;
 		}
 
-		if(stencil_size >= 8) {
+		if(stencil_bits > 0) {
+			score -= (stencil_size - stencil_bits);
+		} else if(stencil_size >= 8) {
 			score += 5;
 		}
 
-		if(score > highest_score) {
-			highest_score = score;
+		if(want_samples > 0) {
+			score -= (config_samples - want_samples); // prefer exact sample count
+		} else if(sample_buffers == 0) {
+			score += 20;                              // no MSAA requested: avoid stumbling onto a multisampled config
+		}
+
+		if(!have_best || score > best_score) {
+			best_score = score;
 			best_fbconfig = fbcs[i];
+			have_best = 1;
 		}
 	}
 
-	if(!best_fbconfig) {
+	if(!have_best) {
+		if(has_explicit_hint) {
+			mkfw_error("no framebuffer config matches requested format (depth>=%d, stencil>=%d, samples>=%d, srgb=%u)", depth_bits, stencil_bits, want_samples, srgb ? 1u : 0u);
+			XFree(fbcs);
+			return 0;
+		}
 		mkfw_error("no suitable framebuffer config supports window rendering, falling back to first");
 		best_fbconfig = fbcs[0];
 	}
@@ -529,7 +591,7 @@ MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 	load_glx_functions(dpy);
 
 	int screen = DefaultScreen(dpy);
-	GLXFBConfig fb_config = select_best_fbconfig_for(dpy, screen, 0);
+	GLXFBConfig fb_config = select_best_fbconfig_for(dpy, screen, 0, 0, 0, 0, 0);
 	if(!fb_config) {
 		XCloseDisplay(dpy);
 		return 0;
@@ -598,7 +660,39 @@ MKFW_API uint32_t mkfw_query_max_gl_version(int32_t *major, int32_t *minor) {
 }
 
 // Forward declaration for monitor query used inside mkfw_init
-static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, int32_t max);
+static int32_t mkfw_query_monitors_into(struct mkfw_context *ctx);
+
+// [=]===^=[ mkfw_compute_content_scale ]=========================================================[=]
+// DPI scale factor for the display: Xft.dpi if set, else derived from the
+// screen's physical size.  1.0 means 96 dpi.
+static float mkfw_compute_content_scale(Display *dpy) {
+	char *rms = XResourceManagerString(dpy);
+	if(rms) {
+		XrmDatabase db = XrmGetStringDatabase(rms);
+		if(db) {
+			char *type = 0;
+			XrmValue value;
+			if(XrmGetResource(db, "Xft.dpi", "Xft.Dpi", &type, &value)) {
+				if(type && strcmp(type, "String") == 0) {
+					float dpi = (float)atof(value.addr);
+					XrmDestroyDatabase(db);
+					if(dpi > 0.0f) {
+						return dpi / 96.0f;
+					}
+				}
+			}
+			XrmDestroyDatabase(db);
+		}
+	}
+	int screen = DefaultScreen(dpy);
+	float width_px = (float)DisplayWidth(dpy, screen);
+	float width_mm = (float)DisplayWidthMM(dpy, screen);
+	if(width_mm > 0.0f) {
+		float dpi = width_px / (width_mm / 25.4f);
+		return dpi / 96.0f;
+	}
+	return 1.0f;
+}
 
 // [=]===^=[ mkfw_init ]==========================================================================[=]
 MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
@@ -636,8 +730,21 @@ MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts) {
 
 	XrmInitialize();
 
+	// Subscribe to monitor hotplug; RRScreenChangeNotify is handled in the
+	// event loop, which refreshes the cache and fires the monitor callback.
+	CTX_PLATFORM(ctx)->xrandr_event_base = -1;
+	{
+		int event_base = 0, error_base = 0;
+		if(XRRQueryExtension && XRRQueryExtension(CTX_PLATFORM(ctx)->display, &event_base, &error_base)) {
+			CTX_PLATFORM(ctx)->xrandr_event_base = event_base;
+			if(XRRSelectInput) {
+				XRRSelectInput(CTX_PLATFORM(ctx)->display, DefaultRootWindow(CTX_PLATFORM(ctx)->display), RRScreenChangeNotifyMask);
+			}
+		}
+	}
+
 	// Cache monitors so callers can query before creating a window
-	ctx->monitor_count = (uint32_t)mkfw_query_monitors_into(CTX_PLATFORM(ctx)->display, ctx->monitors, MKFW_MAX_MONITORS);
+	ctx->monitor_count = (uint32_t)mkfw_query_monitors_into(ctx);
 
 	return ctx;
 }
@@ -709,7 +816,7 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	GLXFBConfig fb_config = 0;
 
 	if(graphics_api == MKFW_GFX_GL) {
-		fb_config = select_best_fbconfig_for(display, screen, transparent);
+		fb_config = select_best_fbconfig_for(display, screen, transparent, opts->depth_bits, opts->stencil_bits, opts->samples, opts->srgb);
 		if(!fb_config) {
 			free(state->platform);
 			free(state);
@@ -743,8 +850,8 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 
 	XClassHint *class_hint = XAllocClassHint();
 	if(class_hint) {
-		class_hint->res_name = (char *)"mkfw";
-		class_hint->res_class = (char *)"MKFW";
+		class_hint->res_name  = (char *)(opts->x11_class_name ? opts->x11_class_name : "mkfw");
+		class_hint->res_class = (char *)(opts->x11_class_name ? opts->x11_class_name : "MKFW");
 		XSetClassHint(display, PLATFORM(state)->window, class_hint);
 		XFree(class_hint);
 	}
@@ -763,14 +870,24 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 			return 0;
 		}
 
+		int ctx_flags = 0;
+		if(opts->context_flags & MKFW_CONTEXT_DEBUG) {
+			ctx_flags |= GLX_CONTEXT_DEBUG_BIT_ARB;
+		}
+		if(opts->context_flags & MKFW_CONTEXT_FORWARD_COMPAT) {
+			ctx_flags |= GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+		}
+
 		int ctx_attribs[] = {
 			GLX_CONTEXT_MAJOR_VERSION_ARB, gl_major,
 			GLX_CONTEXT_MINOR_VERSION_ARB, gl_minor,
 			GLX_CONTEXT_PROFILE_MASK_ARB,  (int)gl_profile_bit,
+			GLX_CONTEXT_FLAGS_ARB,         ctx_flags,
 			0
 		};
 
-		PLATFORM(state)->glctx = glXCreateContextAttribsARB(display, fb_config, 0, 1, ctx_attribs);
+		GLXContext share_ctx = opts->share_window ? PLATFORM(opts->share_window)->glctx : 0;
+		PLATFORM(state)->glctx = glXCreateContextAttribsARB(display, fb_config, share_ctx, 1, ctx_attribs);
 		if(!PLATFORM(state)->glctx) {
 			int32_t max_major = 0, max_minor = 0;
 			mkfw_query_max_gl_version(&max_major, &max_minor);
@@ -829,6 +946,32 @@ MKFW_API struct mkfw_window *mkfw_window_create(struct mkfw_context *ctx, struct
 	PLATFORM(state)->net_wm_state_demands_attention = XInternAtom(display, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
 
 	state->has_focus = 1;
+	PLATFORM(state)->last_content_scale = mkfw_compute_content_scale(display);
+
+	// Initial _NET_WM_STATE hints (always-on-top, maximized) must be set on the
+	// unmapped window so the WM honours them at map time.
+	{
+		Atom states[3];
+		int32_t ns = 0;
+		if(opts->flags & MKFW_WIN_FLOATING) {
+			states[ns++] = XInternAtom(display, "_NET_WM_STATE_ABOVE", False);
+		}
+		if(opts->flags & MKFW_WIN_MAXIMIZED) {
+			states[ns++] = PLATFORM(state)->net_wm_state_maximized_horz;
+			states[ns++] = PLATFORM(state)->net_wm_state_maximized_vert;
+		}
+		if(ns > 0) {
+			XChangeProperty(display, PLATFORM(state)->window, PLATFORM(state)->net_wm_state, XA_ATOM, 32, PropModeReplace, (unsigned char *)states, ns);
+		}
+	}
+
+	// _NET_WM_USER_TIME of 0 tells the WM not to focus the window on map.
+	if(opts->flags & MKFW_WIN_NO_FOCUS) {
+		Atom net_wm_user_time = XInternAtom(display, "_NET_WM_USER_TIME", False);
+		long zero = 0;
+		XChangeProperty(display, PLATFORM(state)->window, net_wm_user_time, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&zero, 1);
+		state->has_focus = 0;
+	}
 
 	ctx->windows[ctx->window_count++] = state;
 
@@ -898,58 +1041,147 @@ MKFW_API void mkfw_window_get_native_handles(struct mkfw_window *state, struct m
 	out->gl_context = (void *)PLATFORM(state)->glctx;
 }
 
+// [=]===^=[ mkfw_xrandr_mode_refresh ]===========================================================[=]
+// Vertical refresh in Hz for an XRandR mode, rounded to the nearest integer.
+static int32_t mkfw_xrandr_mode_refresh(XRRModeInfo *mi) {
+	if(!mi->hTotal || !mi->vTotal) {
+		return 0;
+	}
+	return (int32_t)((double)mi->dotClock / ((double)mi->hTotal * (double)mi->vTotal) + 0.5);
+}
+
+// [=]===^=[ mkfw_send_net_wm_fullscreen ]====================================================================[=]
+// Toggle _NET_WM_STATE_FULLSCREEN on the window via the WM.  add != 0 enters
+// fullscreen, add == 0 leaves it.
+static void mkfw_send_net_wm_fullscreen(struct mkfw_window *state, int32_t add) {
+	Display *dpy = PLATFORM(state)->display;
+	XEvent xev = {0};
+	xev.type = ClientMessage;
+	xev.xclient.window = PLATFORM(state)->window;
+	xev.xclient.message_type = XInternAtom(dpy, "_NET_WM_STATE", False);
+	xev.xclient.format = 32;
+	xev.xclient.data.l[0] = add ? 1 : 0;  // _NET_WM_STATE_ADD / _REMOVE
+	xev.xclient.data.l[1] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+	xev.xclient.data.l[2] = 0;
+	XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
+}
+
 // [=]===^=[ mkfw_window_set_fullscreen ]====================================================================[=]
-MKFW_API void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable) {
+MKFW_API void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable, int32_t monitor_index, struct mkfw_video_mode *mode) {
+	Display *dpy = PLATFORM(state)->display;
+	struct mkfw_context *ctx = state->context;
+
 	if(enable && !state->is_fullscreen) {
-		// Save the current geometry
+		// Save current geometry for restore
 		XWindowAttributes attrs;
 		Window dummy_child;
-		int root_x, root_y;
-
-		XGetWindowAttributes(PLATFORM(state)->display, PLATFORM(state)->window, &attrs);
+		int root_x = 0, root_y = 0;
+		XGetWindowAttributes(dpy, PLATFORM(state)->window, &attrs);
 		PLATFORM(state)->win_saved_width = attrs.width;
 		PLATFORM(state)->win_saved_height = attrs.height;
-		XTranslateCoordinates(PLATFORM(state)->display, PLATFORM(state)->window, DefaultRootWindow(PLATFORM(state)->display), 0, 0, &root_x, &root_y, &dummy_child);
+		XTranslateCoordinates(dpy, PLATFORM(state)->window, DefaultRootWindow(dpy), 0, 0, &root_x, &root_y, &dummy_child);
 		PLATFORM(state)->win_saved_x = root_x;
 		PLATFORM(state)->win_saved_y = root_y;
 
-		// Go fullscreen using _NET_WM_STATE
-		XEvent xev = {0};
-		Atom wm_state = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE", False);
-		Atom fullscreen = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_FULLSCREEN", False);
+		// Resolve the target monitor.  monitor_index < 0 (or out of range)
+		// means the monitor that currently contains the window.
+		int32_t idx = monitor_index;
+		if(idx < 0 || (uint32_t)idx >= ctx->monitor_count) {
+			idx = 0;
+			for(uint32_t i = 0; i < ctx->monitor_count; ++i) {
+				struct mkfw_monitor *mm = &ctx->monitors[i];
+				if(root_x >= mm->x && root_x < mm->x + mm->width && root_y >= mm->y && root_y < mm->y + mm->height) {
+					idx = (int32_t)i;
+					break;
+				}
+			}
+		}
+		struct mkfw_monitor *m = &ctx->monitors[idx];
+		int32_t target_w = m->width;
+		int32_t target_h = m->height;
 
-		xev.type = ClientMessage;
-		xev.xclient.window = PLATFORM(state)->window;
-		xev.xclient.message_type = wm_state;
-		xev.xclient.format = 32;
-		xev.xclient.data.l[0] = 1; // _NET_WM_STATE_ADD
-		xev.xclient.data.l[1] = fullscreen;
-		xev.xclient.data.l[2] = 0;
+		PLATFORM(state)->saved_crtc = None;
+		PLATFORM(state)->saved_mode = None;
 
-		XSendEvent(PLATFORM(state)->display, DefaultRootWindow(PLATFORM(state)->display), False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
+		// Optional exclusive mode change on the target monitor's crtc.
+		if(mode && ctx->monitor_count > 0) {
+			Window root = DefaultRootWindow(dpy);
+			XRRScreenResources *sr = XRRGetScreenResourcesCurrent(dpy, root);
+			if(sr) {
+				RROutput output = CTX_PLATFORM(ctx)->monitor_output[idx];
+				RRCrtc crtc = CTX_PLATFORM(ctx)->monitor_crtc[idx];
+				XRROutputInfo *oi = XRRGetOutputInfo(dpy, sr, output);
+				RRMode chosen = None;
+				if(oi) {
+					int32_t best_refresh_diff = 1 << 30;
+					for(int i = 0; i < oi->nmode; ++i) {
+						for(int j = 0; j < sr->nmode; ++j) {
+							if(sr->modes[j].id != oi->modes[i]) {
+								continue;
+							}
+							XRRModeInfo *mi = &sr->modes[j];
+							if((int32_t)mi->width == mode->width && (int32_t)mi->height == mode->height) {
+								int32_t diff = mkfw_xrandr_mode_refresh(mi) - mode->refresh_rate;
+								if(diff < 0) {
+									diff = -diff;
+								}
+								if(chosen == None || (mode->refresh_rate > 0 && diff < best_refresh_diff)) {
+									chosen = mi->id;
+									best_refresh_diff = diff;
+								}
+							}
+							break;
+						}
+					}
+					XRRFreeOutputInfo(oi);
+				}
+				if(chosen != None) {
+					XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, sr, crtc);
+					if(ci) {
+						PLATFORM(state)->saved_crtc = crtc;
+						PLATFORM(state)->saved_mode = ci->mode;
+						XRRSetCrtcConfig(dpy, sr, crtc, CurrentTime, ci->x, ci->y, chosen, ci->rotation, ci->outputs, ci->noutput);
+						target_w = mode->width;
+						target_h = mode->height;
+						XRRFreeCrtcInfo(ci);
+					}
+				} else {
+					mkfw_error("set_fullscreen: monitor %d has no %dx%d mode", idx, mode->width, mode->height);
+				}
+				XRRFreeScreenResources(sr);
+			}
+		}
 
+		// Place the window on the target monitor, then ask the WM to
+		// fullscreen it there.
+		XMoveResizeWindow(dpy, PLATFORM(state)->window, m->x, m->y, target_w, target_h);
+		mkfw_send_net_wm_fullscreen(state, 1);
 		state->is_fullscreen = 1;
 
 	} else if(!enable && state->is_fullscreen) {
-		// Restore from fullscreen
-		XEvent xev = {0};
-		Atom wm_state = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE", False);
-		Atom fullscreen = XInternAtom(PLATFORM(state)->display, "_NET_WM_STATE_FULLSCREEN", False);
+		mkfw_send_net_wm_fullscreen(state, 0);
 
-		xev.type = ClientMessage;
-		xev.xclient.window = PLATFORM(state)->window;
-		xev.xclient.message_type = wm_state;
-		xev.xclient.format = 32;
-		xev.xclient.data.l[0] = 0; // _NET_WM_STATE_REMOVE
-		xev.xclient.data.l[1] = fullscreen;
-		xev.xclient.data.l[2] = 0;
+		// Restore the monitor's original mode if we changed it.
+		if(PLATFORM(state)->saved_crtc != None) {
+			Window root = DefaultRootWindow(dpy);
+			XRRScreenResources *sr = XRRGetScreenResourcesCurrent(dpy, root);
+			if(sr) {
+				XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, sr, PLATFORM(state)->saved_crtc);
+				if(ci) {
+					XRRSetCrtcConfig(dpy, sr, PLATFORM(state)->saved_crtc, CurrentTime, ci->x, ci->y, PLATFORM(state)->saved_mode, ci->rotation, ci->outputs, ci->noutput);
+					XRRFreeCrtcInfo(ci);
+				}
+				XRRFreeScreenResources(sr);
+			}
+			PLATFORM(state)->saved_crtc = None;
+			PLATFORM(state)->saved_mode = None;
+		}
 
-		XSendEvent(PLATFORM(state)->display, DefaultRootWindow(PLATFORM(state)->display), False, SubstructureRedirectMask | SubstructureNotifyMask, &xev);
-		XMoveResizeWindow(PLATFORM(state)->display, PLATFORM(state)->window, PLATFORM(state)->win_saved_x, PLATFORM(state)->win_saved_y, PLATFORM(state)->win_saved_width, PLATFORM(state)->win_saved_height);
+		XMoveResizeWindow(dpy, PLATFORM(state)->window, PLATFORM(state)->win_saved_x, PLATFORM(state)->win_saved_y, PLATFORM(state)->win_saved_width, PLATFORM(state)->win_saved_height);
 		state->is_fullscreen = 0;
 	}
 
-	XFlush(PLATFORM(state)->display);
+	XFlush(dpy);
 }
 
 // [=]===^=[ mkfw_window_enable_drop ]===================================================================[=]
@@ -1124,6 +1356,28 @@ MKFW_API void mkfw_poll_events(struct mkfw_context *ctx) {
 	XEvent event;
 	while(XPending(CTX_PLATFORM(ctx)->display)) {
 		XNextEvent(CTX_PLATFORM(ctx)->display, &event);
+
+		// Monitor hotplug: RRScreenChangeNotify targets the root window and
+		// matches no mkfw window, so handle it before per-window dispatch.
+		if(CTX_PLATFORM(ctx)->xrandr_event_base >= 0 && event.type == CTX_PLATFORM(ctx)->xrandr_event_base + RRScreenChangeNotify) {
+			XRRUpdateConfiguration(&event);
+			ctx->monitor_count = (uint32_t)mkfw_query_monitors_into(ctx);
+			if(ctx->monitor_callback) {
+				ctx->monitor_callback(ctx);
+			}
+			// A display reconfigure is the realistic point at which the
+			// DPI-derived content scale shifts on X11; notify per window.
+			float scale = mkfw_compute_content_scale(CTX_PLATFORM(ctx)->display);
+			for(uint32_t i = 0; i < ctx->window_count; ++i) {
+				struct mkfw_window *w = ctx->windows[i];
+				if(w->content_scale_callback && scale != PLATFORM(w)->last_content_scale) {
+					PLATFORM(w)->last_content_scale = scale;
+					w->content_scale_callback(w, scale);
+				}
+			}
+			continue;
+		}
+
 		struct mkfw_window *target = find_window_for_event(ctx, &event);
 		if(target) {
 			process_window_event(target, &event);
@@ -1179,14 +1433,27 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 		// Normal X11 events
 		switch(event.type) {
 
+			case Expose: {
+				// Coalesce: only act on the last contiguous expose.
+				if(event.xexpose.count == 0 && state->window_refresh_callback) {
+					state->window_refresh_callback(state);
+				}
+			} break;
+
 			case EnterNotify: {
 				PLATFORM(state)->in_window = true;
 				state->mouse_in_window = 1;
+				if(state->cursor_enter_callback) {
+					state->cursor_enter_callback(state, 1);
+				}
 			} break;
 
 			case LeaveNotify: {
 				PLATFORM(state)->in_window = false;
 				state->mouse_in_window = 0;
+				if(state->cursor_enter_callback) {
+					state->cursor_enter_callback(state, 0);
+				}
 			} break;
 
 			case FocusIn: {
@@ -1378,6 +1645,10 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 					state->mouse_x = event.xmotion.x;
 					state->mouse_y = event.xmotion.y;
 
+					if(state->cursor_pos_callback) {
+						state->cursor_pos_callback(state, event.xmotion.x, event.xmotion.y);
+					}
+
 					if(PLATFORM(state)->cursor_locked && !PLATFORM(state)->cursor_visible) {
 						XWindowAttributes attrs;
 						XGetWindowAttributes(PLATFORM(state)->display, PLATFORM(state)->window, &attrs);
@@ -1397,6 +1668,20 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 				int new_width  = event.xconfigure.width;
 				int new_height = event.xconfigure.height;
 
+				// Absolute position: xconfigure.x/y are parent-relative under
+				// reparenting WMs, so translate the origin to the root.
+				if(state->window_pos_callback) {
+					Window child;
+					int abs_x = 0, abs_y = 0;
+					XTranslateCoordinates(PLATFORM(state)->display, PLATFORM(state)->window, DefaultRootWindow(PLATFORM(state)->display), 0, 0, &abs_x, &abs_y, &child);
+					if(!PLATFORM(state)->have_last_pos || abs_x != PLATFORM(state)->last_pos_x || abs_y != PLATFORM(state)->last_pos_y) {
+						PLATFORM(state)->last_pos_x = abs_x;
+						PLATFORM(state)->last_pos_y = abs_y;
+						PLATFORM(state)->have_last_pos = 1;
+						state->window_pos_callback(state, abs_x, abs_y);
+					}
+				}
+
 				if(new_width == PLATFORM(state)->last_framebuffer_width && new_height == PLATFORM(state)->last_framebuffer_height) {
 					break;
 				}
@@ -1413,6 +1698,9 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 
 				if((Atom)event.xclient.data.l[0] == PLATFORM(state)->wm_delete_window) {
 					PLATFORM(state)->should_close = 1;
+					if(state->close_callback) {
+						state->close_callback(state);
+					}
 
 				} else if(msg_type == PLATFORM(state)->xdnd_enter) {
 					PLATFORM(state)->xdnd_source = (Window)event.xclient.data.l[0];
@@ -1735,12 +2023,15 @@ MKFW_API void mkfw_window_set_icon(struct mkfw_window *state, int32_t width, int
 }
 
 // [=]===^=[ mkfw_query_monitors_into ]===========================================================[=]
-// Queries XRandR and writes into the caller-supplied buffer. Used internally
-// at mkfw_init to populate the context's monitor cache.
-static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, int32_t max) {
-	if(!out || max <= 0) {
-		return 0;
-	}
+// Queries XRandR and fills ctx->monitors plus the parallel crtc/output handle
+// cache.  Used at mkfw_init and on RRScreenChangeNotify.  Returns the count.
+static int32_t mkfw_query_monitors_into(struct mkfw_context *ctx) {
+	Display *dpy = CTX_PLATFORM(ctx)->display;
+	struct mkfw_monitor *out = ctx->monitors;
+	RRCrtc *crtc_cache = CTX_PLATFORM(ctx)->monitor_crtc;
+	RROutput *output_cache = CTX_PLATFORM(ctx)->monitor_output;
+	int32_t max = MKFW_MAX_MONITORS;
+
 	Window root = DefaultRootWindow(dpy);
 	XRRScreenResources *sr = XRRGetScreenResourcesCurrent(dpy, root);
 	if(!sr) {
@@ -1749,6 +2040,33 @@ static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, 
 	}
 
 	RROutput primary_output = XRRGetOutputPrimary(dpy, root);
+
+	// Global work area from _NET_WORKAREA (first desktop); intersected per
+	// monitor below.  Falls back to the full monitor rect when absent.
+	int32_t wa_x = 0, wa_y = 0, wa_w = 0, wa_h = 0;
+	uint8_t have_workarea = 0;
+	{
+		Atom net_workarea = XInternAtom(dpy, "_NET_WORKAREA", True);
+		if(net_workarea != None) {
+			Atom actual_type;
+			int actual_format;
+			unsigned long nitems = 0, bytes_after = 0;
+			unsigned char *data = 0;
+			if(XGetWindowProperty(dpy, root, net_workarea, 0, 4, False, XA_CARDINAL, &actual_type, &actual_format, &nitems, &bytes_after, &data) == Success) {
+				if(data && actual_format == 32 && nitems >= 4) {
+					long *v = (long *)(void *)data;
+					wa_x = (int32_t)v[0];
+					wa_y = (int32_t)v[1];
+					wa_w = (int32_t)v[2];
+					wa_h = (int32_t)v[3];
+					have_workarea = 1;
+				}
+				if(data) {
+					XFree(data);
+				}
+			}
+		}
+	}
 
 	int32_t count = 0;
 	for(int i = 0; i < sr->ncrtc && count < max; ++i) {
@@ -1766,6 +2084,9 @@ static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, 
 		m->width = ci->width;
 		m->height = ci->height;
 		m->primary = 0;
+		m->content_scale = 1.0f;
+		crtc_cache[count] = sr->crtcs[i];
+		output_cache[count] = ci->outputs[0];
 
 		// Check if any output on this crtc is the primary
 		for(int k = 0; k < ci->noutput; ++k) {
@@ -1775,22 +2096,46 @@ static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, 
 			}
 		}
 
-		// Get output name
+		// Name and physical size from the output
 		XRROutputInfo *oi = XRRGetOutputInfo(dpy, sr, ci->outputs[0]);
 		if(oi) {
 			snprintf(m->name, sizeof(m->name), "%s", oi->name);
+			m->width_mm = (int32_t)oi->mm_width;
+			m->height_mm = (int32_t)oi->mm_height;
 			XRRFreeOutputInfo(oi);
 		}
 
-		// Get refresh rate from mode info
+		if(m->width_mm > 0) {
+			float dpi = (float)m->width * 25.4f / (float)m->width_mm;
+			m->content_scale = dpi / 96.0f;
+		}
+
+		// Refresh rate of the crtc's current mode
 		for(int j = 0; j < sr->nmode; ++j) {
 			if(sr->modes[j].id == ci->mode) {
-				XRRModeInfo *mi = &sr->modes[j];
-				if(mi->hTotal && mi->vTotal) {
-					m->refresh_rate = (int32_t)((double)mi->dotClock / ((double)mi->hTotal * (double)mi->vTotal) + 0.5);
-				}
+				m->refresh_rate = mkfw_xrandr_mode_refresh(&sr->modes[j]);
 				break;
 			}
+		}
+
+		// Work area: intersect the global work area with this monitor's rect
+		if(have_workarea) {
+			int32_t l = m->x > wa_x ? m->x : wa_x;
+			int32_t t = m->y > wa_y ? m->y : wa_y;
+			int32_t r = (m->x + m->width)  < (wa_x + wa_w) ? (m->x + m->width)  : (wa_x + wa_w);
+			int32_t b = (m->y + m->height) < (wa_y + wa_h) ? (m->y + m->height) : (wa_y + wa_h);
+			if(r > l && b > t) {
+				m->work_x = l;
+				m->work_y = t;
+				m->work_width = r - l;
+				m->work_height = b - t;
+			}
+		}
+		if(m->work_width == 0 || m->work_height == 0) {
+			m->work_x = m->x;
+			m->work_y = m->y;
+			m->work_width = m->width;
+			m->work_height = m->height;
 		}
 
 		++count;
@@ -1800,9 +2145,15 @@ static int32_t mkfw_query_monitors_into(Display *dpy, struct mkfw_monitor *out, 
 
 	for(int32_t i = 1; i < count; ++i) {
 		if(out[i].primary) {
-			struct mkfw_monitor tmp = out[0];
+			struct mkfw_monitor tmp_m = out[0];
 			out[0] = out[i];
-			out[i] = tmp;
+			out[i] = tmp_m;
+			RRCrtc tmp_c = crtc_cache[0];
+			crtc_cache[0] = crtc_cache[i];
+			crtc_cache[i] = tmp_c;
+			RROutput tmp_o = output_cache[0];
+			output_cache[0] = output_cache[i];
+			output_cache[i] = tmp_o;
 			break;
 		}
 	}
@@ -1823,6 +2174,52 @@ MKFW_API int32_t mkfw_get_monitors(struct mkfw_context *ctx, struct mkfw_monitor
 		out[i] = ctx->monitors[i];
 	}
 	return n;
+}
+
+// [=]===^=[ mkfw_get_video_modes ]===============================================================[=]
+MKFW_API int32_t mkfw_get_video_modes(struct mkfw_context *ctx, int32_t monitor_index, struct mkfw_video_mode *out, int32_t max) {
+	if(!ctx || !out || max <= 0 || monitor_index < 0 || (uint32_t)monitor_index >= ctx->monitor_count) {
+		return 0;
+	}
+	Display *dpy = CTX_PLATFORM(ctx)->display;
+	Window root = DefaultRootWindow(dpy);
+	XRRScreenResources *sr = XRRGetScreenResourcesCurrent(dpy, root);
+	if(!sr) {
+		return 0;
+	}
+
+	int32_t count = 0;
+	XRROutputInfo *oi = XRRGetOutputInfo(dpy, sr, CTX_PLATFORM(ctx)->monitor_output[monitor_index]);
+	if(oi) {
+		for(int i = 0; i < oi->nmode && count < max; ++i) {
+			for(int j = 0; j < sr->nmode; ++j) {
+				if(sr->modes[j].id != oi->modes[i]) {
+					continue;
+				}
+				XRRModeInfo *mi = &sr->modes[j];
+				struct mkfw_video_mode vm;
+				vm.width = (int32_t)mi->width;
+				vm.height = (int32_t)mi->height;
+				vm.refresh_rate = mkfw_xrandr_mode_refresh(mi);
+
+				// Distinct RRModes can share width/height/refresh; collapse them.
+				uint8_t dup = 0;
+				for(int32_t k = 0; k < count; ++k) {
+					if(out[k].width == vm.width && out[k].height == vm.height && out[k].refresh_rate == vm.refresh_rate) {
+						dup = 1;
+						break;
+					}
+				}
+				if(!dup) {
+					out[count++] = vm;
+				}
+				break;
+			}
+		}
+		XRRFreeOutputInfo(oi);
+	}
+	XRRFreeScreenResources(sr);
+	return count;
 }
 
 // [=]===^=[ mkfw_window_set_position ]===========================================================[=]
@@ -1883,33 +2280,7 @@ MKFW_API void mkfw_window_restore(struct mkfw_window *state) {
 
 // [=]===^=[ mkfw_window_get_content_scale ]=============================================================[=]
 MKFW_API float mkfw_window_get_content_scale(struct mkfw_window *state) {
-	Display *dpy = PLATFORM(state)->display;
-	char *rms = XResourceManagerString(dpy);
-	if(rms) {
-		XrmDatabase db = XrmGetStringDatabase(rms);
-		if(db) {
-			char *type = 0;
-			XrmValue value;
-			if(XrmGetResource(db, "Xft.dpi", "Xft.Dpi", &type, &value)) {
-				if(type && strcmp(type, "String") == 0) {
-					float dpi = (float)atof(value.addr);
-					XrmDestroyDatabase(db);
-					if(dpi > 0.0f) {
-						return dpi / 96.0f;
-					}
-				}
-			}
-			XrmDestroyDatabase(db);
-		}
-	}
-	int screen = DefaultScreen(dpy);
-	float width_px = (float)DisplayWidth(dpy, screen);
-	float width_mm = (float)DisplayWidthMM(dpy, screen);
-	if(width_mm > 0.0f) {
-		float dpi = width_px / (width_mm / 25.4f);
-		return dpi / 96.0f;
-	}
-	return 1.0f;
+	return mkfw_compute_content_scale(PLATFORM(state)->display);
 }
 
 // [=]===^=[ mkfw_window_request_attention ]=============================================================[=]
@@ -1924,6 +2295,26 @@ MKFW_API void mkfw_window_request_attention(struct mkfw_window *state) {
 	ev.xclient.data.l[1] = PLATFORM(state)->net_wm_state_demands_attention;
 	ev.xclient.data.l[2] = 0;
 	ev.xclient.data.l[3] = 1; // source: application
+	XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+	XFlush(dpy);
+}
+
+// [=]===^=[ mkfw_window_focus ]=================================================================[=]
+MKFW_API void mkfw_window_focus(struct mkfw_window *state) {
+	Display *dpy = PLATFORM(state)->display;
+	Window win = PLATFORM(state)->window;
+	XRaiseWindow(dpy, win);
+
+	// _NET_ACTIVE_WINDOW is the EWMH-correct way to request focus; the WM
+	// applies it without the BadMatch risk of a raw XSetInputFocus on a
+	// not-yet-viewable window.
+	XEvent ev = {0};
+	ev.xclient.type = ClientMessage;
+	ev.xclient.window = win;
+	ev.xclient.message_type = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+	ev.xclient.format = 32;
+	ev.xclient.data.l[0] = 1; // source: application
+	ev.xclient.data.l[1] = CurrentTime;
 	XSendEvent(dpy, DefaultRootWindow(dpy), False, SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 	XFlush(dpy);
 }

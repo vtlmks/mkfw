@@ -119,6 +119,8 @@ Public field used by callers:
 | `monitors[MKFW_MAX_MONITORS]` | `struct mkfw_monitor` | cached monitor list |
 | `monitor_count` | `uint32_t` | number of entries in `monitors[]` |
 
+Set the monitor hotplug callback with `mkfw_set_monitor_callback`.
+
 ### `struct mkfw_window`
 
 Per-window state.  Created by `mkfw_window_create`, destroyed by
@@ -148,10 +150,33 @@ undefined.  `user_data` is the documented application slot; use
 ```c
 struct mkfw_monitor {
     char name[128];
-    int32_t x, y;             // top-left of the work area, in screen coords
-    int32_t width, height;    // resolution in physical pixels
-    int32_t refresh_rate;     // Hz
+    int32_t x, y;             // top-left of the current mode, in screen coords
+    int32_t width, height;    // current mode resolution in physical pixels
+    int32_t refresh_rate;     // current mode refresh, Hz
     uint8_t primary;          // 1 = primary monitor
+    int32_t width_mm, height_mm;  // physical size in mm (0 if unknown)
+    float   content_scale;        // DPI scale (1.0 = 96 dpi); 0 if unknown
+    int32_t work_x, work_y;       // usable area excluding taskbars / docks / panels
+    int32_t work_width, work_height;
+};
+```
+
+On Linux `content_scale` is derived from the monitor's physical size; on
+Windows it reflects the user's per-monitor display-scaling setting
+(`GetDpiForMonitor`).  `work_*` comes from `_NET_WORKAREA` (intersected
+with the monitor rect) on Linux and `MONITORINFO.rcWork` on Windows.
+
+### `struct mkfw_video_mode`
+
+A display mode a monitor can be set to (enumerate with
+`mkfw_get_video_modes`).  A monitor's *current* mode is already the
+`width` / `height` / `refresh_rate` of its `mkfw_monitor` entry.
+
+```c
+struct mkfw_video_mode {
+    int32_t width;
+    int32_t height;
+    int32_t refresh_rate;   // Hz
 };
 ```
 
@@ -183,8 +208,15 @@ struct mkfw_window_options {
     int32_t  gl_major;       // 0 = highest supported by driver
     int32_t  gl_minor;       // 0 = highest supported by driver
     uint32_t gl_profile;     // MKFW_GL_PROFILE_*; 0 = CORE
-    uint32_t flags;          // MKFW_WIN_TRANSPARENT | MKFW_WIN_HIDDEN
+    uint32_t flags;          // MKFW_WIN_*
     uint32_t graphics_api;   // MKFW_GFX_*; 0 = MKFW_GFX_GL
+    int32_t  depth_bits;     // 0 = default (depth buffer present, >=24 preferred)
+    int32_t  stencil_bits;   // 0 = default (>=8 preferred)
+    int32_t  samples;        // 0/1 = no MSAA; N = N-sample MSAA
+    uint32_t srgb;           // 0 = don't care; 1 = sRGB-capable framebuffer
+    uint32_t context_flags;  // MKFW_CONTEXT_*
+    struct mkfw_window *share_window; // 0 = no sharing
+    const char *x11_class_name;       // X11 WM_CLASS name; 0 = "mkfw". Linux only.
 };
 ```
 
@@ -194,6 +226,50 @@ Flags:
 |------|--------|
 | `MKFW_WIN_TRANSPARENT` | request a 32-bit ARGB visual (Linux: GLX_ALPHA_SIZE > 0; Win32: DwmExtendFrameIntoClientArea) |
 | `MKFW_WIN_HIDDEN` | do not map / show the window at creation; caller must call `mkfw_window_show` when ready |
+| `MKFW_WIN_FLOATING` | keep the window above others (always-on-top) |
+| `MKFW_WIN_MAXIMIZED` | start maximized |
+| `MKFW_WIN_NO_FOCUS` | do not take input focus on creation / show |
+
+`x11_class_name` sets the X11 `WM_CLASS` instance and class name (used
+by the desktop for taskbar grouping and icon matching); it has no effect
+on Windows.
+
+Framebuffer format hints (`depth_bits`, `stencil_bits`, `samples`,
+`srgb`) select the pixel format of the default framebuffer:
+
+- `depth_bits` / `stencil_bits` of `0` mean "a depth/stencil buffer
+  of the driver's choosing" (`>=24` / `>=8` preferred).  Consistent
+  with the struct-wide 0-is-default rule, there is deliberately no way
+  to request an explicitly depthless config through this field.
+- `samples` of `0` or `1` means no multisampling; `N` requests an
+  N-sample MSAA default framebuffer.
+- `srgb` of `1` requests an sRGB-capable default framebuffer.
+- A nonzero hint acts as a hard minimum.  If the driver cannot satisfy
+  an explicit request, `mkfw_window_create` **fails** with a
+  descriptive error (the same no-silent-downgrade contract as
+  `gl_major` / `gl_minor`).  On Linux the hints feed the GLX FBConfig
+  search; on Win32 they require `WGL_ARB_pixel_format`
+  (`wglChoosePixelFormatARB`), which mkfw bootstraps automatically.
+
+Context flags (`context_flags`):
+
+| Flag | Effect |
+|------|--------|
+| `MKFW_CONTEXT_DEBUG` | request a debug context (GL_KHR_debug message stream, validation); for development |
+| `MKFW_CONTEXT_FORWARD_COMPAT` | request a forward-compatible context (deprecated functionality removed); only meaningful with a Core profile of GL 3.0+ |
+
+Context sharing (`share_window`): pass another window created against
+the same `mkfw_context` to share GL objects (textures, buffers, shader
+programs, ...) between the two contexts.  The two windows should use
+compatible pixel formats.  `0` disables sharing.
+
+```c
+struct mkfw_window_options main_opts = { .samples = 4, .srgb = 1, .context_flags = MKFW_CONTEXT_DEBUG };
+struct mkfw_window *main_w = mkfw_window_create(ctx, &main_opts);
+
+struct mkfw_window_options worker_opts = { .share_window = main_w };
+struct mkfw_window *worker_w = mkfw_window_create(ctx, &worker_opts);
+```
 
 GL profile selection:
 
@@ -249,6 +325,13 @@ typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_window *, int32_t width,
 typedef void (*mkfw_focus_callback_t)(struct mkfw_window *, uint8_t focused);
 typedef void (*mkfw_drop_callback_t)(uint32_t count, const char **paths);
 typedef void (*mkfw_window_state_callback_t)(struct mkfw_window *, uint8_t maximized, uint8_t minimized);
+typedef void (*mkfw_window_pos_callback_t)(struct mkfw_window *, int32_t x, int32_t y);
+typedef void (*mkfw_window_refresh_callback_t)(struct mkfw_window *);
+typedef void (*mkfw_content_scale_callback_t)(struct mkfw_window *, float scale);
+typedef void (*mkfw_cursor_enter_callback_t)(struct mkfw_window *, uint8_t entered);
+typedef void (*mkfw_cursor_pos_callback_t)(struct mkfw_window *, int32_t x, int32_t y);
+typedef void (*mkfw_close_callback_t)(struct mkfw_window *);
+typedef void (*mkfw_monitor_callback_t)(struct mkfw_context *ctx);
 typedef void (*mkfw_error_callback_t)(const char *message);
 ```
 
@@ -499,14 +582,35 @@ buffer.  The buffer is consumed during the call.
 ### `mkfw_window_set_fullscreen`
 
 ```c
-void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable);
+void mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable,
+                                int32_t monitor_index, struct mkfw_video_mode *mode);
 ```
 
-Toggle fullscreen.  On Linux uses `_NET_WM_STATE_FULLSCREEN`; on
-Win32 swaps to `WS_POPUP` and resizes to the monitor work area.
-Does not touch cursor visibility or lock; use
-`mkfw_window_set_cursor_visible` / `_set_cursor_locked`
-separately.
+Place the window fullscreen on a chosen monitor, or return it to
+windowed.
+
+- `enable` &mdash; non-zero to go fullscreen, `0` to restore the
+  previous windowed geometry (and the previous video mode, if one was
+  changed).
+- `monitor_index` &mdash; index into the `mkfw_get_monitors` list.
+  `< 0` (or out of range) targets the monitor that currently contains
+  the window.
+- `mode` &mdash; `0` for borderless fullscreen at the monitor's current
+  mode (no resolution change).  Otherwise an *exclusive* mode change to
+  the given mode, which must be one returned by `mkfw_get_video_modes`
+  for that monitor; the nearest refresh rate is chosen when several
+  modes share the resolution.
+
+The original mode is restored automatically when you call with
+`enable = 0` (and on window destruction).  To go borderless on the
+current monitor &mdash; the pre-0.2 behavior &mdash; pass
+`(win, 1, -1, 0)`.
+
+Linux uses `_NET_WM_STATE_FULLSCREEN` (plus `XRRSetCrtcConfig` for an
+exclusive mode); Win32 swaps to `WS_POPUP` (plus
+`ChangeDisplaySettingsEx` for an exclusive mode).  Does not touch cursor
+visibility or lock; use `mkfw_window_set_cursor_visible` /
+`_set_cursor_locked` separately.
 
 ### `mkfw_window_minimize` / `_maximize` / `_restore`
 
@@ -526,6 +630,17 @@ void mkfw_window_request_attention(struct mkfw_window *state);
 
 Flash the taskbar entry / decorate the window to alert the user.
 Linux: `_NET_WM_STATE_DEMANDS_ATTENTION`.  Win32: `FlashWindowEx`.
+
+### `mkfw_window_focus`
+
+```c
+void mkfw_window_focus(struct mkfw_window *state);
+```
+
+Raise the window and give it input focus.  Stronger than
+`mkfw_window_request_attention`, which only asks for attention without
+stealing focus.  Linux: `_NET_ACTIVE_WINDOW` + raise.  Win32:
+`SetForegroundWindow` + `SetFocus`.
 
 ### `mkfw_window_get_content_scale`
 
@@ -908,6 +1023,12 @@ void mkfw_window_set_framebuffer_size_callback (struct mkfw_window *, mkfw_frame
 void mkfw_window_set_focus_callback            (struct mkfw_window *, mkfw_focus_callback_t);
 void mkfw_window_set_drop_callback             (struct mkfw_window *, mkfw_drop_callback_t);
 void mkfw_window_set_state_callback            (struct mkfw_window *, mkfw_window_state_callback_t);
+void mkfw_window_set_pos_callback              (struct mkfw_window *, mkfw_window_pos_callback_t);
+void mkfw_window_set_refresh_callback          (struct mkfw_window *, mkfw_window_refresh_callback_t);
+void mkfw_window_set_content_scale_callback    (struct mkfw_window *, mkfw_content_scale_callback_t);
+void mkfw_window_set_cursor_enter_callback     (struct mkfw_window *, mkfw_cursor_enter_callback_t);
+void mkfw_window_set_cursor_pos_callback       (struct mkfw_window *, mkfw_cursor_pos_callback_t);
+void mkfw_window_set_close_callback            (struct mkfw_window *, mkfw_close_callback_t);
 ```
 
 ### Callback shapes
@@ -923,6 +1044,12 @@ void mkfw_window_set_state_callback            (struct mkfw_window *, mkfw_windo
 | focus | `(win, focused)` | window gained or lost keyboard focus |
 | drop | `(count, paths)` | file drag-and-drop; see [File drop](#file-drop) |
 | window state | `(win, maximized, minimized)` | maximize/restore/minimize transitions |
+| window pos | `(win, x, y)` | the window moved; position in screen coordinates |
+| window refresh | `(win)` | the window contents need redrawing (`Expose` / `WM_PAINT`); useful with `mkfw_wait_events` |
+| content scale | `(win, scale)` | the DPI scale changed (Win32 `WM_DPICHANGED`; Linux on display reconfigure) |
+| cursor enter | `(win, entered)` | the pointer entered (`1`) or left (`0`) the window |
+| cursor pos | `(win, x, y)` | absolute pointer position within the window changed |
+| close | `(win)` | the WM requested close; veto with `mkfw_window_set_should_close(win, 0)` |
 
 `user_data` is unused by mkfw; install your application's
 context pointer with `mkfw_window_set_user_data` and read it back
@@ -1022,6 +1149,39 @@ for(int32_t i = 0; i < n; ++i) {
 
 The cached list in `ctx->monitors[]` is updated by the same code
 path; the array is caller-owned and mkfw does not allocate.
+
+### `mkfw_get_video_modes`
+
+```c
+int32_t mkfw_get_video_modes(struct mkfw_context *ctx, int32_t monitor_index,
+                             struct mkfw_video_mode *out, int32_t max);
+```
+
+Fill up to `max` modes supported by monitor `monitor_index` (an index
+into the `mkfw_get_monitors` list) and return the number written.
+Duplicate resolution/refresh entries (e.g. the same mode at different
+bit depths) are collapsed.  Pass a mode to `mkfw_window_set_fullscreen`
+to make an exclusive resolution change.
+
+```c
+struct mkfw_video_mode modes[256];
+int32_t n = mkfw_get_video_modes(ctx, 0, modes, 256);
+```
+
+### `mkfw_set_monitor_callback`
+
+```c
+typedef void (*mkfw_monitor_callback_t)(struct mkfw_context *ctx);
+void mkfw_set_monitor_callback(struct mkfw_context *ctx, mkfw_monitor_callback_t cb);
+```
+
+Install a hotplug callback fired during event pumping when a display is
+connected, disconnected, or reconfigured.  mkfw refreshes
+`ctx->monitors[]` *before* invoking the callback, so re-read the list
+with `mkfw_get_monitors` and diff against your own copy to learn what
+changed.  Backed by `RRScreenChangeNotify` (Linux) and
+`WM_DISPLAYCHANGE` (Win32); the callback fires only when the cached set
+actually changes.
 
 ---
 

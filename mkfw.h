@@ -68,6 +68,23 @@ typedef void (*mkfw_framebuffer_callback_t)(struct mkfw_window *window, int32_t 
 typedef void (*mkfw_focus_callback_t)(struct mkfw_window *window, uint8_t focused);
 typedef void (*mkfw_drop_callback_t)(uint32_t count, const char **paths);
 typedef void (*mkfw_window_state_callback_t)(struct mkfw_window *window, uint8_t maximized, uint8_t minimized);
+typedef void (*mkfw_window_pos_callback_t)(struct mkfw_window *window, int32_t x, int32_t y);
+typedef void (*mkfw_window_refresh_callback_t)(struct mkfw_window *window);
+typedef void (*mkfw_content_scale_callback_t)(struct mkfw_window *window, float scale);
+typedef void (*mkfw_cursor_enter_callback_t)(struct mkfw_window *window, uint8_t entered);
+typedef void (*mkfw_cursor_pos_callback_t)(struct mkfw_window *window, int32_t x, int32_t y);
+
+/* Fired when the window manager asks the window to close (Linux
+ * WM_DELETE_WINDOW, Win32 WM_CLOSE).  mkfw has already set the
+ * should-close flag; veto the close by calling
+ * mkfw_window_set_should_close(window, 0) from the callback. */
+typedef void (*mkfw_close_callback_t)(struct mkfw_window *window);
+
+/* Monitor hotplug.  Fired (during event pumping) after mkfw has refreshed
+ * the context's monitor cache in response to a display change; re-read the
+ * list with mkfw_get_monitors and diff against your own copy if you care
+ * which monitor came or went. */
+typedef void (*mkfw_monitor_callback_t)(struct mkfw_context *ctx);
 
 /* Per-window state.  Owned by a mkfw_context; create with
  * mkfw_window_create and destroy with mkfw_window_destroy. */
@@ -97,6 +114,12 @@ struct mkfw_window {
 	mkfw_focus_callback_t focus_callback;
 	mkfw_drop_callback_t drop_callback;
 	mkfw_window_state_callback_t window_state_callback;
+	mkfw_window_pos_callback_t window_pos_callback;
+	mkfw_window_refresh_callback_t window_refresh_callback;
+	mkfw_content_scale_callback_t content_scale_callback;
+	mkfw_cursor_enter_callback_t cursor_enter_callback;
+	mkfw_cursor_pos_callback_t cursor_pos_callback;
+	mkfw_close_callback_t close_callback;
 
 	// Platform-specific state
 	void *platform;
@@ -162,12 +185,28 @@ static inline uint32_t mkfw_parse_version(const char *str, int32_t *major, int32
 
 struct mkfw_monitor {
 	char name[128];
-	int32_t x;
+	int32_t x;             // virtual-desktop position of the current mode
 	int32_t y;
+	int32_t width;         // current mode size, in pixels
+	int32_t height;
+	int32_t refresh_rate;  // current mode refresh, in Hz
+	uint8_t primary;
+	int32_t width_mm;      // physical size, in millimetres (0 if unknown)
+	int32_t height_mm;
+	float   content_scale; // DPI scale factor (1.0 = 96 dpi); 0 if unknown
+	int32_t work_x;        // usable area excluding taskbars / docks / panels
+	int32_t work_y;
+	int32_t work_width;
+	int32_t work_height;
+};
+
+/* A display mode a monitor can be set to.  Enumerate with
+ * mkfw_get_video_modes; a monitor's *current* mode is already exposed as
+ * the width / height / refresh_rate of its mkfw_monitor entry. */
+struct mkfw_video_mode {
 	int32_t width;
 	int32_t height;
 	int32_t refresh_rate;
-	uint8_t primary;
 };
 
 /* Library-level handle.  Created with mkfw_init, destroyed with
@@ -184,6 +223,8 @@ struct mkfw_context {
 
 	struct mkfw_monitor monitors[MKFW_MAX_MONITORS];
 	uint32_t monitor_count;
+
+	mkfw_monitor_callback_t monitor_callback;
 };
 
 /* Library init options.  Pass 0 to use defaults for every field. */
@@ -194,6 +235,18 @@ struct mkfw_options {
 /* Window-creation flags */
 #define MKFW_WIN_TRANSPARENT  (1u << 0)
 #define MKFW_WIN_HIDDEN       (1u << 1)
+#define MKFW_WIN_FLOATING     (1u << 2)  // always-on-top
+#define MKFW_WIN_MAXIMIZED    (1u << 3)  // start maximized
+#define MKFW_WIN_NO_FOCUS     (1u << 4)  // do not take input focus on create/show
+
+/* OpenGL context-creation flags (mkfw_window_options.context_flags).
+ *
+ * MKFW_CONTEXT_DEBUG requests a debug context (GL_KHR_debug message
+ * stream, validation); used during development.  MKFW_CONTEXT_FORWARD_COMPAT
+ * requests a forward-compatible context (deprecated functionality
+ * removed); only meaningful with a Core profile of GL 3.0 or later. */
+#define MKFW_CONTEXT_DEBUG          (1u << 0)
+#define MKFW_CONTEXT_FORWARD_COMPAT (1u << 1)
 
 /* Graphics-API selection for window creation.
  *
@@ -236,7 +289,24 @@ enum mkfw_gl_profile {
  *
  * gl_profile: defaults to MKFW_GL_PROFILE_CORE.  Code that relies
  * on the fixed-function pipeline must opt in with
- * MKFW_GL_PROFILE_COMPAT. */
+ * MKFW_GL_PROFILE_COMPAT.
+ *
+ * Framebuffer hints (depth_bits / stencil_bits / samples / srgb) select
+ * the default framebuffer's pixel format.  depth_bits / stencil_bits of
+ * 0 mean "a depth/stencil buffer of the driver's choosing" (>=24 / >=8
+ * preferred), matching the struct-wide 0-is-default contract; there is
+ * deliberately no way to request an explicitly depthless config here.
+ * samples of 0 or 1 means no multisampling; N requests an N-sample MSAA
+ * default framebuffer.  srgb of 1 requests an sRGB-capable framebuffer.
+ * An explicit hint that the driver cannot satisfy fails window creation
+ * with a descriptive error (same contract as gl_major / gl_minor); mkfw
+ * never silently downgrades a requested format.
+ *
+ * context_flags: MKFW_CONTEXT_* bitmask (debug / forward-compatible).
+ *
+ * share_window: pass another window created against the same context to
+ * share GL objects (textures, buffers, ...) between the two contexts.
+ * The two windows should use compatible pixel formats.  0 = no sharing. */
 struct mkfw_window_options {
 	uint32_t version;        // 0 = current
 	int32_t  width;          // 0 = 1280
@@ -247,6 +317,13 @@ struct mkfw_window_options {
 	uint32_t gl_profile;     // MKFW_GL_PROFILE_*; 0 = CORE
 	uint32_t flags;          // MKFW_WIN_*
 	uint32_t graphics_api;   // MKFW_GFX_*; 0 = MKFW_GFX_GL
+	int32_t  depth_bits;     // 0 = default (depth buffer present, >=24 preferred)
+	int32_t  stencil_bits;   // 0 = default (>=8 preferred)
+	int32_t  samples;        // 0/1 = no MSAA; N = N-sample MSAA
+	uint32_t srgb;           // 0 = don't care; 1 = sRGB-capable framebuffer
+	uint32_t context_flags;  // MKFW_CONTEXT_*
+	struct mkfw_window *share_window; // 0 = no sharing
+	const char *x11_class_name; // X11 WM_CLASS instance/class name; 0 = "mkfw". Linux only.
 };
 
 /* Native platform handles for callers that need to integrate with
@@ -325,6 +402,7 @@ struct mkfw_native_handles {
 MKFW_API struct mkfw_context *mkfw_init(struct mkfw_options *opts);
 MKFW_API void                 mkfw_shutdown(struct mkfw_context *ctx);
 MKFW_API int32_t              mkfw_get_monitors(struct mkfw_context *ctx, struct mkfw_monitor *out, int32_t max);
+MKFW_API int32_t              mkfw_get_video_modes(struct mkfw_context *ctx, int32_t monitor_index, struct mkfw_video_mode *out, int32_t max);
 MKFW_API uint32_t             mkfw_query_max_gl_version(int32_t *major, int32_t *minor);
 
 /* Event pumping */
@@ -356,13 +434,14 @@ MKFW_API void                 mkfw_window_set_resizable(struct mkfw_window *stat
 MKFW_API void                 mkfw_window_set_decorated(struct mkfw_window *state, int32_t decorated);
 MKFW_API void                 mkfw_window_set_opacity(struct mkfw_window *state, float opacity);
 MKFW_API void                 mkfw_window_set_icon(struct mkfw_window *state, int32_t width, int32_t height, const uint8_t *rgba);
-MKFW_API void                 mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable);
+MKFW_API void                 mkfw_window_set_fullscreen(struct mkfw_window *state, int32_t enable, int32_t monitor_index, struct mkfw_video_mode *mode);
 MKFW_API void                 mkfw_window_minimize(struct mkfw_window *state);
 MKFW_API void                 mkfw_window_maximize(struct mkfw_window *state);
 MKFW_API void                 mkfw_window_restore(struct mkfw_window *state);
 MKFW_API uint32_t             mkfw_window_is_minimized(struct mkfw_window *state);
 MKFW_API uint32_t             mkfw_window_is_maximized(struct mkfw_window *state);
 MKFW_API void                 mkfw_window_request_attention(struct mkfw_window *state);
+MKFW_API void                 mkfw_window_focus(struct mkfw_window *state);
 MKFW_API float                mkfw_window_get_content_scale(struct mkfw_window *state);
 
 /* Rendering / GL */
@@ -425,6 +504,7 @@ static inline uint32_t mkfw_window_get_modifiers(struct mkfw_window *state) {
 }
 
 static inline void mkfw_set_error_callback(mkfw_error_callback_t callback) { mkfw_error_callback = callback; }
+static inline void mkfw_set_monitor_callback(struct mkfw_context *ctx, mkfw_monitor_callback_t callback) { ctx->monitor_callback = callback; }
 static inline void mkfw_window_set_user_data(struct mkfw_window *state, void *user_data) { state->user_data = user_data; }
 static inline void *mkfw_window_get_user_data(struct mkfw_window *state) { return state->user_data; }
 static inline void mkfw_window_set_key_callback(struct mkfw_window *state, mkfw_key_callback_t callback) { state->key_callback = callback; }
@@ -436,6 +516,12 @@ static inline void mkfw_window_set_framebuffer_size_callback(struct mkfw_window 
 static inline void mkfw_window_set_focus_callback(struct mkfw_window *state, mkfw_focus_callback_t callback) { state->focus_callback = callback; }
 static inline void mkfw_window_set_drop_callback(struct mkfw_window *state, mkfw_drop_callback_t callback) { state->drop_callback = callback; mkfw_window_enable_drop(state, callback != 0); }
 static inline void mkfw_window_set_state_callback(struct mkfw_window *state, mkfw_window_state_callback_t callback) { state->window_state_callback = callback; }
+static inline void mkfw_window_set_pos_callback(struct mkfw_window *state, mkfw_window_pos_callback_t callback) { state->window_pos_callback = callback; }
+static inline void mkfw_window_set_refresh_callback(struct mkfw_window *state, mkfw_window_refresh_callback_t callback) { state->window_refresh_callback = callback; }
+static inline void mkfw_window_set_content_scale_callback(struct mkfw_window *state, mkfw_content_scale_callback_t callback) { state->content_scale_callback = callback; }
+static inline void mkfw_window_set_cursor_enter_callback(struct mkfw_window *state, mkfw_cursor_enter_callback_t callback) { state->cursor_enter_callback = callback; }
+static inline void mkfw_window_set_cursor_pos_callback(struct mkfw_window *state, mkfw_cursor_pos_callback_t callback) { state->cursor_pos_callback = callback; }
+static inline void mkfw_window_set_close_callback(struct mkfw_window *state, mkfw_close_callback_t callback) { state->close_callback = callback; }
 static inline uint32_t mkfw_window_is_key_pressed(struct mkfw_window *state, uint8_t key) { return state->keyboard_state[key] && !state->prev_keyboard_state[key]; }
 static inline uint32_t mkfw_window_was_key_released(struct mkfw_window *state, uint8_t key) { return !state->keyboard_state[key] && state->prev_keyboard_state[key]; }
 static inline uint32_t mkfw_window_is_scancode_down(struct mkfw_window *state, uint8_t scancode) { return state->scancode_state[scancode]; }

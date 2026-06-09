@@ -12,6 +12,10 @@ typedef void (*PFN_XRRFreeOutputInfo)(XRROutputInfo *);
 typedef XRRCrtcInfo *(*PFN_XRRGetCrtcInfo)(Display *, XRRScreenResources *, RRCrtc);
 typedef void (*PFN_XRRFreeCrtcInfo)(XRRCrtcInfo *);
 typedef void (*PFN_XRRFreeScreenResources)(XRRScreenResources *);
+typedef Bool (*PFN_XRRQueryExtension)(Display *, int *, int *);
+typedef void (*PFN_XRRSelectInput)(Display *, Window, int);
+typedef int (*PFN_XRRUpdateConfiguration)(XEvent *);
+typedef Status (*PFN_XRRSetCrtcConfig)(Display *, XRRScreenResources *, RRCrtc, Time, int, int, RRMode, Rotation, RROutput *, int);
 
 static PFN_XRRGetScreenResourcesCurrent mkfw_XRRGetScreenResourcesCurrent;
 static PFN_XRRGetOutputPrimary mkfw_XRRGetOutputPrimary;
@@ -20,6 +24,10 @@ static PFN_XRRFreeOutputInfo mkfw_XRRFreeOutputInfo;
 static PFN_XRRGetCrtcInfo mkfw_XRRGetCrtcInfo;
 static PFN_XRRFreeCrtcInfo mkfw_XRRFreeCrtcInfo;
 static PFN_XRRFreeScreenResources mkfw_XRRFreeScreenResources;
+static PFN_XRRQueryExtension mkfw_XRRQueryExtension;
+static PFN_XRRSelectInput mkfw_XRRSelectInput;
+static PFN_XRRUpdateConfiguration mkfw_XRRUpdateConfiguration;
+static PFN_XRRSetCrtcConfig mkfw_XRRSetCrtcConfig;
 
 #define XRRGetScreenResourcesCurrent mkfw_XRRGetScreenResourcesCurrent
 #define XRRGetOutputPrimary mkfw_XRRGetOutputPrimary
@@ -28,6 +36,10 @@ static PFN_XRRFreeScreenResources mkfw_XRRFreeScreenResources;
 #define XRRGetCrtcInfo mkfw_XRRGetCrtcInfo
 #define XRRFreeCrtcInfo mkfw_XRRFreeCrtcInfo
 #define XRRFreeScreenResources mkfw_XRRFreeScreenResources
+#define XRRQueryExtension mkfw_XRRQueryExtension
+#define XRRSelectInput mkfw_XRRSelectInput
+#define XRRUpdateConfiguration mkfw_XRRUpdateConfiguration
+#define XRRSetCrtcConfig mkfw_XRRSetCrtcConfig
 
 static void load_xrandr_functions(void) {
 	static uint8_t loaded = 0;
@@ -50,6 +62,10 @@ static void load_xrandr_functions(void) {
 	LOAD(XRRGetCrtcInfo);
 	LOAD(XRRFreeCrtcInfo);
 	LOAD(XRRFreeScreenResources);
+	LOAD(XRRQueryExtension);
+	LOAD(XRRSelectInput);
+	LOAD(XRRUpdateConfiguration);
+	LOAD(XRRSetCrtcConfig);
 	#undef LOAD
 
 	if(!mkfw_XRRGetScreenResourcesCurrent || !mkfw_XRRGetCrtcInfo) {

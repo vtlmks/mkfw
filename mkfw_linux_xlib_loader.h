@@ -46,6 +46,7 @@ typedef int (*PFN_XNextEvent)(Display *, XEvent *);
 typedef Display *(*PFN_XOpenDisplay)(const char *);
 typedef XIM (*PFN_XOpenIM)(Display *, XrmDatabase, char *, char *);
 typedef int (*PFN_XPending)(Display *);
+typedef int (*PFN_XRaiseWindow)(Display *, Window);
 typedef Bool (*PFN_XQueryExtension)(Display *, const char *, int *, int *, int *);
 typedef Bool (*PFN_XQueryPointer)(Display *, Window, Window *, Window *, int *, int *, int *, int *, unsigned int *);
 typedef int (*PFN_XResizeWindow)(Display *, Window, unsigned int, unsigned int);
@@ -111,6 +112,7 @@ static PFN_XNextEvent mkfw_XNextEvent;
 static PFN_XOpenDisplay mkfw_XOpenDisplay;
 static PFN_XOpenIM mkfw_XOpenIM;
 static PFN_XPending mkfw_XPending;
+static PFN_XRaiseWindow mkfw_XRaiseWindow;
 static PFN_XQueryExtension mkfw_XQueryExtension;
 static PFN_XQueryPointer mkfw_XQueryPointer;
 static PFN_XResizeWindow mkfw_XResizeWindow;
@@ -176,6 +178,7 @@ static PFN_Xutf8LookupString mkfw_Xutf8LookupString;
 #define XOpenDisplay mkfw_XOpenDisplay
 #define XOpenIM mkfw_XOpenIM
 #define XPending mkfw_XPending
+#define XRaiseWindow mkfw_XRaiseWindow
 #define XQueryExtension mkfw_XQueryExtension
 #define XQueryPointer mkfw_XQueryPointer
 #define XResizeWindow mkfw_XResizeWindow
@@ -255,6 +258,7 @@ static void load_x11_functions(void) {
 	LOAD(XOpenDisplay);
 	LOAD(XOpenIM);
 	LOAD(XPending);
+	LOAD(XRaiseWindow);
 	LOAD(XQueryExtension);
 	LOAD(XQueryPointer);
 	LOAD(XResizeWindow);
