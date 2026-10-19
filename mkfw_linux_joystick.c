@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -59,7 +60,6 @@ static struct mkfw_joystick_linux_pad mkfw_joystick_linux[MKFW_JOYSTICK_MAX_PADS
 static int mkfw_inotify_fd = -1;
 static int mkfw_inotify_wd = -1;
 static uint8_t mkfw_joystick_initialized;
-static int mkfw_joystick_rescan_countdown;
 
 #define MKFW_JOYSTICK_BIT_TEST(array, bit) \
 	((array[(bit) / (sizeof(unsigned long) * 8)] >> ((bit) % (sizeof(unsigned long) * 8))) & 1UL)
@@ -248,7 +248,8 @@ static void mkfw_joystick_try_open(const char *devpath) {
 	static const int btn_codes[] = {
 		BTN_SOUTH, BTN_EAST, BTN_C, BTN_NORTH, BTN_WEST, BTN_Z,
 		BTN_TL, BTN_TR, BTN_TL2, BTN_TR2,
-		BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR
+		BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR,
+		KEY_MENU
 	};
 
 	pad->button_count = 0;
@@ -337,7 +338,7 @@ MKFW_API void mkfw_joystick_init(void) {
 	/* Set up inotify for hotplug */
 	mkfw_inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	if(mkfw_inotify_fd >= 0) {
-		mkfw_inotify_wd = inotify_add_watch(mkfw_inotify_fd, "/dev/input", IN_CREATE | IN_DELETE);
+		mkfw_inotify_wd = inotify_add_watch(mkfw_inotify_fd, "/dev/input", IN_CREATE | IN_ATTRIB | IN_DELETE);
 	}
 
 	mkfw_joystick_scan_devices();
@@ -387,11 +388,9 @@ static void mkfw_joystick_check_hotplug(void) {
 			char path[MKFW_JOYSTICK_DEVPATH_LEN];
 			snprintf(path, sizeof(path), "/dev/input/%s", event->name);
 
-			if(event->mask & IN_CREATE) {
-				/* Device file may not be ready yet (udev permissions).
-				   Try now, and schedule rescans for the next ~1 second. */
+			if(event->mask & (IN_CREATE | IN_ATTRIB)) {
+				// NOTE(peter): udev permission changes retry this node without rescanning unrelated devices.
 				mkfw_joystick_try_open(path);
-				mkfw_joystick_rescan_countdown = 60;
 			} else if(event->mask & IN_DELETE) {
 				int slot = mkfw_joystick_find_by_devpath(path);
 				if(slot >= 0) {
@@ -414,13 +413,6 @@ MKFW_API void mkfw_joystick_update(void) {
 	}
 
 	mkfw_joystick_check_hotplug();
-
-	/* Retry device scan after inotify CREATE events, since the device
-	   may not have been ready (permissions/initialization) on first try. */
-	if(mkfw_joystick_rescan_countdown > 0) {
-		mkfw_joystick_rescan_countdown--;
-		mkfw_joystick_scan_devices();
-	}
 
 	for(int i = 0; i < MKFW_JOYSTICK_MAX_PADS; i++) {
 		struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[i];

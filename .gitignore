@@ -6,5 +6,10 @@ examples/audio_beep
 examples/multi_window
 tests/smoke
 tests/multi_window
+tests/joystick_hotplug
+tests/gamedb
+tests/standalone
+tests/standalone_library
+tests/audio_alsa
 tools/gen_gl_loader.py
 tools/gl.xml

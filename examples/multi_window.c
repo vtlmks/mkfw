@@ -8,6 +8,9 @@
 
 #include <stdio.h>
 
+#define MKFW_GL_REQUIRED(X) \
+	X(glClear) \
+	X(glClearColor)
 #include "../mkfw_gl_loader.h"
 #include "../mkfw.h"
 

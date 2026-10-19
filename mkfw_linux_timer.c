@@ -5,6 +5,7 @@
 // mode it is compiled standalone; the include below pulls in the
 // public types and MKFW_API macro.
 #include "mkfw_timer.h"
+#include <stdlib.h>
 
 #include <time.h>
 #include <unistd.h>
@@ -69,10 +70,11 @@ static int32_t mkfw_futex_wake(int32_t *addr) {
 
 // [=]===^=[ mkfw_timer_thread_func ]=============================================================[=]
 static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
-	struct mkfw_timer_handle *t = (struct mkfw_timer_handle *)arg;
+	struct mkfw_timer_handle *t = arg;
 
 	while(__atomic_load_n(&t->running, __ATOMIC_ACQUIRE)) {
 		struct timespec now;
+
 		clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 
 #ifdef MKFW_TIMER_DEBUG
@@ -98,6 +100,7 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 		if(spin) {
 			while(clock_gettime(CLOCK_MONOTONIC_RAW, &now), mkfw_timespec_diff_ns(&t->next_deadline, &now) > 0) {
 				mkfw_cpu_yield();
+
 			}
 		}
 
@@ -107,23 +110,30 @@ static MKFW_THREAD_FUNC(mkfw_timer_thread_func, arg) {
 #ifdef MKFW_TIMER_DEBUG
 		if(t->last_wait_start.tv_sec) {
 			int64_t overshoot_ns = mkfw_timespec_diff_ns(&now, &t->next_deadline);
+
 			if(overshoot_ns < 0) {
 				overshoot_ns = 0;
+
 			}
 
 			if(remaining_after_sleep_ns >= 0) {
 				mkfw_error("[DEBUG] Woke up with %ld ns left. Overshoot: %5ld ns", remaining_after_sleep_ns, overshoot_ns);
+
 			} else {
 				mkfw_error("[DEBUG] No sleep. Overshoot: %ld ns", overshoot_ns);
+
 			}
 		}
+
 		t->last_wait_start = now;
 #endif
 
-		mkfw_timespec_add_ns(&t->next_deadline, t->interval_ns);
+		mkfw_timespec_add_ns(&t->next_deadline, __atomic_load_n(&t->interval_ns, __ATOMIC_ACQUIRE));
+
 	}
 
 	return 0;
+
 }
 
 // [=]===^=[ mkfw_timer_create ]=====================================================================[=]
@@ -161,8 +171,10 @@ MKFW_API uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 MKFW_API void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
 	if(!t) {
 		return;
+
 	}
-	t->interval_ns = interval_ns;
+	__atomic_store_n(&t->interval_ns, interval_ns, __ATOMIC_RELEASE);
+
 }
 
 // [=]===^=[ mkfw_timer_set_spin ]================================================================[=]

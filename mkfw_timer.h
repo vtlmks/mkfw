@@ -1,19 +1,16 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 //
-// mkfw timer subsystem.  Include this header in addition to mkfw.h
-// to use the high-precision sleep-and-spin timer.  The implementation
-// is unity-built alongside the application; no separate compilation
-// required.
-//
-//   #include "mkfw.h"
-//   #include "mkfw_timer.h"
+// Standalone periodic timer; include this header directly.
+// Linux links pthread; Windows links winmm and avrt.
 
 #pragma once
 
 #include <stdint.h>
 
-#include "mkfw.h"
+#include "mkfw_base.h"
+#include "mkfw_error.h"
+#include "mkfw_thread.h"
 
 struct mkfw_timer_handle;
 

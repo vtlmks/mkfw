@@ -10,48 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mkfw_base.h"
+#include "mkfw_error.h"
+#include "mkfw_thread.h"
 #include "mkfw_keys.h"
-
-/* Public-API linkage macros.
- *
- *   MKFW_API marks functions; MKFW_VAR marks the cross-TU variables
- *   that the inline helpers in this header (and in companion
- *   subsystem headers) reference.
- *
- *   Default (header-only / unity build):    MKFW_API == MKFW_VAR == static
- *     The platform .c is #included from this header; every public
- *     symbol is file-scope in the consumer's translation unit.
- *
- *   Static library build:                   MKFW_API == MKFW_VAR == extern
- *     Define MKFW_BUILD_LIBRARY when compiling the .c files into a
- *     static .a / .lib.  Consumers link against the archive and
- *     reference the public symbols via the header declarations.
- *     The library .c files each provide the storage for their
- *     MKFW_VAR variables in a gated block.
- *
- *   Shared library build (Windows DLL):     MKFW_API == __declspec(dllexport)
- *     Define MKFW_BUILD_SHARED when compiling the DLL.
- *
- *   Shared library consumer (Windows DLL):  MKFW_API == __declspec(dllimport)
- *     Define MKFW_USE_SHARED when including this header from a TU
- *     that links against the import library.
- *
- * Internal helpers (file-scope to one .c) stay marked `static`
- * regardless of mode.
- */
-#if defined(MKFW_BUILD_SHARED) && defined(_WIN32)
-   #define MKFW_API __declspec(dllexport)
-   #define MKFW_VAR __declspec(dllexport) extern
-#elif defined(MKFW_USE_SHARED) && defined(_WIN32)
-   #define MKFW_API __declspec(dllimport)
-   #define MKFW_VAR __declspec(dllimport) extern
-#elif defined(MKFW_BUILD_LIBRARY)
-   #define MKFW_API extern
-   #define MKFW_VAR extern
-#else
-   #define MKFW_API static
-   #define MKFW_VAR static
-#endif
 
 /* Forward declarations */
 struct mkfw_context;
@@ -127,34 +89,6 @@ struct mkfw_window {
 	// User data (for application use)
 	void *user_data;
 };
-
-/* Error reporting.
- *
- * mkfw never writes to stdout/stderr.  Errors surface through two
- * channels that are populated together:
- *
- *   - A thread-local buffer holding the last error message, read via
- *     mkfw_get_last_error() (returns 0 if no error has been recorded
- *     on this thread, or after mkfw_clear_last_error()).
- *   - An optional user callback installed with mkfw_set_error_callback().
- *
- * mkfw_error() is internal and not part of the public API surface,
- * but is declared here because the inline platform .c is included
- * into the same translation unit.  All sites that report failure
- * call mkfw_error() with a printf-style format string. */
-typedef void (*mkfw_error_callback_t)(const char *message);
-MKFW_VAR mkfw_error_callback_t mkfw_error_callback;
-
-// The per-thread last-error storage lives in the platform .c file
-// (Win32 TLS API on Windows, __thread on Linux).  Going through Win32
-// TLS on MinGW avoids pulling in libwinpthread-1.dll, which GCC's
-// __thread brings in via emutls under the posix threading model, and
-// also avoids __declspec(thread), which modern MinGW GCC ignores
-// outright with a -Wattributes warning.
-__attribute__((format(printf, 1, 2)))
-MKFW_API void mkfw_error(const char *fmt, ...);
-MKFW_API const char *mkfw_get_last_error(void);
-MKFW_API void mkfw_clear_last_error(void);
 
 // sscanf("%d.%d") pulls in __isoc23_sscanf on GCC 13+, requiring glibc 2.38
 static inline uint32_t mkfw_parse_version(const char *str, int32_t *major, int32_t *minor) {
@@ -362,37 +296,6 @@ struct mkfw_native_handles {
 #endif
 #endif
 
-/* Thread abstraction */
-#ifdef _WIN32
-	typedef HANDLE mkfw_thread;
-	#define MKFW_THREAD_FUNC(name, arg) DWORD WINAPI name(LPVOID arg)
-
-	static inline mkfw_thread mkfw_thread_create(LPTHREAD_START_ROUTINE func, void *arg) {
-		return CreateThread(0, 0, func, arg, 0, 0);
-	}
-
-	static inline void mkfw_thread_join(mkfw_thread t) {
-		WaitForSingleObject(t, INFINITE);
-		CloseHandle(t);
-	}
-#elif defined(__linux__)
-	#include <pthread.h>
-	typedef pthread_t mkfw_thread;
-	#define MKFW_THREAD_FUNC(name, arg) void *name(void *arg)
-
-	static inline mkfw_thread mkfw_thread_create(void *(*func)(void *), void *arg) {
-		pthread_t t;
-		if(pthread_create(&t, 0, func, arg)) {
-			return 0;
-		}
-		return t;
-	}
-
-	static inline void mkfw_thread_join(mkfw_thread t) {
-		pthread_join(t, 0);
-	}
-#endif
-
 /* Forward declarations of every MKFW_API function defined in the
  * platform .c.  In unity mode the .c above already declared them via
  * its definitions; in library mode these are the only declarations
@@ -503,7 +406,6 @@ static inline uint32_t mkfw_window_get_modifiers(struct mkfw_window *state) {
 		 | (state->keyboard_state[MKFW_KEY_RSUPER] ? MKFW_MOD_RSUPER : 0);
 }
 
-static inline void mkfw_set_error_callback(mkfw_error_callback_t callback) { mkfw_error_callback = callback; }
 static inline void mkfw_set_monitor_callback(struct mkfw_context *ctx, mkfw_monitor_callback_t callback) { ctx->monitor_callback = callback; }
 static inline void mkfw_window_set_user_data(struct mkfw_window *state, void *user_data) { state->user_data = user_data; }
 static inline void *mkfw_window_get_user_data(struct mkfw_window *state) { return state->user_data; }

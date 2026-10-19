@@ -21,6 +21,10 @@
 #include <stdint.h>
 #include <math.h>
 
+#define MKFW_GL_REQUIRED(X) \
+	X(glClear) \
+	X(glClearColor) \
+	X(glViewport)
 #include "../mkfw_gl_loader.h"
 #include "../mkfw.h"
 

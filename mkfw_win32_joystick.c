@@ -7,6 +7,8 @@
 // variable declarations.
 #include "mkfw_joystick.h"
 
+#include <stdio.h>
+#include <windows.h>
 #include <xinput.h>
 
 /* Cross-TU storage: declared as MKFW_VAR in mkfw_joystick.h.  In unity

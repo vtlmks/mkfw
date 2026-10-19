@@ -51,6 +51,30 @@ changes will ship with a proper migration note.
 | `mkfw_audio.h` | Audio | Low-latency callback-based audio output (WASAPI / ALSA) |
 | `mkfw_timer.h` | Timer | High-precision timing with sleep+spin strategy |
 
+## Standalone subsystems
+
+Audio, timers, threads, gamepads, and the GL loader can be used independently
+of windowing. Include the subsystem header directly; `mkfw.h` is optional.
+The default unity build includes the required implementation automatically.
+
+| Header | Linux libraries | Windows libraries |
+|--------|-----------------|-------------------|
+| `mkfw_audio.h` | `-lpthread -ldl` | `-lole32 -lavrt` |
+| `mkfw_timer.h` | `-lpthread` | `-lwinmm -lavrt` |
+| `mkfw_thread.h` | `-lpthread` | none |
+| `mkfw_joystick.h` | none | `-lxinput1_4` |
+| `mkfw_gl_loader.h` | `-ldl` | `-lopengl32` |
+
+Audio records a fixed error message and native backend code, available through
+`mkfw_get_last_error()` and `mkfw_get_last_error_code()`. It writes no output
+and does not require printf formatting. Failure to obtain real-time priority
+leaves playback running at normal priority.
+
+For separate compilation, define `MKFW_BUILD_LIBRARY` in the implementation
+and consumer translation units. Compile `mkfw_error.c` once, plus the platform
+source for each subsystem used. Threads and the GL loader remain header-only.
+The `MKFW_GL_REQUIRED(X)` function selection described below remains available.
+
 ## Platforms
 
 | Platform | Window System | GL Context | Input |
@@ -251,15 +275,17 @@ python3 tools/gen_joystick_gamedb.py --from-file gamecontrollerdb.txt
 The script only touches the text between the `BEGIN GENERATED
 gamedb` / `END GENERATED gamedb` markers inside
 `mkfw_joystick_gamedb.h`; the button/axis enums and file header
-are preserved.  Entries are filtered to `platform:Linux` and
-`platform:Windows` (mkfw's targets), deduplicated by GUID +
-platform, and emitted as one big C string literal.
+are preserved. Linux entries are deduplicated by vendor/product ID,
+keeping the first mapping, and emitted as fixed records with one byte
+per button or axis binding. The SDL text parser is no longer included
+in applications. Windows uses the fixed XInput mapping and needs no
+database records.
 
 ## OpenGL function loader
 
-`mkfw_gl_loader.h` is an optional, freestanding OpenGL function loader included in the repository. It has no dependency on mkfw — you can use it in any project, or swap it for your own loader (or the full `GL/gl.h`).
+`mkfw_gl_loader.h` is an optional, freestanding OpenGL function loader included in the repository. It has no dependency on mkfw. You can use it in any project, or swap it for your own loader or the full `GL/gl.h`.
 
-It provides all GL types, constants, and function declarations up to OpenGL 4.6, version-gated at compile time. By default it includes everything up to GL 3.1. To select a different version, define `MKFW_GL_VERSION` before including:
+It provides all GL types, constants, and function declarations up to OpenGL 4.6, version-gated at compile time. By default it declares and loads every function through GL 3.1. To select a different version, define `MKFW_GL_VERSION` before including:
 
 ```c
 #define MKFW_GL_VERSION 46   // GL 4.6 (major*10 + minor)
@@ -269,6 +295,29 @@ It provides all GL types, constants, and function declarations up to OpenGL 4.6,
 // after mkfw_init + mkfw_window_show:
 mkfw_gl_loader();
 ```
+
+Applications that use only part of the selected OpenGL API can define
+`MKFW_GL_REQUIRED(X)` before including the loader. Each `X` entry names
+one function to declare and load:
+
+```c
+#define MKFW_GL_REQUIRED(X) \
+	X(glClear) \
+	X(glClearColor) \
+	X(glViewport)
+#include "mkfw_gl_loader.h"
+#include "mkfw.h"
+```
+
+`mkfw_gl_loader()` is called normally and loads only those three
+functions. This removes the other loader calls, function pointers, and
+symbol-name strings from the executable. If `MKFW_GL_REQUIRED` is not
+defined, the loader retains its original behavior and loads every function
+enabled by `MKFW_GL_VERSION`.
+
+The required list narrows the functions selected by `MKFW_GL_VERSION`; it
+does not override the version limit. Every OpenGL function called by the
+translation unit must appear in the list.
 
 ## Linking
 

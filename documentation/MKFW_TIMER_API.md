@@ -8,8 +8,9 @@ deadline tick rather than the OS scheduler's coarse granularity.
 
 ## Enabling
 
+The timer can be included directly without the windowing subsystem.
+
 ```c
-#include "mkfw.h"
 #include "mkfw_timer.h"
 ```
 

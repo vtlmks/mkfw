@@ -5,12 +5,14 @@
 // mode it is compiled standalone; the include below pulls in the
 // public types and MKFW_API macro.
 #include "mkfw_timer.h"
+#include <stdlib.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
 #include <avrt.h>
 #include <winternl.h>
+#include <immintrin.h>
 
 #define MKFW_SPIN_THRESHOLD_NS 1000000	// NOTE(peter): 1000us spin threshold for Windows
 
@@ -139,7 +141,8 @@ static DWORD WINAPI mkfw_timer_thread_func(LPVOID arg) {
 		t->last_wait_start_ns = now_ns;
 #endif
 
-		t->next_deadline_qpc += t->interval_qpc;
+		t->next_deadline_qpc += __atomic_load_n(&t->interval_qpc, __ATOMIC_ACQUIRE);
+
 	}
 
 	return 0;
@@ -201,9 +204,12 @@ MKFW_API uint32_t mkfw_timer_wait(struct mkfw_timer_handle *t) {
 MKFW_API void mkfw_timer_set_interval(struct mkfw_timer_handle *t, uint64_t interval_ns) {
 	if(!t) {
 		return;
+
 	}
+
 	t->interval_ns = interval_ns;
-	t->interval_qpc = (interval_ns * t->qpc_frequency + 500000000ULL) / 1000000000ULL;
+	__atomic_store_n(&t->interval_qpc, (interval_ns * t->qpc_frequency + 500000000ULL) / 1000000000ULL, __ATOMIC_RELEASE);
+
 }
 
 // [=]===^=[ mkfw_timer_set_spin ]================================================================[=]

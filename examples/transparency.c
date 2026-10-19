@@ -13,6 +13,19 @@
 #include <stdint.h>
 #include <math.h>
 
+#define MKFW_GL_REQUIRED(X) \
+	X(glBegin) \
+	X(glBlendFunc) \
+	X(glClear) \
+	X(glClearColor) \
+	X(glColor4f) \
+	X(glEnable) \
+	X(glEnd) \
+	X(glLoadIdentity) \
+	X(glMatrixMode) \
+	X(glOrtho) \
+	X(glVertex2f) \
+	X(glViewport)
 #include "../mkfw_gl_loader.h"
 
 #include "../mkfw.h"

@@ -492,9 +492,12 @@ python3 tools/gen_joystick_gamedb.py --from-file gamecontrollerdb.txt
 
 The script replaces only the text between the
 `BEGIN GENERATED gamedb` / `END GENERATED gamedb` marker
-comments in the header.  Entries are filtered to
-`platform:Linux` / `platform:Windows`, deduplicated by GUID +
-platform, and emitted as one big C string literal.
+comments in the header. Linux entries are deduplicated by
+vendor/product ID, keeping the first mapping. Each record stores
+the two IDs and one byte per standardized button or axis binding.
+Windows uses the fixed XInput mapping, so its SDL records are omitted.
+Bindings outside the packed index range, and hats other than hat 0,
+are left unmapped.
 
 A monthly GitHub Action
 ([`.github/workflows/gamedb-refresh.yml`](../.github/workflows/gamedb-refresh.yml))

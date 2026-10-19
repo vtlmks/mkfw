@@ -27,8 +27,16 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Regenerate gamedb
+      - name: Test packed gamedb generator
+        run: python3 tests/test_gamedb_generator.py
+
+      - name: Regenerate packed gamedb
         run: python3 tools/gen_joystick_gamedb.py
+
+      - name: Validate packed mappings
+        run: |
+          gcc -std=c99 -O2 -Wall -Wextra -Werror tests/gamedb.c -lm -lpthread -ldl -o /tmp/mkfw-gamedb-test
+          /tmp/mkfw-gamedb-test
 
       - name: Commit and tag if changed
         run: |

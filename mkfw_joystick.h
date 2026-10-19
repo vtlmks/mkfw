@@ -1,21 +1,14 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 //
-// mkfw joystick subsystem.  Include this header in addition to
-// mkfw.h to use gamepad input.  The implementation is unity-built
-// alongside the application; no separate compilation required.
-//
-//   #include "mkfw.h"
-//   #include "mkfw_joystick.h"
-//
-// Define MKFW_JOYSTICK_GAMEDB before including to also pull in the
-// SDL GameController DB mappings for normalised button / axis names.
+// Standalone gamepad input; define MKFW_JOYSTICK_GAMEDB to enable SDL mappings.
 
 #pragma once
 
 #include <stdint.h>
 
-#include "mkfw.h"
+#include "mkfw_base.h"
+#include <string.h>
 
 #define MKFW_JOYSTICK_MAX_PADS    4
 #define MKFW_JOYSTICK_MAX_BUTTONS 32

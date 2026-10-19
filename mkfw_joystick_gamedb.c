@@ -1,364 +1,70 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 
-// In unity mode this file is #included from mkfw_joystick.h (which has
-// already pulled in mkfw_joystick.h itself).  In library mode the file
-// is compiled standalone; the includes below pull in the public
-// joystick types and MKFW_API macro.
 #include "mkfw_joystick.h"
 
 #include "mkfw_joystick_gamedb.h"
 #include <string.h>
 
-/* Mapping source types */
-#define MKFW_GAMEDB_SRC_NONE   0
-#define MKFW_GAMEDB_SRC_BUTTON 1
-#define MKFW_GAMEDB_SRC_AXIS   2
-#define MKFW_GAMEDB_SRC_HAT    3
-
-struct mkfw_gamedb_bind {
-	uint8_t type;       /* MKFW_GAMEDB_SRC_* */
-	int8_t index;       /* button/axis index, or hat index */
-	int8_t hat_mask;    /* hat bitmask: 1=up, 2=right, 4=down, 8=left */
-	int8_t axis_invert; /* 1 = negate axis value */
-};
+#define MKFW_GAMEDB_TYPE_MASK 0xc0
+#define MKFW_GAMEDB_SRC_BUTTON 0x40
+#define MKFW_GAMEDB_SRC_AXIS 0x80
+#define MKFW_GAMEDB_SRC_HAT 0xc0
+#define MKFW_GAMEDB_AXIS_INVERT 0x20
+#define MKFW_GAMEDB_INDEX_MASK 0x1f
 
 struct mkfw_gamedb_mapping {
+	uint16_t vendor_id;
+	uint16_t product_id;
 	uint8_t valid;
-	struct mkfw_gamedb_bind buttons[MKFW_GAMEPAD_BUTTON_LAST];
-	struct mkfw_gamedb_bind axes[MKFW_GAMEPAD_AXIS_LAST];
+	uint8_t buttons[MKFW_GAMEPAD_BUTTON_LAST];
+	uint8_t axes[MKFW_GAMEPAD_AXIS_LAST];
 };
 
 static struct mkfw_gamedb_mapping mkfw_gamedb_maps[MKFW_JOYSTICK_MAX_PADS];
 
-// [=]===^=[ mkfw_gamedb_parse_int ]==============================================================[=]
-static int mkfw_gamedb_parse_int(const char **p) {
-	int val = 0;
-	while(**p >= '0' && **p <= '9') {
-		val = val * 10 + (**p - '0');
-		(*p)++;
-	}
-	return val;
-}
-
-// [=]===^=[ mkfw_gamedb_hex_digit ]==============================================================[=]
-static int mkfw_gamedb_hex_digit(char c) {
-	if(c >= '0' && c <= '9') {
-		return c - '0';
-	}
-	if(c >= 'a' && c <= 'f') {
-		return c - 'a' + 10;
-	}
-	if(c >= 'A' && c <= 'F') {
-		return c - 'A' + 10;
-	}
-	return -1;
-}
-
-// [=]===^=[ mkfw_gamedb_guid_u16 ]===============================================================[=]
-static uint16_t mkfw_gamedb_guid_u16(const char *guid, int byte_offset) {
-	int pos = byte_offset * 2;
-	int lo_hi = mkfw_gamedb_hex_digit(guid[pos]);
-	int lo_lo = mkfw_gamedb_hex_digit(guid[pos + 1]);
-	int hi_hi = mkfw_gamedb_hex_digit(guid[pos + 2]);
-	int hi_lo = mkfw_gamedb_hex_digit(guid[pos + 3]);
-	if(lo_hi < 0 || lo_lo < 0 || hi_hi < 0 || hi_lo < 0) {
-		return 0;
-	}
-	uint16_t lo = (uint16_t)((lo_hi << 4) | lo_lo);
-	uint16_t hi = (uint16_t)((hi_hi << 4) | hi_lo);
-	return (hi << 8) | lo;
-}
-
-// [=]===^=[ mkfw_gamedb_parse_source ]===========================================================[=]
-static struct mkfw_gamedb_bind mkfw_gamedb_parse_source(const char *src) {
-	struct mkfw_gamedb_bind bind = {0};
-	const char *p = src;
-
-	int invert = 0;
-	if(*p == '+') { p++; }
-	else if(*p == '-') { invert = 1; p++; }
-
-	if(*p == 'b') {
-		/* Button: b0, b1, etc. */
-		p++;
-		bind.type = MKFW_GAMEDB_SRC_BUTTON;
-		bind.index = (int8_t)mkfw_gamedb_parse_int(&p);
-	} else if(*p == 'a') {
-		/* Axis: a0, a1, etc. */
-		p++;
-		bind.type = MKFW_GAMEDB_SRC_AXIS;
-		bind.index = (int8_t)mkfw_gamedb_parse_int(&p);
-		bind.axis_invert = (int8_t)invert;
-	} else if(*p == 'h') {
-		/* Hat: h0.1, h0.2, h0.4, h0.8 */
-		p++;
-		bind.type = MKFW_GAMEDB_SRC_HAT;
-		bind.index = (int8_t)mkfw_gamedb_parse_int(&p);
-		if(*p == '.') {
-			p++;
-			bind.hat_mask = (int8_t)mkfw_gamedb_parse_int(&p);
-		}
-	}
-
-	return bind;
-}
-
-// [=]===^=[ mkfw_gamedb_target_id ]==============================================================[=]
-static int mkfw_gamedb_target_id(const char *name, int len, int *is_axis) {
-	*is_axis = 0;
-
-	/* Buttons */
-	if(len == 1 && name[0] == 'a') {
-		return MKFW_GAMEPAD_A;
-	}
-	if(len == 1 && name[0] == 'b') {
-		return MKFW_GAMEPAD_B;
-	}
-	if(len == 1 && name[0] == 'x') {
-		return MKFW_GAMEPAD_X;
-	}
-	if(len == 1 && name[0] == 'y') {
-		return MKFW_GAMEPAD_Y;
-	}
-	if(len == 4 && memcmp(name, "back", 4) == 0) {
-		return MKFW_GAMEPAD_BACK;
-	}
-	if(len == 5 && memcmp(name, "start", 5) == 0) {
-		return MKFW_GAMEPAD_START;
-	}
-	if(len == 5 && memcmp(name, "guide", 5) == 0) {
-		return MKFW_GAMEPAD_GUIDE;
-	}
-	if(len == 12 && memcmp(name, "leftshoulder", 12) == 0) {
-		return MKFW_GAMEPAD_LEFT_BUMPER;
-	}
-	if(len == 13 && memcmp(name, "rightshoulder", 13) == 0) {
-		return MKFW_GAMEPAD_RIGHT_BUMPER;
-	}
-	if(len == 9 && memcmp(name, "leftstick", 9) == 0) {
-		return MKFW_GAMEPAD_LEFT_THUMB;
-	}
-	if(len == 10 && memcmp(name, "rightstick", 10) == 0) {
-		return MKFW_GAMEPAD_RIGHT_THUMB;
-	}
-	if(len == 4 && memcmp(name, "dpup", 4) == 0) {
-		return MKFW_GAMEPAD_DPAD_UP;
-	}
-	if(len == 6 && memcmp(name, "dpdown", 6) == 0) {
-		return MKFW_GAMEPAD_DPAD_DOWN;
-	}
-	if(len == 6 && memcmp(name, "dpleft", 6) == 0) {
-		return MKFW_GAMEPAD_DPAD_LEFT;
-	}
-	if(len == 7 && memcmp(name, "dpright", 7) == 0) {
-		return MKFW_GAMEPAD_DPAD_RIGHT;
-	}
-
-	/* Axes */
-	if(len == 5 && memcmp(name, "leftx", 5) == 0) {
-		*is_axis = 1;
-		return MKFW_GAMEPAD_AXIS_LEFT_X;
-	}
-	if(len == 5 && memcmp(name, "lefty", 5) == 0) {
-		*is_axis = 1;
-		return MKFW_GAMEPAD_AXIS_LEFT_Y;
-	}
-	if(len == 6 && memcmp(name, "rightx", 6) == 0) {
-		*is_axis = 1;
-		return MKFW_GAMEPAD_AXIS_RIGHT_X;
-	}
-	if(len == 6 && memcmp(name, "righty", 6) == 0) {
-		*is_axis = 1;
-		return MKFW_GAMEPAD_AXIS_RIGHT_Y;
-	}
-	if(len == 11 && memcmp(name, "lefttrigger", 11) == 0) {
-		*is_axis = 1;
-		return MKFW_GAMEPAD_AXIS_LEFT_TRIGGER;
-	}
-	if(len == 12 && memcmp(name, "righttrigger", 12) == 0) {
-		*is_axis = 1;
-		return MKFW_GAMEPAD_AXIS_RIGHT_TRIGGER;
-	}
-
-	return -1;
-}
-
 // [=]===^=[ mkfw_gamedb_lookup ]=================================================================[=]
-static void mkfw_gamedb_lookup(int pad_index) {
+static void mkfw_gamedb_lookup(uint32_t pad_index) {
 	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
 	struct mkfw_gamedb_mapping *map = &mkfw_gamedb_maps[pad_index];
-
 	memset(map, 0, sizeof(*map));
 
 #ifdef _WIN32
-	/* XInput always has a standardized layout - hardcode 1:1 mapping.
-	   Button indices match mkfw_win32_joystick.c layout exactly. */
-	map->valid = 1;
-
-	/* Buttons -> raw button indices */
-	map->buttons[MKFW_GAMEPAD_A]            = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 0, 0, 0};
-	map->buttons[MKFW_GAMEPAD_B]            = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 1, 0, 0};
-	map->buttons[MKFW_GAMEPAD_X]            = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 2, 0, 0};
-	map->buttons[MKFW_GAMEPAD_Y]            = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 3, 0, 0};
-	map->buttons[MKFW_GAMEPAD_LEFT_BUMPER]  = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 4, 0, 0};
-	map->buttons[MKFW_GAMEPAD_RIGHT_BUMPER] = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 5, 0, 0};
-	map->buttons[MKFW_GAMEPAD_BACK]         = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 6, 0, 0};
-	map->buttons[MKFW_GAMEPAD_START]        = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 7, 0, 0};
-	map->buttons[MKFW_GAMEPAD_LEFT_THUMB]   = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 8, 0, 0};
-	map->buttons[MKFW_GAMEPAD_RIGHT_THUMB]  = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 9, 0, 0};
-	map->buttons[MKFW_GAMEPAD_DPAD_UP]      = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 10, 0, 0};
-	map->buttons[MKFW_GAMEPAD_DPAD_DOWN]    = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 11, 0, 0};
-	map->buttons[MKFW_GAMEPAD_DPAD_LEFT]    = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 12, 0, 0};
-	map->buttons[MKFW_GAMEPAD_DPAD_RIGHT]   = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_BUTTON, 13, 0, 0};
-	map->buttons[MKFW_GAMEPAD_GUIDE]        = (struct mkfw_gamedb_bind){0, 0, 0, 0}; /* Not available via XInput */
-
-	/* Axes -> raw axis indices */
-	map->axes[MKFW_GAMEPAD_AXIS_LEFT_X]         = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_AXIS, 0, 0, 0};
-	map->axes[MKFW_GAMEPAD_AXIS_LEFT_Y]         = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_AXIS, 1, 0, 0};
-	map->axes[MKFW_GAMEPAD_AXIS_RIGHT_X]        = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_AXIS, 2, 0, 0};
-	map->axes[MKFW_GAMEPAD_AXIS_RIGHT_Y]        = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_AXIS, 3, 0, 0};
-	map->axes[MKFW_GAMEPAD_AXIS_LEFT_TRIGGER]    = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_AXIS, 4, 0, 0};
-	map->axes[MKFW_GAMEPAD_AXIS_RIGHT_TRIGGER]   = (struct mkfw_gamedb_bind){MKFW_GAMEDB_SRC_AXIS, 5, 0, 0};
-	return;
-#endif
-
-	/* Linux: search the DB by vendor:product from GUID */
-	uint16_t vendor = pad->vendor_id;
-	uint16_t product = pad->product_id;
-	if(vendor == 0 && product == 0) {
-		return;
-	}
-
-	const char *line = mkfw_gamecontrollerdb_data;
-	while(*line) {
-		/* Skip empty lines and comments */
-		if(*line == '\n' || *line == '#') {
-			while(*line && *line != '\n') {
-				line++;
-			}
-			if(*line == '\n') {
-				line++;
-			}
-			continue;
-		}
-
-		/* GUID is first 32 hex chars */
-		if(strlen(line) < 34) {
-			break;
-		}
-
-		/* Extract vendor (bytes 4-5) and product (bytes 8-9) from GUID */
-		uint16_t db_vendor = mkfw_gamedb_guid_u16(line, 4);
-		uint16_t db_product = mkfw_gamedb_guid_u16(line, 8);
-
-		if(db_vendor == vendor && db_product == product) {
-			/* Check platform tag */
-			const char *plat = strstr(line, "platform:");
-			if(plat) {
-				plat += 9;
-#ifdef __linux__
-				if(strncmp(plat, "Linux", 5) != 0) {
-					goto next_line;
-				}
-#elif _WIN32
-				if(strncmp(plat, "Windows", 7) != 0) {
-					goto next_line;
-				}
-#endif
-			}
-
-			/* Found a match. Skip GUID and name (after second comma) */
-			const char *p = line;
-			int commas = 0;
-			while(*p && commas < 2) {
-				if(*p == ',') {
-					commas++;
-				}
-				p++;
-			}
-
-			/* Parse mappings: target:source,target:source,... */
-			while(*p && *p != '\n') {
-				/* Find target name */
-				const char *target_start = p;
-				while(*p && *p != ':' && *p != ',' && *p != '\n') {
-					p++;
-				}
-				int target_len = (int)(p - target_start);
-
-				if(*p != ':') {
-					/* Skip non-mapping fields (like "platform:Linux") */
-					while(*p && *p != ',' && *p != '\n') {
-						p++;
-					}
-					if(*p == ',') {
-						p++;
-					}
-					continue;
-				}
-				p++; /* skip ':' */
-
-				/* Find source value */
-				const char *source_start = p;
-				while(*p && *p != ',' && *p != '\n') {
-					p++;
-				}
-				int source_len = (int)(p - source_start);
-				if(*p == ',') {
-					p++;
-				}
-
-				/* Skip platform tag */
-				if(target_len == 8 && memcmp(target_start, "platform", 8) == 0) {
-					continue;
-				}
-
-				/* Parse source */
-				char source_buf[32];
-				if(source_len >= (int)sizeof(source_buf)) {
-					continue;
-				}
-				memcpy(source_buf, source_start, source_len);
-				source_buf[source_len] = 0;
-
-				struct mkfw_gamedb_bind bind = mkfw_gamedb_parse_source(source_buf);
-
-				/* Map to target */
-				int is_axis = 0;
-				int id = mkfw_gamedb_target_id(target_start, target_len, &is_axis);
-				if(id >= 0) {
-					if(is_axis) {
-						map->axes[id] = bind;
-					} else {
-						map->buttons[id] = bind;
-					}
-				}
-			}
-
+	*map = (struct mkfw_gamedb_mapping){
+		.valid = 1,
+		.buttons = {0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x00, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d},
+		.axes = {0x80, 0x81, 0x82, 0x83, 0x84, 0x85}
+	};
+	map->vendor_id = pad->vendor_id;
+	map->product_id = pad->product_id;
+#else
+	for(size_t i = 0; i < sizeof(mkfw_gamecontrollerdb_data) / sizeof(mkfw_gamecontrollerdb_data[0]); ++i) {
+		if(mkfw_gamecontrollerdb_data[i].vendor_id == pad->vendor_id && mkfw_gamecontrollerdb_data[i].product_id == pad->product_id) {
+			memcpy(map->buttons, mkfw_gamecontrollerdb_data[i].buttons, sizeof(map->buttons));
+			memcpy(map->axes, mkfw_gamecontrollerdb_data[i].axes, sizeof(map->axes));
+			map->vendor_id = pad->vendor_id;
+			map->product_id = pad->product_id;
 			map->valid = 1;
 			return;
-		}
 
-next_line:
-		while(*line && *line != '\n') {
-			line++;
-		}
-		if(*line == '\n') {
-			line++;
 		}
 	}
+#endif
 }
 
 // [=]===^=[ mkfw_gamedb_ensure_mapping ]=========================================================[=]
-static void mkfw_gamedb_ensure_mapping(int pad_index) {
+static void mkfw_gamedb_ensure_mapping(uint32_t pad_index) {
 	struct mkfw_gamedb_mapping *map = &mkfw_gamedb_maps[pad_index];
-	if(!map->valid && mkfw_joystick_pads[pad_index].connected) {
+	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
+
+	if(pad->connected && (!map->valid || map->vendor_id != pad->vendor_id || map->product_id != pad->product_id)) {
 		mkfw_gamedb_lookup(pad_index);
+
 	}
-	/* Clear mapping when pad disconnects */
-	if(!mkfw_joystick_pads[pad_index].connected && map->valid) {
+
+	if(!pad->connected && map->valid) {
 		memset(map, 0, sizeof(*map));
+
 	}
 }
 
@@ -366,117 +72,165 @@ static void mkfw_gamedb_ensure_mapping(int pad_index) {
 MKFW_API uint32_t mkfw_gamepad_get_button(uint32_t pad_index, uint32_t gamepad_button) {
 	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
+
 	}
+
 	if(gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) {
 		return 0;
+
 	}
+
 	if(!mkfw_joystick_pads[pad_index].connected) {
 		return 0;
+
 	}
 
 	mkfw_gamedb_ensure_mapping(pad_index);
 	struct mkfw_gamedb_mapping *map = &mkfw_gamedb_maps[pad_index];
+
 	if(!map->valid) {
 		return 0;
+
 	}
 
-	struct mkfw_gamedb_bind *bind = &map->buttons[gamepad_button];
+	uint8_t bind = map->buttons[gamepad_button];
 	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
 
-	switch(bind->type) {
-	case MKFW_GAMEDB_SRC_BUTTON:
-		if(bind->index >= 0 && (uint32_t)bind->index < pad->button_count) {
-			return pad->buttons[bind->index];
-		}
-		return 0;
-	case MKFW_GAMEDB_SRC_AXIS:
-		if(bind->index >= 0 && (uint32_t)bind->index < pad->axis_count) {
-			float v = pad->axes[bind->index];
-			return (v > 0.5f || v < -0.5f) ? 1 : 0;
-		}
-		return 0;
-	case MKFW_GAMEDB_SRC_HAT:
-		/* Hat bits: 1=up, 2=right, 4=down, 8=left */
-		{
+	switch(bind & MKFW_GAMEDB_TYPE_MASK) {
+		case MKFW_GAMEDB_SRC_BUTTON: {
+			if((bind & MKFW_GAMEDB_INDEX_MASK) < pad->button_count) {
+				return pad->buttons[bind & MKFW_GAMEDB_INDEX_MASK];
+
+			}
+
+			return 0;
+
+		} break;
+
+		case MKFW_GAMEDB_SRC_AXIS: {
+			if((bind & MKFW_GAMEDB_INDEX_MASK) < pad->axis_count) {
+				float v = pad->axes[bind & MKFW_GAMEDB_INDEX_MASK];
+
+				return (v > 0.5f || v < -0.5f) ? 1 : 0;
+
+			}
+
+			return 0;
+
+		} break;
+
+		case MKFW_GAMEDB_SRC_HAT: {
 			uint8_t hat_state = 0;
+
 			if(pad->hat_y < -0.5f) {
 				hat_state |= 1;
+
 			}
+
 			if(pad->hat_x > 0.5f) {
 				hat_state |= 2;
+
 			}
+
 			if(pad->hat_y > 0.5f) {
 				hat_state |= 4;
+
 			}
+
 			if(pad->hat_x < -0.5f) {
 				hat_state |= 8;
+
 			}
-			return (hat_state & bind->hat_mask) ? 1 : 0;
-		}
+
+			return (hat_state & (bind & MKFW_GAMEDB_INDEX_MASK)) ? 1 : 0;
+
+		} break;
 	}
+
 	return 0;
+
 }
 
 // [=]===^=[ mkfw_gamepad_is_button_pressed ]========================================================[=]
 MKFW_API uint32_t mkfw_gamepad_is_button_pressed(uint32_t pad_index, uint32_t gamepad_button) {
 	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0;
+
 	}
+
 	if(gamepad_button >= MKFW_GAMEPAD_BUTTON_LAST) {
 		return 0;
+
 	}
+
 	if(!mkfw_joystick_pads[pad_index].connected) {
 		return 0;
+
 	}
 
 	mkfw_gamedb_ensure_mapping(pad_index);
 	struct mkfw_gamedb_mapping *map = &mkfw_gamedb_maps[pad_index];
+
 	if(!map->valid) {
 		return 0;
+
 	}
 
-	struct mkfw_gamedb_bind *bind = &map->buttons[gamepad_button];
+	uint8_t bind = map->buttons[gamepad_button];
 	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
 
-	if(bind->type == MKFW_GAMEDB_SRC_BUTTON) {
-		if(bind->index >= 0 && (uint32_t)bind->index < pad->button_count) {
-			return pad->buttons[bind->index] && !pad->prev_buttons[bind->index];
+	if((bind & MKFW_GAMEDB_TYPE_MASK) == MKFW_GAMEDB_SRC_BUTTON) {
+		if((bind & MKFW_GAMEDB_INDEX_MASK) < pad->button_count) {
+			return pad->buttons[bind & MKFW_GAMEDB_INDEX_MASK] && !pad->prev_buttons[bind & MKFW_GAMEDB_INDEX_MASK];
+
 		}
 	}
+
 	return 0;
+
 }
 
 // [=]===^=[ mkfw_gamepad_get_axis ]==================================================================[=]
 MKFW_API float mkfw_gamepad_get_axis(uint32_t pad_index, uint32_t gamepad_axis) {
 	if(pad_index >= MKFW_JOYSTICK_MAX_PADS) {
 		return 0.0f;
+
 	}
+
 	if(gamepad_axis >= MKFW_GAMEPAD_AXIS_LAST) {
 		return 0.0f;
+
 	}
+
 	if(!mkfw_joystick_pads[pad_index].connected) {
 		return 0.0f;
+
 	}
 
 	mkfw_gamedb_ensure_mapping(pad_index);
 	struct mkfw_gamedb_mapping *map = &mkfw_gamedb_maps[pad_index];
+
 	if(!map->valid) {
 		return 0.0f;
+
 	}
 
-	struct mkfw_gamedb_bind *bind = &map->axes[gamepad_axis];
+	uint8_t bind = map->axes[gamepad_axis];
 	struct mkfw_joystick_pad *pad = &mkfw_joystick_pads[pad_index];
 
-	if(bind->type == MKFW_GAMEDB_SRC_AXIS) {
-		if(bind->index >= 0 && (uint32_t)bind->index < pad->axis_count) {
-			float v = pad->axes[bind->index];
-			return bind->axis_invert ? -v : v;
+	if((bind & MKFW_GAMEDB_TYPE_MASK) == MKFW_GAMEDB_SRC_AXIS) {
+		if((bind & MKFW_GAMEDB_INDEX_MASK) < pad->axis_count) {
+			float v = pad->axes[bind & MKFW_GAMEDB_INDEX_MASK];
+			return bind & MKFW_GAMEDB_AXIS_INVERT ? -v : v;
+
 		}
-	} else if(bind->type == MKFW_GAMEDB_SRC_BUTTON) {
-		/* Button mapped to axis (e.g. triggers as buttons) */
-		if(bind->index >= 0 && (uint32_t)bind->index < pad->button_count) {
-			return pad->buttons[bind->index] ? 1.0f : 0.0f;
+	} else if((bind & MKFW_GAMEDB_TYPE_MASK) == MKFW_GAMEDB_SRC_BUTTON) {
+		if((bind & MKFW_GAMEDB_INDEX_MASK) < pad->button_count) {
+			return pad->buttons[bind & MKFW_GAMEDB_INDEX_MASK] ? 1.0f : 0.0f;
+
 		}
 	}
+
 	return 0.0f;
+
 }

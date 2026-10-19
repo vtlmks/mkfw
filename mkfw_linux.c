@@ -30,44 +30,6 @@
 #include "mkfw_linux_xrandr_loader.h"
 #include "mkfw_linux_xinput2_loader.h"
 
-/* Storage for the cross-TU variables declared MKFW_VAR in mkfw.h.
- * Provided only in library / shared builds; in unity mode the
- * static declaration in the header is also the definition. */
-#if defined(MKFW_BUILD_SHARED) || defined(MKFW_BUILD_LIBRARY)
-mkfw_error_callback_t           mkfw_error_callback;
-#endif
-
-// Per-thread last-error storage.  __thread on Linux/glibc lowers to
-// native ELF TLS with no extra runtime dependency, so we use it
-// directly.  These live at file scope so the slot is allocated by the
-// dynamic loader before main() and stays valid for the lifetime of
-// each thread that ever touches the error API.
-static __thread char    mkfw_linux_last_error_buf[512];
-static __thread uint8_t mkfw_linux_last_error_set;
-
-// [=]===^=[ mkfw_error ]=========================================================================[=]
-MKFW_API void mkfw_error(const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	vsnprintf(mkfw_linux_last_error_buf, sizeof(mkfw_linux_last_error_buf), fmt, args);
-	va_end(args);
-	mkfw_linux_last_error_set = 1;
-	if(mkfw_error_callback) {
-		mkfw_error_callback(mkfw_linux_last_error_buf);
-	}
-}
-
-// [=]===^=[ mkfw_get_last_error ]================================================================[=]
-MKFW_API const char *mkfw_get_last_error(void) {
-	return mkfw_linux_last_error_set ? mkfw_linux_last_error_buf : 0;
-}
-
-// [=]===^=[ mkfw_clear_last_error ]==============================================================[=]
-MKFW_API void mkfw_clear_last_error(void) {
-	mkfw_linux_last_error_buf[0] = 0;
-	mkfw_linux_last_error_set = 0;
-}
-
 /* Platform casting macros */
 #define PLATFORM(state) ((struct x11_mkfw_window *)(state)->platform)
 #define CTX_PLATFORM(c) ((struct x11_mkfw_context *)(c)->platform)
@@ -152,6 +114,7 @@ struct x11_mkfw_window {
 	Atom wm_delete_window;
 	Cursor hidden_cursor;
 	uint8_t should_close;
+	uint8_t window_destroyed;
 	uint8_t in_window;
 	int32_t xi_opcode;
 
@@ -1282,6 +1245,10 @@ static void xdnd_parse_uri_list(struct mkfw_window *state, const char *data, uin
 
 // [=]===^=[ mkfw_window_is_minimized ]=================================================================[=]
 MKFW_API uint32_t mkfw_window_is_minimized(struct mkfw_window *state) {
+	if(PLATFORM(state)->window_destroyed) {
+		return PLATFORM(state)->last_minimized;
+	}
+
 	Atom actual_type;
 	int actual_format;
 	unsigned long nitems, bytes_after;
@@ -1300,6 +1267,10 @@ MKFW_API uint32_t mkfw_window_is_minimized(struct mkfw_window *state) {
 
 // [=]===^=[ mkfw_window_is_maximized ]=================================================================[=]
 MKFW_API uint32_t mkfw_window_is_maximized(struct mkfw_window *state) {
+	if(PLATFORM(state)->window_destroyed) {
+		return PLATFORM(state)->last_maximized;
+	}
+
 	Display *dpy = PLATFORM(state)->display;
 	Atom actual_type;
 	int actual_format;
@@ -1432,6 +1403,10 @@ static void process_window_event(struct mkfw_window *state, XEvent *event_ptr) {
 
 		// Normal X11 events
 		switch(event.type) {
+			case DestroyNotify: {
+				PLATFORM(state)->window_destroyed = 1;
+				PLATFORM(state)->should_close = 1;
+			} break;
 
 			case Expose: {
 				// Coalesce: only act on the last contiguous expose.
@@ -2379,7 +2354,9 @@ MKFW_API void mkfw_window_destroy(struct mkfw_window *state) {
 		glXMakeCurrent(PLATFORM(state)->display, None, 0);
 		glXDestroyContext(PLATFORM(state)->display, PLATFORM(state)->glctx);
 	}
-	XDestroyWindow(PLATFORM(state)->display, PLATFORM(state)->window);
+	if(!PLATFORM(state)->window_destroyed) {
+		XDestroyWindow(PLATFORM(state)->display, PLATFORM(state)->window);
+	}
 
 	// Unlink from its context's window list
 	struct mkfw_context *ctx = state->context;

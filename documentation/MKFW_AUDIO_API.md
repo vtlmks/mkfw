@@ -1,10 +1,10 @@
 # MKFW Audio API
 
-Low-latency, callback-based audio output for mkfw applications.
+Standalone callback-based audio output, also usable alongside mkfw windows.
 
 ## Overview
 
-mkfw_audio is an optional companion subsystem for mkfw. It opens
+mkfw_audio works independently of the windowing subsystem. It opens
 the default system output, negotiates a sample rate and channel
 count, and calls your fill function from a dedicated audio thread.
 mkfw does not resample, mix, decode, or otherwise process the
@@ -20,10 +20,9 @@ whatever the physical device requires.
 
 ## Enabling
 
-mkfw_audio ships as a header next to `mkfw.h`. Include both:
+Include the audio header directly:
 
 ```c
-#include "mkfw.h"
 #include "mkfw_audio.h"
 ```
 
@@ -95,9 +94,8 @@ defaults.
 `realtime_priority` is opt-in: when set, mkfw asks for
 `SCHED_FIFO` priority 5 on Linux (typically requires `CAP_SYS_NICE`
 or an `rtkit-daemon` policy) and the `Pro Audio` MMCSS class on
-Windows. On either platform mkfw reports the failure through the
-error callback / `mkfw_get_last_error()` and continues at normal
-priority.
+Windows. If the request is denied, playback continues at normal
+priority without recording an audio initialization error.
 
 ### `struct mkfw_audio_info`
 
@@ -182,7 +180,6 @@ the values do not change for the device's lifetime.
 
 ```c
 #include <math.h>
-#include "mkfw.h"
 #include "mkfw_audio.h"
 
 struct synth_state {
@@ -255,3 +252,13 @@ library that depends on the rounding mode.
 mkfw_audio never returns library-owned memory and never asks the
 application for an allocation. The callback `buffer` is owned by
 mkfw and valid only for the duration of the call.
+
+## Audio errors
+
+After initialization fails, `mkfw_get_last_error()` returns the fixed message
+and `mkfw_get_last_error_code()` returns the native ALSA error, HRESULT, or
+Win32 error code. A code of zero means no backend code was available.
+`mkfw_clear_last_error()` clears both on the calling thread.
+
+The optional `mkfw_set_error_callback()` receives the same message.
+Audio diagnostics write no output and require no printf formatting.

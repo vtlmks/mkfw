@@ -88,6 +88,10 @@ platform `.c` file into your compilation unit when you include
 required.  See the **Linking** section in the project README for
 the canonical list of platform libraries required on each target.
 
+Standalone audio, timer, and thread headers do not include `mkfw.h`.
+For a separately compiled library, include `mkfw_error.c` once alongside
+the selected platform implementation files.
+
 The `MKFW_API` macro controls the linkage of every public function:
 
 - **Default** (`MKFW_API` == `static`): header-only / unity build.
@@ -707,6 +711,36 @@ OpenGL 4.6 Core Profile not available (driver supports up to 4.3)
 There is no silent fallback: if you ask for 4.6 and the driver
 caps at 4.3, you get an error and decide what to do, rather than
 silently receiving a 4.3 context.
+
+### OpenGL function loading
+
+`mkfw_gl_loader.h` is optional and independent of the core API. By
+default it declares and loads every OpenGL function enabled by
+`MKFW_GL_VERSION`, which defaults to OpenGL 3.1:
+
+```c
+#define MKFW_GL_VERSION 46
+#include "mkfw_gl_loader.h"
+```
+
+Define `MKFW_GL_REQUIRED(X)` before including the header to retain only
+the functions used by the translation unit:
+
+```c
+#define MKFW_GL_REQUIRED(X) \
+	X(glClear) \
+	X(glClearColor) \
+	X(glViewport)
+#include "mkfw_gl_loader.h"
+```
+
+After making a GL context current, call `mkfw_gl_loader()` in either mode.
+With `MKFW_GL_REQUIRED`, it loads only the named functions. Without it, it
+loads the complete version-selected set as before.
+
+`MKFW_GL_REQUIRED` narrows the set selected by `MKFW_GL_VERSION`; it does
+not make functions from a higher version available. Every OpenGL function
+called by the translation unit must be present in the required list.
 
 ### `mkfw_window_attach_context` / `_detach_context`
 

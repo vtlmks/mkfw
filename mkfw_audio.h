@@ -1,17 +1,8 @@
 // Copyright (c) 2025-2026 Peter Fors
 // SPDX-License-Identifier: MIT
 //
-// mkfw audio subsystem.  Include this header in addition to mkfw.h
-// to use the callback-based audio output.  The implementation is
-// unity-built alongside the application; no separate compilation
-// required.
-//
-//   #include "mkfw.h"
-//   #include "mkfw_audio.h"
-//
-// See the Linking section in README.md for the canonical list of
-// required libraries on each platform (Audio adds ole32, avrt,
-// and uuid on Windows; nothing extra on Linux).
+// Standalone callback-based audio output; include this header directly.
+// Linux links pthread and dl; Windows links ole32 and avrt.
 //
 // Format contract.  The audio callback always receives interleaved
 // 32-bit IEEE float samples in the [-1.0, 1.0] range.  Sample rate
@@ -27,7 +18,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "mkfw.h"
+#include "mkfw_base.h"
+#include "mkfw_error.h"
+#include "mkfw_thread.h"
 
 /* Callback invoked from the audio thread to fill the next period.
  * The buffer holds (frames * channels) interleaved float samples. */

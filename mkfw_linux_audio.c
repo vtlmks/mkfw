@@ -5,6 +5,8 @@
 // mode it is compiled standalone; the include below pulls in the
 // public audio types and MKFW_API macro.
 #include "mkfw_audio.h"
+#include <stdlib.h>
+#include <string.h>
 
 #include <alsa/asoundlib.h>
 #include <dlfcn.h>
@@ -27,7 +29,11 @@ typedef int (*PFN_snd_pcm_hw_params_get_buffer_size)(const snd_pcm_hw_params_t *
 typedef int (*PFN_snd_pcm_hw_params_get_rate)(const snd_pcm_hw_params_t *, unsigned int *, int *);
 typedef int (*PFN_snd_pcm_hw_params_get_channels)(const snd_pcm_hw_params_t *, unsigned int *);
 typedef size_t (*PFN_snd_pcm_hw_params_sizeof)(void);
-typedef int (*PFN_snd_pcm_start)(snd_pcm_t *);
+typedef int (*PFN_snd_pcm_sw_params_current)(snd_pcm_t *, snd_pcm_sw_params_t *);
+typedef int (*PFN_snd_pcm_sw_params_set_avail_min)(snd_pcm_t *, snd_pcm_sw_params_t *, snd_pcm_uframes_t);
+typedef int (*PFN_snd_pcm_sw_params_set_start_threshold)(snd_pcm_t *, snd_pcm_sw_params_t *, snd_pcm_uframes_t);
+typedef int (*PFN_snd_pcm_sw_params)(snd_pcm_t *, snd_pcm_sw_params_t *);
+typedef size_t (*PFN_snd_pcm_sw_params_sizeof)(void);
 typedef int (*PFN_snd_pcm_wait)(snd_pcm_t *, int);
 typedef snd_pcm_sframes_t (*PFN_snd_pcm_writei)(snd_pcm_t *, const void *, snd_pcm_uframes_t);
 typedef int (*PFN_snd_pcm_drop)(snd_pcm_t *);
@@ -48,7 +54,11 @@ static PFN_snd_pcm_hw_params_get_buffer_size mkfw_snd_pcm_hw_params_get_buffer_s
 static PFN_snd_pcm_hw_params_get_rate mkfw_snd_pcm_hw_params_get_rate;
 static PFN_snd_pcm_hw_params_get_channels mkfw_snd_pcm_hw_params_get_channels;
 static PFN_snd_pcm_hw_params_sizeof mkfw_snd_pcm_hw_params_sizeof;
-static PFN_snd_pcm_start mkfw_snd_pcm_start;
+static PFN_snd_pcm_sw_params_current mkfw_snd_pcm_sw_params_current;
+static PFN_snd_pcm_sw_params_set_avail_min mkfw_snd_pcm_sw_params_set_avail_min;
+static PFN_snd_pcm_sw_params_set_start_threshold mkfw_snd_pcm_sw_params_set_start_threshold;
+static PFN_snd_pcm_sw_params mkfw_snd_pcm_sw_params;
+static PFN_snd_pcm_sw_params_sizeof mkfw_snd_pcm_sw_params_sizeof;
 static PFN_snd_pcm_wait mkfw_snd_pcm_wait;
 static PFN_snd_pcm_writei mkfw_snd_pcm_writei;
 static PFN_snd_pcm_drop mkfw_snd_pcm_drop;
@@ -69,7 +79,11 @@ static PFN_snd_pcm_recover mkfw_snd_pcm_recover;
 #define snd_pcm_hw_params_get_rate mkfw_snd_pcm_hw_params_get_rate
 #define snd_pcm_hw_params_get_channels mkfw_snd_pcm_hw_params_get_channels
 #define snd_pcm_hw_params_sizeof mkfw_snd_pcm_hw_params_sizeof
-#define snd_pcm_start mkfw_snd_pcm_start
+#define snd_pcm_sw_params_current mkfw_snd_pcm_sw_params_current
+#define snd_pcm_sw_params_set_avail_min mkfw_snd_pcm_sw_params_set_avail_min
+#define snd_pcm_sw_params_set_start_threshold mkfw_snd_pcm_sw_params_set_start_threshold
+#define snd_pcm_sw_params mkfw_snd_pcm_sw_params
+#define snd_pcm_sw_params_sizeof mkfw_snd_pcm_sw_params_sizeof
 #define snd_pcm_wait mkfw_snd_pcm_wait
 #define snd_pcm_writei mkfw_snd_pcm_writei
 #define snd_pcm_drop mkfw_snd_pcm_drop
@@ -94,17 +108,15 @@ static void *mkfw_audio_lost_data;
 static mkfw_audio_device_acquired_callback_t mkfw_audio_acquired_cb;
 static void *mkfw_audio_acquired_data;
 
-// Set to 1 while mkfw_audio_init's synchronous open is in flight.
-// Lets open_device / set_hw_params fire descriptive mkfw_error()
-// calls on the first attempt without spamming the audio thread's
-// background retry loop with duplicate messages.
 static uint8_t mkfw_audio_init_phase;
 
 // [=]===^=[ load_alsa_functions ]=================================================================[=]
 static uint32_t load_alsa_functions(void) {
 	void *lib = dlopen("libasound.so.2", RTLD_LAZY | RTLD_GLOBAL);
+
 	if(!lib) {
 		return 0;
+
 	}
 
 	#define LOAD(name) *(void **)&mkfw_##name = dlsym(lib, #name)
@@ -123,17 +135,24 @@ static uint32_t load_alsa_functions(void) {
 	LOAD(snd_pcm_hw_params_get_rate);
 	LOAD(snd_pcm_hw_params_get_channels);
 	LOAD(snd_pcm_hw_params_sizeof);
-	LOAD(snd_pcm_start);
+	LOAD(snd_pcm_sw_params_current);
+	LOAD(snd_pcm_sw_params_set_avail_min);
+	LOAD(snd_pcm_sw_params_set_start_threshold);
+	LOAD(snd_pcm_sw_params);
+	LOAD(snd_pcm_sw_params_sizeof);
 	LOAD(snd_pcm_wait);
 	LOAD(snd_pcm_writei);
 	LOAD(snd_pcm_drop);
 	LOAD(snd_pcm_recover);
 	#undef LOAD
 
-	if(!mkfw_snd_pcm_open || !mkfw_snd_pcm_close || !mkfw_snd_pcm_hw_params_sizeof) {
+	if(!mkfw_snd_pcm_open || !mkfw_snd_pcm_close || !mkfw_snd_pcm_hw_params_sizeof || !mkfw_snd_pcm_sw_params_current || !mkfw_snd_pcm_sw_params_set_avail_min || !mkfw_snd_pcm_sw_params_set_start_threshold || !mkfw_snd_pcm_sw_params || !mkfw_snd_pcm_sw_params_sizeof) {
 		return 0;
+
 	}
+
 	return 1;
+
 }
 
 // [=]===^=[ mkfw_audio_set_hw_params ]===========================================================[=]
@@ -147,41 +166,92 @@ static int32_t mkfw_audio_set_hw_params(snd_pcm_t *handle) {
 	int32_t dir;
 
 	snd_pcm_hw_params_alloca(&params);
+
 	if((err = snd_pcm_hw_params_any(handle, params)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params_any failed (%d)", err);
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params_any failed", err);
+
+		}
+
 		return err;
-	}
-	if((err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params_set_access(RW_INTERLEAVED) failed (%d)", err);
-		return err;
-	}
-	if((err = snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_FLOAT_LE)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params_set_format(FLOAT_LE) failed (%d)", err);
-		return err;
-	}
-	if((err = snd_pcm_hw_params_set_channels_near(handle, params, &channels)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params_set_channels_near(%u) failed (%d)", channels, err);
-		return err;
-	}
-	if((err = snd_pcm_hw_params_set_rate_near(handle, params, &rate, 0)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params_set_rate_near(%u) failed (%d)", rate, err);
-		return err;
-	}
-	if((err = snd_pcm_hw_params_set_period_size_near(handle, params, &period, 0)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params_set_period_size_near(%lu) failed (%d)", (unsigned long)period, err);
-		return err;
-	}
-	if((err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params_set_buffer_size_near(%lu) failed (%d)", (unsigned long)buffer, err);
-		return err;
-	}
-	if((err = snd_pcm_hw_params(handle, params)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_hw_params (commit) failed (%d)", err);
-		return err;
+
 	}
 
-	uint32_t actual_rate = 0, actual_channels = 0;
-	snd_pcm_uframes_t actual_period = 0, actual_buffer = 0;
+	if((err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params_set_access(RW_INTERLEAVED) failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_FLOAT_LE)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params_set_format(FLOAT_LE) failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_hw_params_set_channels_near(handle, params, &channels)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params_set_channels_near failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_hw_params_set_rate_near(handle, params, &rate, 0)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params_set_rate_near failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_hw_params_set_period_size_near(handle, params, &period, 0)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params_set_period_size_near failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params_set_buffer_size_near failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_hw_params(handle, params)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_hw_params (commit) failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	uint32_t actual_rate = 0;
+	uint32_t actual_channels = 0;
+	snd_pcm_uframes_t actual_period = 0;
+	snd_pcm_uframes_t actual_buffer = 0;
+
 	snd_pcm_hw_params_get_rate(params, &actual_rate, &dir);
 	snd_pcm_hw_params_get_channels(params, &actual_channels);
 	snd_pcm_hw_params_get_period_size(params, &actual_period, &dir);
@@ -193,32 +263,86 @@ static int32_t mkfw_audio_set_hw_params(snd_pcm_t *handle) {
 	mkfw_audio_negotiated.frames_per_buffer = (uint32_t)actual_buffer;
 	mkfw_audio_negotiated.latency_ns        = actual_rate ? ((uint64_t)actual_buffer * 1000000000ULL) / actual_rate : 0;
 
+	snd_pcm_sw_params_t *sw_params;
+
+	snd_pcm_sw_params_alloca(&sw_params);
+
+	if((err = snd_pcm_sw_params_current(handle, sw_params)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_sw_params_current failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_sw_params_set_avail_min(handle, sw_params, actual_period)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_sw_params_set_avail_min failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_sw_params_set_start_threshold(handle, sw_params, actual_buffer)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_sw_params_set_start_threshold failed", err);
+
+		}
+
+		return err;
+
+	}
+
+	if((err = snd_pcm_sw_params(handle, sw_params)) < 0) {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_sw_params failed", err);
+
+		}
+
+		return err;
+
+	}
+
 	return 0;
+
 }
 
 // [=]===^=[ mkfw_audio_open_device ]=============================================================[=]
 static int32_t mkfw_audio_open_device(void) {
-	int err = snd_pcm_open(&mkfw_audio_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
-	if(err < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_open(\"default\") failed (%d)", err);
-		mkfw_audio_pcm = 0;
-		return -1;
-	}
-	if(mkfw_audio_set_hw_params(mkfw_audio_pcm) < 0) {
-		// set_hw_params already fired a specific mkfw_error if init_phase
+	int32_t err = snd_pcm_open(&mkfw_audio_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
+
+	if(err >= 0) {
+		if(mkfw_audio_set_hw_params(mkfw_audio_pcm) == 0) {
+			free(mkfw_audio_buffer);
+			mkfw_audio_buffer = calloc((size_t)mkfw_audio_negotiated.period_frames * mkfw_audio_negotiated.channels, sizeof(float));
+
+			if(mkfw_audio_buffer) {
+				return 0;
+
+			} else {
+				if(mkfw_audio_init_phase) {
+					mkfw_record_error("ALSA: cannot allocate audio buffer", ENOMEM);
+
+				}
+			}
+		}
+
 		snd_pcm_close(mkfw_audio_pcm);
-		mkfw_audio_pcm = 0;
-		return -1;
+
+	} else {
+		if(mkfw_audio_init_phase) {
+			mkfw_record_error("ALSA: snd_pcm_open(\"default\") failed", err);
+
+		}
 	}
-	free(mkfw_audio_buffer);
-	mkfw_audio_buffer = calloc((size_t)mkfw_audio_negotiated.period_frames * mkfw_audio_negotiated.channels, sizeof(float));
-	if((err = snd_pcm_start(mkfw_audio_pcm)) < 0) {
-		if(mkfw_audio_init_phase) mkfw_error("ALSA: snd_pcm_start failed (%d)", err);
-		snd_pcm_close(mkfw_audio_pcm);
-		mkfw_audio_pcm = 0;
-		return -1;
-	}
-	return 0;
+
+	mkfw_audio_pcm = 0;
+	return -1;
+
 }
 
 // [=]===^=[ mkfw_audio_close_device ]============================================================[=]
@@ -279,13 +403,11 @@ static void mkfw_audio_apply_denormal_flags(void) {
 
 // [=]===^=[ mkfw_audio_apply_rt_priority ]=======================================================[=]
 static void mkfw_audio_apply_rt_priority(void) {
-	if(!mkfw_audio_opts.realtime_priority) {
-		return;
-	}
-	struct sched_param sp = {0};
-	sp.sched_priority = 5;
-	if(pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
-		mkfw_error("audio: SCHED_FIFO not granted (no CAP_SYS_NICE / rtkit?); running at normal priority");
+	if(mkfw_audio_opts.realtime_priority) {
+		struct sched_param parameters = {.sched_priority = 5};
+
+		pthread_setschedparam(pthread_self(), SCHED_FIFO, &parameters);
+
 	}
 }
 
@@ -299,38 +421,69 @@ static MKFW_THREAD_FUNC(mkfw_audio_thread_func, arg) {
 		if(!mkfw_audio_pcm) {
 			if(mkfw_audio_open_device() < 0) {
 				struct timespec ts = {0, 100000000};
+
 				nanosleep(&ts, 0);
 				continue;
+
 			}
+
 			__atomic_store_n(&mkfw_audio_alive, 1, __ATOMIC_RELEASE);
 			mkfw_audio_notify_acquired();
+
 		}
 
 		int32_t err = snd_pcm_wait(mkfw_audio_pcm, 100);
+
 		if(err < 0) {
 			if(!__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
 				break;
+
 			}
+
 			if(snd_pcm_recover(mkfw_audio_pcm, err, 0) < 0) {
 				mkfw_audio_close_device();
 				mkfw_audio_notify_lost();
+
 			}
+
 			continue;
+
 		}
+
 		if(err == 0) {
 			continue;
+
 		}
 
 		mkfw_audio_dispatch(mkfw_audio_buffer, mkfw_audio_negotiated.period_frames);
-		err = snd_pcm_writei(mkfw_audio_pcm, mkfw_audio_buffer, mkfw_audio_negotiated.period_frames);
-		if(err < 0) {
-			if(snd_pcm_recover(mkfw_audio_pcm, err, 0) < 0) {
+		uint32_t offset = 0;
+
+		while(offset < mkfw_audio_negotiated.period_frames && mkfw_audio_pcm) {
+			snd_pcm_sframes_t written = snd_pcm_writei(mkfw_audio_pcm, mkfw_audio_buffer + (size_t)offset * mkfw_audio_negotiated.channels, mkfw_audio_negotiated.period_frames - offset);
+
+			if(written > 0) {
+				offset += written;
+
+			} else {
+				if(!__atomic_load_n(&mkfw_audio_running, __ATOMIC_ACQUIRE)) {
+					break;
+
+				}
+
+				if(written < 0 && snd_pcm_recover(mkfw_audio_pcm, written, 0) >= 0) {
+					continue;
+
+				}
+
 				mkfw_audio_close_device();
 				mkfw_audio_notify_lost();
+
 			}
 		}
 	}
+
 	return 0;
+
 }
 
 // [=]===^=[ mkfw_audio_set_callback ]============================================================[=]
@@ -359,27 +512,49 @@ MKFW_API void mkfw_audio_info(struct mkfw_audio_info *out) {
 // [=]===^=[ mkfw_audio_init ]====================================================================[=]
 MKFW_API uint32_t mkfw_audio_init(struct mkfw_audio_options *opts) {
 	struct mkfw_audio_options defaults = {0};
+
 	if(!opts) {
 		opts = &defaults;
+
 	}
+
 	mkfw_audio_opts = *opts;
+	mkfw_clear_last_error();
 
-	if(!load_alsa_functions()) {
-		mkfw_error("ALSA: libasound.so.2 not loadable, or missing required symbols");
-		return 0;
-	}
+	if(load_alsa_functions()) {
+		mkfw_audio_init_phase = 1;
 
-	mkfw_audio_init_phase = 1;
-	if(mkfw_audio_open_device() < 0) {
-		// open_device / set_hw_params have fired a specific mkfw_error
+		if(mkfw_audio_open_device() == 0) {
+			mkfw_audio_init_phase = 0;
+			__atomic_store_n(&mkfw_audio_alive, 1, __ATOMIC_RELEASE);
+			__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
+			mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_func, 0);
+
+			if(mkfw_audio_thread) {
+				return 1;
+
+			} else {
+				mkfw_record_error("audio: failed to spawn audio thread", 0);
+
+			}
+
+			__atomic_store_n(&mkfw_audio_running, 0, __ATOMIC_RELEASE);
+			__atomic_store_n(&mkfw_audio_alive, 0, __ATOMIC_RELEASE);
+			mkfw_audio_close_device();
+			free(mkfw_audio_buffer);
+			mkfw_audio_buffer = 0;
+
+		}
+
 		mkfw_audio_init_phase = 0;
-		return 0;
+
+	} else {
+		mkfw_record_error("ALSA: libasound.so.2 not loadable, or missing required symbols", 0);
+
 	}
-	mkfw_audio_init_phase = 0;
-	__atomic_store_n(&mkfw_audio_alive, 1, __ATOMIC_RELEASE);
-	__atomic_store_n(&mkfw_audio_running, 1, __ATOMIC_RELEASE);
-	mkfw_audio_thread = mkfw_thread_create(mkfw_audio_thread_func, 0);
-	return 1;
+
+	return 0;
+
 }
 
 // [=]===^=[ mkfw_audio_shutdown ]================================================================[=]
